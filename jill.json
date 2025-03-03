@@ -1,5 +1,5 @@
 {
-    "name": "andy",
+    "name": "jill",
 
     "model": "gpt-4o", 
 
@@ -27,6 +27,8 @@
             {"role": "assistant", "content": "Since the blueprint for level 1 only needs stone, I'll start placing those. !newAction(\"Place stone blocks for level 1.\")"}, 
             {"role": "assistant", "content": "jill: I'll place the planks for level 2. !newAction(\"Place planks for level 2.\")"}
         ]
+
+
     ]
 
 }
