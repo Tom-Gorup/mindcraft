@@ -115,7 +115,7 @@ export function getFirstBlockAboveHead(bot, ignore_types=null, distance=32) {
 }
 
 
-export function getNearestBlocks(bot, block_types=null, distance=16, count=10000) {
+export function getNearestBlocks(bot, block_types=null, distance=8, count=10000) {
     /**
      * Get a list of the nearest blocks of the given types.
      * @param {Bot} bot - The bot to get the nearest block for.
@@ -138,21 +138,23 @@ export function getNearestBlocks(bot, block_types=null, distance=16, count=10000
             block_ids.push(mc.getBlockId(block_type));
         }
     }
+    return getNearestBlocksWhere(bot, block_ids, distance, count);  
+}
 
-    let positions = bot.findBlocks({matching: block_ids, maxDistance: distance, count: count});
-    let blocks = [];
-    for (let i = 0; i < positions.length; i++) {
-        let block = bot.blockAt(positions[i]);
-        let distance = positions[i].distanceTo(bot.entity.position);
-        blocks.push({ block: block, distance: distance });
-    }
-    blocks.sort((a, b) => a.distance - b.distance);
-
-    let res = [];
-    for (let i = 0; i < blocks.length; i++) {
-        res.push(blocks[i].block);
-    }
-    return res;
+export function getNearestBlocksWhere(bot, predicate, distance=8, count=10000) {
+    /**
+     * Get a list of the nearest blocks that satisfy the given predicate.
+     * @param {Bot} bot - The bot to get the nearest blocks for.
+     * @param {function} predicate - The predicate to filter the blocks.
+     * @param {number} distance - The maximum distance to search, default 16.
+     * @param {number} count - The maximum number of blocks to find, default 10000.
+     * @returns {Block[]} - The nearest blocks that satisfy the given predicate.
+     * @example
+     * let waterBlocks = world.getNearestBlocksWhere(bot, block => block.name === 'water', 16, 10);
+     **/
+    let positions = bot.findBlocks({matching: predicate, maxDistance: distance, count: count});
+    let blocks = positions.map(position => bot.blockAt(position));
+    return blocks;
 }
 
 
@@ -210,6 +212,50 @@ export function getNearbyPlayers(bot, maxDistance) {
         res.push(players[i].entity);
     }
     return res;
+}
+
+// Helper function to get villager profession from metadata
+export function getVillagerProfession(entity) {
+    // Villager profession mapping based on metadata
+    const professions = {
+        0: 'Unemployed',
+        1: 'Armorer',
+        2: 'Butcher', 
+        3: 'Cartographer',
+        4: 'Cleric',
+        5: 'Farmer',
+        6: 'Fisherman',
+        7: 'Fletcher',
+        8: 'Leatherworker',
+        9: 'Librarian',
+        10: 'Mason',
+        11: 'Nitwit',
+        12: 'Shepherd',
+        13: 'Toolsmith',
+        14: 'Weaponsmith'
+    };
+    
+    if (entity.metadata && entity.metadata[18]) {
+        // Check if metadata[18] is an object with villagerProfession property
+        if (typeof entity.metadata[18] === 'object' && entity.metadata[18].villagerProfession !== undefined) {
+            const professionId = entity.metadata[18].villagerProfession;
+            const level = entity.metadata[18].level || 1;
+            const professionName = professions[professionId] || 'Unknown';
+            return `${professionName} L${level}`;
+        }
+        // Fallback for direct profession ID
+        else if (typeof entity.metadata[18] === 'number') {
+            const professionId = entity.metadata[18];
+            return professions[professionId] || 'Unknown';
+        }
+    }
+    
+    // If we can't determine profession but it's an adult villager
+    if (entity.metadata && entity.metadata[16] !== 1) { // Not a baby
+        return 'Adult';
+    }
+    
+    return 'Unknown';
 }
 
 

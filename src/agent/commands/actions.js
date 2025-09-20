@@ -301,7 +301,7 @@ export const actionsList = [
         {
         name: '!placeHere',
         description: 'Place a given block in the current location. Do NOT use to build structures, only use for single blocks/torches.',
-        params: {'type': { type: 'BlockName', description: 'The block type to place.' }},
+        params: {'type': { type: 'BlockOrItemName', description: 'The block type to place.' }},
         perform: runAsAction(async (agent, type) => {
             let pos = agent.bot.entity.position;
             await skills.placeBlock(agent.bot, type, pos.x, pos.y, pos.z);
@@ -384,8 +384,28 @@ export const actionsList = [
         }
     },
     {
+        name: '!showVillagerTrades',
+        description: 'Show trades of a specified villager.',
+        params: {'id': { type: 'int', description: 'The id number of the villager that you want to trade with.' }},
+        perform: runAsAction(async (agent, id) => {
+            await skills.showVillagerTrades(agent.bot, id);
+        })
+    },
+    {
+        name: '!tradeWithVillager',
+        description: 'Trade with a specified villager.',
+        params: {
+            'id': { type: 'int', description: 'The id number of the villager that you want to trade with.' },
+            'index': { type: 'int', description: 'The index of the trade you want executed (1-indexed).', domain: [1, Number.MAX_SAFE_INTEGER] },
+            'count': { type: 'int', description: 'How many times that trade should be executed.', domain: [1, Number.MAX_SAFE_INTEGER] },
+        },
+        perform: runAsAction(async (agent, id, index, count) => {
+            await skills.tradeWithVillager(agent.bot, id, index, count);
+        })
+    },
+    {
         name: '!startConversation',
-        description: 'Start a conversation with a player. Use for bots only.',
+        description: 'Start a conversation with a bot. (FOR OTHER BOTS ONLY)',
         params: {
             'player_name': { type: 'string', description: 'The name of the player to send the message to.' },
             'message': { type: 'string', description: 'The message to send.' },
@@ -402,7 +422,7 @@ export const actionsList = [
     },
     {
         name: '!endConversation',
-        description: 'End the conversation with the given player.',
+        description: 'End the conversation with the given bot. (FOR OTHER BOTS ONLY)',
         params: {
             'player_name': { type: 'string', description: 'The name of the player to end the conversation with.' }
         },
