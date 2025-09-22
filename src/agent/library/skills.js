@@ -847,7 +847,7 @@ export async function discard(bot, itemName, num=-1) {
      **/
     let discarded = 0;
     while (true) {
-        let item = bot.inventory.items().find(item => item.name === itemName);
+        let item = bot.inventory.findInventoryItem(itemName);
         if (!item) {
             break;
         }
