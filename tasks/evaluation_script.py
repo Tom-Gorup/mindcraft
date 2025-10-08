@@ -663,10 +663,17 @@ def launch_world(server_path="./tasks/server_data/", agent_names=["andy", "jill"
     cmd = f"cd {server_path} && java -jar server.jar"
     subprocess.run(['tmux', 'new-session', '-d', '-s', session_name], check=True)
     subprocess.run(["tmux", "send-keys", "-t", session_name, cmd, "C-m"])
-    time.sleep(10)
-    if not test_server_running(port):
-        print("Server failed to start. Retrying...")
-        launch_world(server_path, agent_names, session_name, port)
+
+    for i in range(6):
+        time.sleep(10)
+        if test_server_running(port):
+            print("Server started successfully.")
+            return
+        print(f"Waiting for server... ({(i + 1) * 10}s)")
+
+    print("Server failed to start. Retrying...")
+    subprocess.run(['tmux', 'kill-session', '-t', session_name], check=False)
+    launch_world(server_path, agent_names, session_name, port)
 
 def test_server_running(port=55916):
     host = 'localhost'
