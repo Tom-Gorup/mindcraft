@@ -35,3 +35,7 @@ After attaching, you can use the `account` command to manage user accounts:
 
 When you're done setting up your account (don't forget to select it), use `CTRL-P` then `CTRL-Q` to detach from the container.
 
+If you want to persist these changes, you can configure them in the `services/viaproxy/viaproxy.yml`.
+1. Change `auth-method` to `account`
+2. Change `minecraft-account-index` to the id of your account
+
