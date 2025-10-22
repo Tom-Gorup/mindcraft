@@ -43,13 +43,41 @@ If you encounter issues, check the [FAQ](https://github.com/mindcraft-bots/mindc
 
 ## Tasks
 
-Bot performance can be roughly evaluated with Tasks. Tasks automatically intialize bots with a goal to acquire specific items or construct predefined buildings, and remove the bot once the goal is achieved.
+To run a simple task that involves collecting 4 oak_logs run 
 
-To run tasks, you need python, pip, and optionally conda. You can then install dependencies with `pip install -r requirements.txt`. 
+`node main.js --task_path tasks/basic/single_agent.json --task_id gather_oak_logs`
 
-Tasks are defined in json files in the `tasks` folder, and can be run with: `python tasks/run_task_file.py --task_path=tasks/example_tasks.json`
+Here is an example task json format: 
 
-For full evaluations, you will need to [download and install the task suite. Full instructions.](minecollab.md#installation)
+```
+{
+    "gather_oak_logs": {
+      "goal": "Collect at least four logs",
+      "initial_inventory": {
+        "0": {
+          "wooden_axe": 1
+        }
+      },
+      "agent_count": 1,
+      "target": "oak_log",
+      "number_of_target": 4,
+      "type": "techtree",
+      "max_depth": 1,
+      "depth": 0,
+      "timeout": 300,
+      "blocked_actions": {
+        "0": [],
+        "1": []
+      },
+      "missing_items": [],
+      "requires_ctable": false
+    }
+}
+```
+
+The `initial_inventory` is what the bot will have at the start of the episode, `target` refers to the target item and `number_of_target` refers to the number of target items the agent needs to collect to successfully complete the task. 
+
+If you want more optimization and automatic launching of the minecraft world, you will need to follow the instructions in [Minecollab Instructions](minecollab.md#installation)
 
 ## Model Customization
 
