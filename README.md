@@ -24,8 +24,8 @@ Do not connect this bot to public servers with coding enabled. This project allo
 
 - [Minecraft Java Edition](https://www.minecraft.net/en-us/store/minecraft-java-bedrock-edition-pc) (up to v1.21.6, recommend v1.21.6)
 - [Node.js Installed](https://nodejs.org/) (at least v18)
-- At least one API key from a [supported API provider](#model-specifications). OpenAI is the default.
-- 
+- At least one API key from a supported API provider. See [supported APIs](#model-specifications). OpenAI is the default.
+
 ## Install and Run
 
 1. Make sure you have the requirements above.
@@ -199,7 +199,7 @@ The `model` field can be a string or an object. A model object must specify an `
 "speak_model": "openai/tts-1/echo"
 ```
 
-`model` is used for chat, `code_model` is used for newAction coding, `vision_model` is used for image interpretation, and `embedding` is used to embed text for example selection, and `speak_model` is used for voice synthesis. `model` will be used by default for all other models if not specified. Not all APIs support embeddings, vision, or voice synthesis.
+`model` is used for chat, `code_model` is used for newAction coding, `vision_model` is used for image interpretation, `embedding` is used to embed text for example selection, and `speak_model` is used for voice synthesis. `model` will be used by default for all other models if not specified. Not all APIs support embeddings, vision, or voice synthesis.
 
 All apis have default models and urls, so those fields are optional. The `params` field is optional and can be used to specify additional parameters for the model. It accepts any key-value pairs supported by the api. Is not supported for embedding models.
 
@@ -224,22 +224,15 @@ By default, the program will use the profiles specified in `settings.js`. You ca
 
 We welcome contributions to the project! We are generally less responsive to github issues, and more responsive to pull requests. Join the [discord](https://discord.gg/mp73p35dzC) for more active support and direction.
 
-While AI generated code is allowed, please vet it carefully. Submitting tons of poorly tested code and documentation is not helpful and actively harms development.
+While AI generated code is allowed, please vet it carefully. Submitting tons of sloppy code and documentation actively harms development.
 
 ## Patches
 
 Some of the node modules that we depend on have bugs in them. To add a patch, change your local node module file and run `npx patch-package [package-name]`
 
 ## Development Team
-Thanks to all who contributed to the project, especially the official development team:
-- @MaxRobinsonTheGreat
-- @kolbytn
-- @icwhite
-- @Sweaterdog
-- @Ninot1Quyi
-- @riqvip
-- @uukelele-scratch
-- @mrelmida
+Thanks to all who contributed to the project, especially the official development team: [@MaxRobinsonTheGreat](https://github.com/MaxRobinsonTheGreat), [@kolbytn](https://github.com/kolbytn), [@icwhite](https://github.com/icwhite), [@Sweaterdog](https://github.com/Sweaterdog), [@Ninot1Quyi](https://github.com/Ninot1Quyi), [@riqvip](https://github.com/riqvip), [@uukelele-scratch](https://github.com/uukelele-scratch), [@mrelmida](https://github.com/mrelmida)
+
 
 ## Citation:
 This work is published in the paper [Collaborating Action by Action: A Multi-agent LLM Framework for Embodied Reasoning](https://arxiv.org/abs/2504.17950). Please use this citation if you use this project in your research:
