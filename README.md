@@ -140,29 +140,29 @@ Bot profiles are json files (such as `andy.json`) that define:
 
 ## Model Specifications
 
+LLM models can be specified simply as `"model": "gpt-4o"`, or more specifically with `"{api}/{model}"`, like `"openrouter/google/gemini-2.5-pro"`. See all supported APIs below.
+
 <details>
 <summary><strong>⭐ VIEW SUPPORTED APIs ⭐</strong></summary>
 
-LLM models can be specified simply as `"model": "gpt-4o"`, or more specifically with `"{api}/{model}"`, like `"openrouter/google/gemini-2.5-pro"`. See all supported APIs below.
-
 | API Name | Config Variable| Docs |
-|------|------|------|------|
+|------|------|------|
 | `openai` | `OPENAI_API_KEY` | [docs](https://platform.openai.com/docs/models) |
 | `google` | `GEMINI_API_KEY` | [docs](https://ai.google.dev/gemini-api/docs/models/gemini) |
 | `anthropic` | `ANTHROPIC_API_KEY` | [docs](https://docs.anthropic.com/claude/docs/models-overview) |
 | `xai` | `XAI_API_KEY` | [docs](https://docs.x.ai/docs) |
 | `deepseek` | `DEEPSEEK_API_KEY` | [docs](https://api-docs.deepseek.com/) |
-| `ollama` (local) | n/a | n/a | [docs](https://ollama.com/library) |
-| `qwen` | `QWEN_API_KEY` | [Intl.](https://www.alibabacloud.com/help/en/model-studio/developer-reference/use-qwen-by-calling-api)/[cn](https://help.aliyun.com/zh/model-studio/getting-started/models) | [docs](https://www.alibabacloud.com/help/en/model-studio/developer-reference/use-qwen-by-calling-api)/[cn](https://help.aliyun.com/zh/model-studio/getting-started/models) |
+| `ollama` (local) | n/a | [docs](https://ollama.com/library) |
+| `qwen` | `QWEN_API_KEY` | [Intl.](https://www.alibabacloud.com/help/en/model-studio/developer-reference/use-qwen-by-calling-api)/[cn](https://help.aliyun.com/zh/model-studio/getting-started/models) |
 | `mistral` | `MISTRAL_API_KEY` | [docs](https://docs.mistral.ai/getting-started/models/models_overview/) |
 | `replicate` | `REPLICATE_API_KEY` | [docs](https://replicate.com/collections/language-models) |
 | `groq` (not grok) | `GROQCLOUD_API_KEY` | [docs](https://console.groq.com/docs/models) |
 | `huggingface` | `HUGGINGFACE_API_KEY` | [docs](https://huggingface.co/models) |
 | `novita` | `NOVITA_API_KEY` | [docs](https://novita.ai/model-api/product/llm-api?utm_source=github_mindcraft&utm_medium=github_readme&utm_campaign=link) |
 | `openrouter` | `OPENROUTER_API_KEY` | [docs](https://openrouter.ai/models) |
-| `glhf.chat` | `GHLF_API_KEY` | [docs](https://glhf.chat/user-settings/api) |
+| `glhf` | `GHLF_API_KEY` | [docs](https://glhf.chat/user-settings/api) |
 | `hyperbolic` | `HYPERBOLIC_API_KEY` | [docs](https://docs.hyperbolic.xyz/docs/getting-started) |
-| `vllm` | n/a | `vllm/llama3` | n/a |
+| `vllm` | n/a | n/a |
 | `cerebras` | `CEREBRAS_API_KEY` | [docs](https://inference-docs.cerebras.ai/introduction) |
 | `mercury` | `MERCURY_API_KEY` | [docs](https://www.inceptionlabs.ai/) |
 
