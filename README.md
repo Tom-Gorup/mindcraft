@@ -19,12 +19,13 @@
 > [!Caution]
 Do not connect this bot to public servers with coding enabled. This project allows an LLM to write/execute code on your computer. The code is sandboxed, but still vulnerable to injection attacks. Code writing is disabled by default, you can enable it by setting `allow_insecure_coding` to `true` in `settings.js`. Ye be warned.
 
+# Getting Started
 ## Requirements
 
 - [Minecraft Java Edition](https://www.minecraft.net/en-us/store/minecraft-java-bedrock-edition-pc) (up to v1.21.6, recommend v1.21.6)
 - [Node.js Installed](https://nodejs.org/) (at least v18)
-- One of these: [OpenAI API Key](https://openai.com/blog/openai-api) | [Gemini API Key](https://aistudio.google.com/app/apikey) | [Anthropic API Key](https://docs.anthropic.com/claude/docs/getting-access-to-claude) | [Replicate API Key](https://replicate.com/) | [Hugging Face API Key](https://huggingface.co/) | [Groq API Key](https://console.groq.com/keys) | [Ollama Installed](https://ollama.com/download). | [Mistral API Key](https://docs.mistral.ai/getting-started/models/models_overview/) | [Qwen API Key [Intl.]](https://www.alibabacloud.com/help/en/model-studio/developer-reference/get-api-key)/[[cn]](https://help.aliyun.com/zh/model-studio/getting-started/first-api-call-to-qwen?) | [Novita AI API Key](https://novita.ai/settings?utm_source=github_mindcraft&utm_medium=github_readme&utm_campaign=link#key-management) | [Cerebras API Key](https://cloud.cerebras.ai) | [Mercury API](https://platform.inceptionlabs.ai/docs)
-
+- At least one API key from a [supported API provider](#model-specifications). OpenAI is the default.
+- 
 ## Install and Run
 
 1. Make sure you have the requirements above.
@@ -43,7 +44,7 @@ If you encounter issues, check the [FAQ](https://github.com/mindcraft-bots/mindc
 
 ## Tasks
 
-To run a simple task that involves collecting 4 oak_logs run 
+Tasks automatically start the bot with a prompt and a goal item to aquire or blueprint to construct. To run a simple task that involves collecting 4 oak_logs run 
 
 `node main.js --task_path tasks/basic/single_agent.json --task_id gather_oak_logs`
 
@@ -79,39 +80,23 @@ The `initial_inventory` is what the bot will have at the start of the episode, `
 
 If you want more optimization and automatic launching of the minecraft world, you will need to follow the instructions in [Minecollab Instructions](minecollab.md#installation)
 
+
+# Configuration
 ## Model Customization
 
 You can configure project details in `settings.js`. [See file.](settings.js)
 
-You can configure the agent's name, model, and prompts in their profile like `andy.json` with the `model` field. For comprehensive details, see [Model Specifications](#model-specifications).
+You can configure the agent's name, model, and prompts in their profile like `andy.json`. The model can be specified with the `model` field, with values like `model: "gpt-5"`, or to specify a specific API provider you can use model: `"{api}/{model}"`, like `"openrouter/google/gemini-2.5-pro"`. You will need the correct API key for the API provider you choose.
 
-| API | Config Variable | Example Model name | Docs |
-|------|------|------|------|
-| `openai` | `OPENAI_API_KEY` | `gpt-4o-mini` | [docs](https://platform.openai.com/docs/models) |
-| `google` | `GEMINI_API_KEY` | `gemini-2.0-flash` | [docs](https://ai.google.dev/gemini-api/docs/models/gemini) |
-| `anthropic` | `ANTHROPIC_API_KEY` | `claude-3-haiku-20240307` | [docs](https://docs.anthropic.com/claude/docs/models-overview) |
-| `xai` | `XAI_API_KEY` | `grok-2-1212` | [docs](https://docs.x.ai/docs) |
-| `deepseek` | `DEEPSEEK_API_KEY` | `deepseek-chat` | [docs](https://api-docs.deepseek.com/) |
-| `ollama` (local) | n/a | `ollama/sweaterdog/andy-4:micro-q8_0` | [docs](https://ollama.com/library) |
-| `qwen` | `QWEN_API_KEY` | `qwen-max` | [Intl.](https://www.alibabacloud.com/help/en/model-studio/developer-reference/use-qwen-by-calling-api)/[cn](https://help.aliyun.com/zh/model-studio/getting-started/models) |
-| `mistral` | `MISTRAL_API_KEY` | `mistral-large-latest` | [docs](https://docs.mistral.ai/getting-started/models/models_overview/) |
-| `replicate` | `REPLICATE_API_KEY` | `replicate/meta/meta-llama-3-70b-instruct` | [docs](https://replicate.com/collections/language-models) |
-| `groq` (not grok) | `GROQCLOUD_API_KEY` | `groq/mixtral-8x7b-32768` | [docs](https://console.groq.com/docs/models) |
-| `huggingface` | `HUGGINGFACE_API_KEY` | `huggingface/mistralai/Mistral-Nemo-Instruct-2407` | [docs](https://huggingface.co/models) |
-| `novita` | `NOVITA_API_KEY` | `novita/deepseek/deepseek-r1` | [docs](https://novita.ai/model-api/product/llm-api?utm_source=github_mindcraft&utm_medium=github_readme&utm_campaign=link) |
-| `openrouter` | `OPENROUTER_API_KEY` | `openrouter/anthropic/claude-3.5-sonnet` | [docs](https://openrouter.ai/models) |
-| `glhf.chat` | `GHLF_API_KEY` | `glhf/hf:meta-llama/Llama-3.1-405B-Instruct` | [docs](https://glhf.chat/user-settings/api) |
-| `hyperbolic` | `HYPERBOLIC_API_KEY` | `hyperbolic/deepseek-ai/DeepSeek-V3` | [docs](https://docs.hyperbolic.xyz/docs/getting-started) |
-| `vllm` | n/a | `vllm/llama3` | n/a |
-| `cerebras` | `CEREBRAS_API_KEY` | `cerebras/llama-3.3-70b` | [docs](https://inference-docs.cerebras.ai/introduction) |
-| `mercury` | `MERCURY_API_KEY` | `mercury-coder-small` | [docs](https://www.inceptionlabs.ai/) |
+For see comprehensive model configuration and a list of supported APIs, see [Model Specifications](#model-specifications).
 
-If you use Ollama, to install the models used by default (generation and embedding), execute the following terminal command:
-`ollama pull sweaterdog/andy-4:micro-q8_0 && ollama pull embeddinggemma`
+For local models we support [ollama](https://ollama.com/) and we provide our own finetuned models for you to use. 
+To install our models, install ollama and run the following terminal command:
+```bash
+ollama pull sweaterdog/andy-4:micro-q8_0 && ollama pull embeddinggemma
+```
 
-To use Azure, you can reuse the `OPENAI_API_KEY` environment variable. You can get the key from the Azure portal. See [azure.json](profiles/azure.json) for an example.
-
-### Online Servers
+## Online Servers
 To connect to online servers your bot will need an official Microsoft/Minecraft account. You can use your own personal one, but will need another account if you want to connect too and play with it. To connect, change these lines in `settings.js`:
 ```javascript
 "host": "111.222.333.444",
@@ -125,9 +110,9 @@ To connect to online servers your bot will need an official Microsoft/Minecraft 
 
 To use different accounts, Mindcraft will connect with the account that the Minecraft launcher is currently using. You can switch accounts in the launcher, then run `node main.js`, then switch to your main account after the bot has connected.
 
-### Docker Container
+## Docker Container
 
-If you intend to `allow_insecure_coding`, it is a good idea to run the app in a docker container to reduce risks of running unknown code. This is strongly recommended before connecting to remote servers.
+If you intend to `allow_insecure_coding`, it is a good idea to run the app in a docker container to reduce risks of running unknown code. This is strongly recommended before connecting to remote servers, although still does not guarantee complete safety.
 
 ```bash
 docker run -i -t --rm -v $(pwd):/app -w /app -p 3000-3003:3000-3003 node:18 node main.js
@@ -155,8 +140,36 @@ Bot profiles are json files (such as `andy.json`) that define:
 
 ## Model Specifications
 
-LLM models can be specified simply as `"model": "gpt-4o"`. However, you can use different models for chat, coding, and embeddings. 
-You can pass a string or an object for these fields. A model object must specify an `api`, and optionally a `model`, `url`, and additional `params`.
+<details>
+<summary><strong>⭐ VIEW SUPPORTED APIs ⭐</strong></summary>
+
+LLM models can be specified simply as `"model": "gpt-4o"`, or more specifically with `"{api}/{model}"`, like `"openrouter/google/gemini-2.5-pro"`. See all supported APIs below.
+
+| API Name | Config Variable| Docs |
+|------|------|------|------|
+| `openai` | `OPENAI_API_KEY` | [docs](https://platform.openai.com/docs/models) |
+| `google` | `GEMINI_API_KEY` | [docs](https://ai.google.dev/gemini-api/docs/models/gemini) |
+| `anthropic` | `ANTHROPIC_API_KEY` | [docs](https://docs.anthropic.com/claude/docs/models-overview) |
+| `xai` | `XAI_API_KEY` | [docs](https://docs.x.ai/docs) |
+| `deepseek` | `DEEPSEEK_API_KEY` | [docs](https://api-docs.deepseek.com/) |
+| `ollama` (local) | n/a | n/a | [docs](https://ollama.com/library) |
+| `qwen` | `QWEN_API_KEY` | [Intl.](https://www.alibabacloud.com/help/en/model-studio/developer-reference/use-qwen-by-calling-api)/[cn](https://help.aliyun.com/zh/model-studio/getting-started/models) | [docs](https://www.alibabacloud.com/help/en/model-studio/developer-reference/use-qwen-by-calling-api)/[cn](https://help.aliyun.com/zh/model-studio/getting-started/models) |
+| `mistral` | `MISTRAL_API_KEY` | [docs](https://docs.mistral.ai/getting-started/models/models_overview/) |
+| `replicate` | `REPLICATE_API_KEY` | [docs](https://replicate.com/collections/language-models) |
+| `groq` (not grok) | `GROQCLOUD_API_KEY` | [docs](https://console.groq.com/docs/models) |
+| `huggingface` | `HUGGINGFACE_API_KEY` | [docs](https://huggingface.co/models) |
+| `novita` | `NOVITA_API_KEY` | [docs](https://novita.ai/model-api/product/llm-api?utm_source=github_mindcraft&utm_medium=github_readme&utm_campaign=link) |
+| `openrouter` | `OPENROUTER_API_KEY` | [docs](https://openrouter.ai/models) |
+| `glhf.chat` | `GHLF_API_KEY` | [docs](https://glhf.chat/user-settings/api) |
+| `hyperbolic` | `HYPERBOLIC_API_KEY` | [docs](https://docs.hyperbolic.xyz/docs/getting-started) |
+| `vllm` | n/a | `vllm/llama3` | n/a |
+| `cerebras` | `CEREBRAS_API_KEY` | [docs](https://inference-docs.cerebras.ai/introduction) |
+| `mercury` | `MERCURY_API_KEY` | [docs](https://www.inceptionlabs.ai/) |
+
+</details>
+
+
+The `model` field can be a string or an object. A model object must specify an `api`, and optionally a `model`, `url`, and additional `params`. You can also use different models/providers for chatting, coding, vision, embedding, and voice synthesis. See the example below.
 
 ```json
 "model": {
@@ -183,16 +196,10 @@ You can pass a string or an object for these fields. A model object must specify
   "url": "https://api.openai.com/v1/",
   "model": "text-embedding-ada-002"
 },
-"speak_model": {
-  "api": "openai",
-  "url": "https://api.openai.com/v1/",
-  "model": "tts-1",
-  "voice": "echo"
-}
-
+"speak_model": "openai/tts-1/echo"
 ```
 
-`model` is used for chat, `code_model` is used for newAction coding, `vision_model` is used for image interpretation, and `embedding` is used to embed text for example selection. If `code_model` or `vision_model` is not specified, `model` will be used by default. Not all APIs support embeddings or vision.
+`model` is used for chat, `code_model` is used for newAction coding, `vision_model` is used for image interpretation, and `embedding` is used to embed text for example selection, and `speak_model` is used for voice synthesis. `model` will be used by default for all other models if not specified. Not all APIs support embeddings, vision, or voice synthesis.
 
 All apis have default models and urls, so those fields are optional. The `params` field is optional and can be used to specify additional parameters for the model. It accepts any key-value pairs supported by the api. Is not supported for embedding models.
 
@@ -202,18 +209,40 @@ Embedding models are used to embed and efficiently select relevant examples for 
 
 Supported Embedding APIs: `openai`, `google`, `replicate`, `huggingface`, `novita`
 
-If you try to use an unsupported model, then it will default to a simple word-overlap method. Expect reduced performance, recommend mixing APIs to ensure embedding support.
+If you try to use an unsupported model, then it will default to a simple word-overlap method. Expect reduced performance. We recommend using supported embedding APIs.
+
+## Voice Synthesis Models
+
+Voice synthesis models are used to narrate bot responses and specified with `speak_model`. This field is parsed differently than other models and only supports strings formatted as `"{api}/{model}/{voice}"`, like `"openai/tts-1/echo"`. We only support `openai` and `google` for voice synthesis.
 
 ## Specifying Profiles via Command Line
 
 By default, the program will use the profiles specified in `settings.js`. You can specify one or more agent profiles using the `--profiles` argument: `node main.js --profiles ./profiles/andy.json ./profiles/jill.json`
 
+
+# Contributing
+
+We welcome contributions to the project! We are generally less responsive to github issues, and more responsive to pull requests. Join the [discord](https://discord.gg/mp73p35dzC) for more active support and direction.
+
+While AI generated code is allowed, please vet it carefully. Submitting tons of poorly tested code and documentation is not helpful and actively harms development.
+
 ## Patches
 
 Some of the node modules that we depend on have bugs in them. To add a patch, change your local node module file and run `npx patch-package [package-name]`
 
-## Citation:
+## Development Team
+Thanks to all who contributed to the project, especially the official development team:
+- @MaxRobinsonTheGreat
+- @kolbytn
+- @icwhite
+- @Sweaterdog
+- @Ninot1Quyi
+- @riqvip
+- @uukelele-scratch
+- @mrelmida
 
+## Citation:
+This work is published in the paper [Collaborating Action by Action: A Multi-agent LLM Framework for Embodied Reasoning](https://arxiv.org/abs/2504.17950). Please use this citation if you use this project in your research:
 ```
 @article{mindcraft2025,
   title = {Collaborating Action by Action: A Multi-agent LLM Framework for Embodied Reasoning},
@@ -223,5 +252,3 @@ Some of the node modules that we depend on have bugs in them. To add a patch, ch
   url = {https://arxiv.org/abs/2504.17950},
 }
 ```
-
-
