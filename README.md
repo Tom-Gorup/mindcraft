@@ -1,5 +1,4 @@
-<h1 align="center">mindcraft</h1>
-<p align="center">🧠⛏️</p>
+<h1 align="center">🧠mindcraft⛏️</h1>
 <h1 align="center">
   <a href="https://trendshift.io/repositories/9163" target="_blank"><img src="https://trendshift.io/api/badge/repositories/9163" alt="kolbytn%2Fmindcraft | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </h1>
@@ -24,7 +23,10 @@ Do not connect this bot to public servers with coding enabled. This project allo
 
 - [Minecraft Java Edition](https://www.minecraft.net/en-us/store/minecraft-java-bedrock-edition-pc) (up to v1.21.6, recommend v1.21.6)
 - [Node.js Installed](https://nodejs.org/) (at least v18)
-- At least one API key from a supported API provider. See [supported APIs](#model-specifications). OpenAI is the default.
+- At least one API key from a supported API provider. See [supported APIs](#model-customization). OpenAI is the default.
+
+> [!Important]
+> If installing node on windows, ensure you check `Automatically install the necessary tools`
 
 ## Install and Run
 
@@ -41,6 +43,62 @@ Do not connect this bot to public servers with coding enabled. This project allo
 6. Run `node main.js` from the installed directory
 
 If you encounter issues, check the [FAQ](https://github.com/mindcraft-bots/mindcraft/blob/main/FAQ.md) or find support on [discord](https://discord.gg/mp73p35dzC). We are currently not very responsive to github issues. To run tasks please refer to [Minecollab Instructions](minecollab.md#installation)
+
+
+# Configuration
+## Model Customization
+
+You can configure project details in `settings.js`. [See file.](settings.js)
+
+You can configure the agent's name, model, and prompts in their profile like `andy.json`. The model can be specified with the `model` field, with values like `model: "gemini-2.5-pro"`. You will need the correct API key for the API provider you choose. See all supported APIs below.
+
+<details>
+<summary><strong>⭐ VIEW SUPPORTED APIs ⭐</strong></summary>
+
+| API Name | Config Variable| Docs |
+|------|------|------|
+| `openai` | `OPENAI_API_KEY` | [docs](https://platform.openai.com/docs/models) |
+| `google` | `GEMINI_API_KEY` | [docs](https://ai.google.dev/gemini-api/docs/models/gemini) |
+| `anthropic` | `ANTHROPIC_API_KEY` | [docs](https://docs.anthropic.com/claude/docs/models-overview) |
+| `xai` | `XAI_API_KEY` | [docs](https://docs.x.ai/docs) |
+| `deepseek` | `DEEPSEEK_API_KEY` | [docs](https://api-docs.deepseek.com/) |
+| `ollama` (local) | n/a | [docs](https://ollama.com/library) |
+| `qwen` | `QWEN_API_KEY` | [Intl.](https://www.alibabacloud.com/help/en/model-studio/developer-reference/use-qwen-by-calling-api)/[cn](https://help.aliyun.com/zh/model-studio/getting-started/models) |
+| `mistral` | `MISTRAL_API_KEY` | [docs](https://docs.mistral.ai/getting-started/models/models_overview/) |
+| `replicate` | `REPLICATE_API_KEY` | [docs](https://replicate.com/collections/language-models) |
+| `groq` (not grok) | `GROQCLOUD_API_KEY` | [docs](https://console.groq.com/docs/models) |
+| `huggingface` | `HUGGINGFACE_API_KEY` | [docs](https://huggingface.co/models) |
+| `novita` | `NOVITA_API_KEY` | [docs](https://novita.ai/model-api/product/llm-api?utm_source=github_mindcraft&utm_medium=github_readme&utm_campaign=link) |
+| `openrouter` | `OPENROUTER_API_KEY` | [docs](https://openrouter.ai/models) |
+| `glhf` | `GHLF_API_KEY` | [docs](https://glhf.chat/user-settings/api) |
+| `hyperbolic` | `HYPERBOLIC_API_KEY` | [docs](https://docs.hyperbolic.xyz/docs/getting-started) |
+| `vllm` | n/a | n/a |
+| `cerebras` | `CEREBRAS_API_KEY` | [docs](https://inference-docs.cerebras.ai/introduction) |
+| `mercury` | `MERCURY_API_KEY` | [docs](https://www.inceptionlabs.ai/) |
+
+</details>
+
+For more comprehensive model configuration and syntax, see [Model Specifications](#model-specifications).
+
+For local models we support [ollama](https://ollama.com/) and we provide our own finetuned models for you to use. 
+To install our models, install ollama and run the following terminal command:
+```bash
+ollama pull sweaterdog/andy-4:micro-q8_0 && ollama pull embeddinggemma
+```
+
+## Online Servers
+To connect to online servers your bot will need an official Microsoft/Minecraft account. You can use your own personal one, but will need another account if you want to connect too and play with it. To connect, change these lines in `settings.js`:
+```javascript
+"host": "111.222.333.444",
+"port": 55920,
+"auth": "microsoft",
+
+// rest is same...
+```
+> [!Important]
+> The bot's name in the profile.json must exactly match the Minecraft profile name! Otherwise the bot will spam talk to itself.
+
+To use different accounts, Mindcraft will connect with the account that the Minecraft launcher is currently using. You can switch accounts in the launcher, then run `node main.js`, then switch to your main account after the bot has connected.
 
 ## Tasks
 
@@ -80,36 +138,6 @@ The `initial_inventory` is what the bot will have at the start of the episode, `
 
 If you want more optimization and automatic launching of the minecraft world, you will need to follow the instructions in [Minecollab Instructions](minecollab.md#installation)
 
-
-# Configuration
-## Model Customization
-
-You can configure project details in `settings.js`. [See file.](settings.js)
-
-You can configure the agent's name, model, and prompts in their profile like `andy.json`. The model can be specified with the `model` field, with values like `model: "gpt-5"`, or to specify a specific API provider you can use model: `"{api}/{model}"`, like `"openrouter/google/gemini-2.5-pro"`. You will need the correct API key for the API provider you choose.
-
-For see comprehensive model configuration and a list of supported APIs, see [Model Specifications](#model-specifications).
-
-For local models we support [ollama](https://ollama.com/) and we provide our own finetuned models for you to use. 
-To install our models, install ollama and run the following terminal command:
-```bash
-ollama pull sweaterdog/andy-4:micro-q8_0 && ollama pull embeddinggemma
-```
-
-## Online Servers
-To connect to online servers your bot will need an official Microsoft/Minecraft account. You can use your own personal one, but will need another account if you want to connect too and play with it. To connect, change these lines in `settings.js`:
-```javascript
-"host": "111.222.333.444",
-"port": 55920,
-"auth": "microsoft",
-
-// rest is same...
-```
-> [!Important]
-> The bot's name in the profile.json must exactly match the Minecraft profile name! Otherwise the bot will spam talk to itself.
-
-To use different accounts, Mindcraft will connect with the account that the Minecraft launcher is currently using. You can switch accounts in the launcher, then run `node main.js`, then switch to your main account after the bot has connected.
-
 ## Docker Container
 
 If you intend to `allow_insecure_coding`, it is a good idea to run the app in a docker container to reduce risks of running unknown code. This is strongly recommended before connecting to remote servers, although still does not guarantee complete safety.
@@ -140,34 +168,7 @@ Bot profiles are json files (such as `andy.json`) that define:
 
 ## Model Specifications
 
-LLM models can be specified simply as `"model": "gpt-4o"`, or more specifically with `"{api}/{model}"`, like `"openrouter/google/gemini-2.5-pro"`. See all supported APIs below.
-
-<details>
-<summary><strong>⭐ VIEW SUPPORTED APIs ⭐</strong></summary>
-
-| API Name | Config Variable| Docs |
-|------|------|------|
-| `openai` | `OPENAI_API_KEY` | [docs](https://platform.openai.com/docs/models) |
-| `google` | `GEMINI_API_KEY` | [docs](https://ai.google.dev/gemini-api/docs/models/gemini) |
-| `anthropic` | `ANTHROPIC_API_KEY` | [docs](https://docs.anthropic.com/claude/docs/models-overview) |
-| `xai` | `XAI_API_KEY` | [docs](https://docs.x.ai/docs) |
-| `deepseek` | `DEEPSEEK_API_KEY` | [docs](https://api-docs.deepseek.com/) |
-| `ollama` (local) | n/a | [docs](https://ollama.com/library) |
-| `qwen` | `QWEN_API_KEY` | [Intl.](https://www.alibabacloud.com/help/en/model-studio/developer-reference/use-qwen-by-calling-api)/[cn](https://help.aliyun.com/zh/model-studio/getting-started/models) |
-| `mistral` | `MISTRAL_API_KEY` | [docs](https://docs.mistral.ai/getting-started/models/models_overview/) |
-| `replicate` | `REPLICATE_API_KEY` | [docs](https://replicate.com/collections/language-models) |
-| `groq` (not grok) | `GROQCLOUD_API_KEY` | [docs](https://console.groq.com/docs/models) |
-| `huggingface` | `HUGGINGFACE_API_KEY` | [docs](https://huggingface.co/models) |
-| `novita` | `NOVITA_API_KEY` | [docs](https://novita.ai/model-api/product/llm-api?utm_source=github_mindcraft&utm_medium=github_readme&utm_campaign=link) |
-| `openrouter` | `OPENROUTER_API_KEY` | [docs](https://openrouter.ai/models) |
-| `glhf` | `GHLF_API_KEY` | [docs](https://glhf.chat/user-settings/api) |
-| `hyperbolic` | `HYPERBOLIC_API_KEY` | [docs](https://docs.hyperbolic.xyz/docs/getting-started) |
-| `vllm` | n/a | n/a |
-| `cerebras` | `CEREBRAS_API_KEY` | [docs](https://inference-docs.cerebras.ai/introduction) |
-| `mercury` | `MERCURY_API_KEY` | [docs](https://www.inceptionlabs.ai/) |
-
-</details>
-
+LLM models can be specified simply as `"model": "gpt-4o"`, or more specifically with `"{api}/{model}"`, like `"openrouter/google/gemini-2.5-pro"`. See all supported APIs [here](#model-customization).
 
 The `model` field can be a string or an object. A model object must specify an `api`, and optionally a `model`, `url`, and additional `params`. You can also use different models/providers for chatting, coding, vision, embedding, and voice synthesis. See the example below.
 
