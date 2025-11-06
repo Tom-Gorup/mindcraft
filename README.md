@@ -32,7 +32,7 @@ Do not connect this bot to public servers with coding enabled. This project allo
 
 1. Make sure you have the requirements above.
 
-2. Clone or download this repository (big green button) 'git clone https://github.com/mindcraft-bots/mindcraft.git'
+2. Download the [latest release](https://github.com/mindcraft-bots/mindcraft/releases/latest) and unzip it, or clone the repository.
 
 3. Rename `keys.example.json` to `keys.json` and fill in your API keys (you only need one). The desired model is set in `andy.json` or other profiles. For other models refer to the table below.
 
