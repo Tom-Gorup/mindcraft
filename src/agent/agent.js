@@ -16,6 +16,42 @@ import { serverProxy, sendOutputToServer } from './mindserver_proxy.js';
 import settings from './settings.js';
 import { Task } from './tasks/tasks.js';
 import { speak } from './speak.js';
+import fs from 'fs';
+import path from 'path';
+
+
+/** Validate Minecraft Java name: 3-16 letters, digits, underscore */
+function isValidMinecraftName(name) {
+  return typeof name === 'string' && /^[A-Za-z0-9_]{3,16}$/.test(name);
+}
+
+/** Log to console and workbench */
+function workbenchLog(agentName, msg) {
+  console.error(msg);
+  try { sendOutputToServer(agentName || 'system', msg); } catch (_) {}
+}
+
+/** Format reason helper */
+const formatReason = (r) => (typeof r === 'string' ? r : JSON.stringify(r));
+
+/** Detect server-side "name taken" kick payloads */
+function isNameTakenKick(reason) {
+  try {
+    if (!reason) return false;
+    if (typeof reason === 'string') return reason.includes('name_taken');
+    if (typeof reason === 'object') {
+      if (reason.translate && String(reason.translate).includes('name_taken')) return true;
+      if (reason.text && String(reason.text).includes('name_taken')) return true;
+      // Fallback: scan the whole payload
+      return JSON.stringify(reason).includes('name_taken')
+          || JSON.stringify(reason).includes('multiplayer.disconnect.name_taken');
+    }
+  } catch (_) {}
+  return false;
+}
+
+// Single-process name tracking
+const ONLINE_NAMES = new Set();
 
 export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
@@ -25,8 +61,24 @@ export class Agent {
         // Initialize components with more detailed error handling
         this.actions = new ActionManager(this);
         this.prompter = new Prompter(this, settings.profile);
-        this.name = this.prompter.getName();
+        this.name = (this.prompter.getName() || '').trim();
         console.log(`Initializing agent ${this.name}...`);
+        
+        // Validate format and local duplicate (single-process)
+        if (!isValidMinecraftName(this.name)) {
+            const msg = `[NameCheck] Invalid name '${this.name}'. Use 3-16 letters, digits, or underscores.`;
+            workbenchLog(this.name, msg);
+            process.exit(1);
+            return;
+        }
+        if (ONLINE_NAMES.has(this.name)) {
+            const msg = `[NameCheck] Duplicate name: '${this.name}' is already in use.`;
+            workbenchLog(this.name, msg);
+            process.exit(1);
+            return;
+        }
+        ONLINE_NAMES.add(this.name);
+        this._releaseName = () => { ONLINE_NAMES.delete(this.name); };
         this.history = new History(this);
         this.coder = new Coder(this);
         this.npc = new NPCContoller(this);
@@ -52,6 +104,29 @@ export class Agent {
 
         console.log(this.name, 'logging into minecraft...');
         this.bot = initBot(this.name);
+        
+        // Early guards: turn server "name taken" into a clear duplicate-name message
+        this.bot.on('kicked', (reason) => {
+          const msg = isNameTakenKick(reason)
+            ? `[NameCheck] Duplicate name: '${this.name}' is already in use.`
+            : `[LoginGuard] Kicked before spawn: ${formatReason(reason)}`;
+          workbenchLog(this.name, msg);
+          try { this._releaseName && this._releaseName(); } catch (_) {}
+          process.exit(1);
+        });
+        
+        this.bot.on('end', (reason) => {
+          const msg = isNameTakenKick(reason)
+            ? `[NameCheck] Duplicate name: '${this.name}' is already in use.`
+            : `[LoginGuard] Disconnected before spawn: ${formatReason(reason)}`;
+          workbenchLog(this.name, msg);
+          try { this._releaseName && this._releaseName(); } catch (_) {}
+          process.exit(1);
+        });
+        
+        this.bot.on('error', (err) => {
+          workbenchLog(this.name, `[LoginGuard] Error before spawn: ${String(err)}`);
+        });
 
         initModes(this);
 
@@ -67,8 +142,10 @@ export class Agent {
         });
 		const spawnTimeoutDuration = settings.spawn_timeout;
         const spawnTimeout = setTimeout(() => {
-            console.error(`Bot has not spawned after ${spawnTimeoutDuration} seconds. Exiting.`);
-            process.exit(0);
+            const msg = `Bot has not spawned after ${spawnTimeoutDuration} seconds. Exiting.`;
+            workbenchLog(this.name, msg);
+            try { this._releaseName && this._releaseName(); } catch (_) {}
+            process.exit(1);
         }, spawnTimeoutDuration * 1000);
         this.bot.once('spawn', async () => {
             try {
@@ -420,16 +497,26 @@ export class Agent {
             console.error('Error event!', err);
         });
         this.bot.on('end', (reason) => {
-            console.warn('Bot disconnected! Killing agent process.', reason)
-            this.cleanKill('Bot disconnected! Killing agent process.');
+            try { this._releaseName && this._releaseName(); } catch (_) {}
+            const msg = isNameTakenKick(reason)
+                ? `[NameCheck] Duplicate name: '${this.name}' is already in use.`
+                : 'Bot disconnected! Killing agent process.';
+            console.warn(msg, reason);
+            workbenchLog(this.name, msg);
+            this.cleanKill(msg);
         });
         this.bot.on('death', () => {
             this.actions.cancelResume();
             this.actions.stop();
         });
         this.bot.on('kicked', (reason) => {
-            console.warn('Bot kicked!', reason);
-            this.cleanKill('Bot kicked! Killing agent process.');
+            try { this._releaseName && this._releaseName(); } catch (_) {}
+            const msg = isNameTakenKick(reason)
+                ? `[NameCheck] Duplicate name: '${this.name}' is already in use.`
+                : 'Bot kicked! Killing agent process.';
+            console.warn(msg, reason);
+            workbenchLog(this.name, msg);
+            this.cleanKill(msg);
         });
         this.bot.on('messagestr', async (message, _, jsonMsg) => {
             if (jsonMsg.translate && jsonMsg.translate.startsWith('death') && message.startsWith(this.name)) {
@@ -491,6 +578,10 @@ export class Agent {
         this.history.add('system', msg);
         this.bot.chat(code > 1 ? 'Restarting.': 'Exiting.');
         this.history.save();
+        
+        // Release reserved name before exiting
+        try { this._releaseName && this._releaseName(); } catch (_) {}
+        
         process.exit(code);
     }
     async checkTaskDone() {
