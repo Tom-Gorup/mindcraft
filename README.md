@@ -22,11 +22,13 @@ Do not connect this bot to public servers with coding enabled. This project allo
 ## Requirements
 
 - [Minecraft Java Edition](https://www.minecraft.net/en-us/store/minecraft-java-bedrock-edition-pc) (up to v1.21.6, recommend v1.21.6)
-- [Node.js Installed](https://nodejs.org/) (at least v18)
+- [Node.js Installed](https://nodejs.org/) (Node v18 or v20 LTS recommended. Node v24+ may cause issues with native dependencies)
 - At least one API key from a supported API provider. See [supported APIs](#model-customization). OpenAI is the default.
 
 > [!Important]
 > If installing node on windows, ensure you check `Automatically install the necessary tools`
+>
+> If you encounter `npm install` errors on macOS, see the [FAQ](FAQ.md#common-issues) for troubleshooting native module build issues
 
 ## Install and Run
 
