@@ -8,8 +8,8 @@
 
 - Many issues are caused by out-of-date node module patches, especially after updates. A catch-all is to delete the `node_modules` folder, and run `npm install`
 
-- **`npm install` fails with Python or C++ build errors (macOS)**: This typically happens when building native modules like `gl`. Common solutions:
-  - **Python not found**: If you see `python: command not found`, create a symlink: `sudo ln -s $(which python3) /usr/local/bin/python`
+- **`npm install` fails with Python or C++ build errors**: This typically happens when building native modules like `gl`. Common solutions:
+  - **Python not found** (macOS/Linux): If you see `python: command not found`, create a symlink: `sudo ln -s $(which python3) /usr/local/bin/python`
   - **C++20 errors or Node version issues**: If you see `"C++20 or later required"` errors, you're likely using Node v24 or newer. The `gl` package requires Node LTS (v18 or v20). Switch versions using:
     ```bash
     nvm install 20
