@@ -1,4 +1,50 @@
-# MineCollab
+# MineCollab & Running tasks
+
+## Getting started with basic tasks
+
+To run a task you will first need to follow the setup instructions on the main README. Then you will need to do the following: 
+
+1. Install Minecraft (or a bootleg version you can use at your own risk)
+2. Launch the supported Minecraft version from the main README
+3. Open the world to LAN at 55916 
+4. To run a simple task that involves collecting 4 oak_logs run 
+`node main.js --task_path tasks/basic/single_agent.json --task_id gather_oak_logs`
+
+Here is an example task json format: 
+
+```
+{
+    "gather_oak_logs": {
+      "goal": "Collect at least four logs",
+      "initial_inventory": {
+        "0": {
+          "wooden_axe": 1
+        }
+      },
+      "agent_count": 1,
+      "target": "oak_log",
+      "number_of_target": 4,
+      "type": "techtree",
+      "max_depth": 1,
+      "depth": 0,
+      "timeout": 300,
+      "blocked_actions": {
+        "0": [],
+        "1": []
+      },
+      "missing_items": [],
+      "requires_ctable": false
+    }
+}
+```
+
+The `initial_inventory` is what the bot will have at the start of the episode, `target` refers to the target item and `number_of_target` refers to the number of target items the agent needs to collect to successfully complete the task. 
+
+If the agent successfully completes the task it will leave the game, otherwise it will leave the game after 300 seconds (specified in the `timeout` variable) 
+
+## Minecollab Benchmark
+
+> Note: This repository has undergone significant changes since the initial release of the paper. If you want completely reproducible results please checkout our [reproducibility fork](https://github.com/icwhite/mindcraft)
 
 MineCollab is a versatile benchmark for assessing the embodied and collaborative communication abilities of agents across three unique types of tasks. 
 
@@ -44,6 +90,18 @@ You can view the crafting task in action [here](https://www.youtube.com/shorts/V
 You **DO NOT** need Linux to run this, you can run on Windows with the --no-launch-world flag and by installing git bash. 
 
 Please follow the installation docs in the README to install mindcraft. You can create a docker image using the Dockerfile. `Join Server`
+
+If you don't own Minecraft, you can run a limited version solely for offline games using these instructions:
+
+> [!Warning]
+Unofficial offline launchers (e.g., TLauncher, Prism Launcher or forks of community launchers) are not endorsed by this project and may be unsafe or contain malware. Use them at your own risk.  
+For guaranteed safety, please [purchase the game](https://www.minecraft.net/) and use the official launcher.
+
+1. Download the [Prism Launcher](https://github.com/Diegiwg/PrismLauncher-Cracked).
+2. Add an offline account with your username and create a [Minecraft 1.21.1 instance](https://prismlauncher.org/wiki/help-pages/vanilla-platform/).
+3. Launch the created instance.
+4. Click **Multiplayer** and then **Direct Connection**.
+5. Enter `localhost:55916` and hit **Join Server**.
 
 Download the relevant task files and server data files, you can find the link [here](https://drive.google.com/drive/folders/1XygbitBBTsNO6q_doEiZHmdETpnyRmCS). The tasks files are for specifying the tasks to run and the server data is for allowing the models to launch the task in the correct world automatically. **Unzip the server_data.zip in the base `tasks/` folder**.
 

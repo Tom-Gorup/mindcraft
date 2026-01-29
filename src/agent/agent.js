@@ -16,17 +16,29 @@ import { serverProxy, sendOutputToServer } from './mindserver_proxy.js';
 import settings from './settings.js';
 import { Task } from './tasks/tasks.js';
 import { speak } from './speak.js';
+import { log, validateNameFormat, handleDisconnection } from './connection_handler.js';
 
 export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
         this.last_sender = null;
         this.count_id = count_id;
-        
-        // Initialize components with more detailed error handling
+        this._disconnectHandled = false;
+
+        // Initialize components
         this.actions = new ActionManager(this);
         this.prompter = new Prompter(this, settings.profile);
-        this.name = this.prompter.getName();
+        this.name = (this.prompter.getName() || '').trim();
         console.log(`Initializing agent ${this.name}...`);
+        
+        // Validate Name Format
+        // connection_handler now ensures the message has [LoginGuard] prefix
+        const nameCheck = validateNameFormat(this.name);
+        if (!nameCheck.success) {
+            log(this.name, nameCheck.msg);
+            process.exit(1);
+            return;
+        }
+        
         this.history = new History(this);
         this.coder = new Coder(this);
         this.npc = new NPCContoller(this);
@@ -52,6 +64,29 @@ export class Agent {
 
         console.log(this.name, 'logging into minecraft...');
         this.bot = initBot(this.name);
+        
+        // Connection Handler
+        const onDisconnect = (event, reason) => {
+            if (this._disconnectHandled) return;
+            this._disconnectHandled = true;
+
+            // Log and Analyze
+            // handleDisconnection handles logging to console and server
+            const { type } = handleDisconnection(this.name, reason);
+     
+            process.exit(1);
+        };
+        
+        // Bind events
+        this.bot.once('kicked', (reason) => onDisconnect('Kicked', reason));
+        this.bot.once('end', (reason) => onDisconnect('Disconnected', reason));
+        this.bot.on('error', (err) => {
+            if (String(err).includes('Duplicate') || String(err).includes('ECONNREFUSED')) {
+                 onDisconnect('Error', err);
+            } else {
+                 log(this.name, `[LoginGuard] Connection Error: ${String(err)}`);
+            }
+        });
 
         initModes(this);
 
@@ -65,11 +100,12 @@ export class Agent {
             else
                 this.bot.chat(`/skin clear`);
         });
-
+		const spawnTimeoutDuration = settings.spawn_timeout;
         const spawnTimeout = setTimeout(() => {
-            console.error('Bot has not spawned after 30 seconds. Exiting.');
-            process.exit(0);
-        }, 30000);
+            const msg = `Bot has not spawned after ${spawnTimeoutDuration} seconds. Exiting.`;
+            log(this.name, msg);
+            process.exit(1);
+        }, spawnTimeoutDuration * 1000);
         this.bot.once('spawn', async () => {
             try {
                 clearTimeout(spawnTimeout);
@@ -419,17 +455,22 @@ export class Agent {
         this.bot.on('error' , (err) => {
             console.error('Error event!', err);
         });
+        // Use connection handler for runtime disconnects
         this.bot.on('end', (reason) => {
-            console.warn('Bot disconnected! Killing agent process.', reason)
-            this.cleanKill('Bot disconnected! Killing agent process.');
+            if (!this._disconnectHandled) {
+                const { msg } = handleDisconnection(this.name, reason);
+                this.cleanKill(msg);
+            }
         });
         this.bot.on('death', () => {
             this.actions.cancelResume();
             this.actions.stop();
         });
         this.bot.on('kicked', (reason) => {
-            console.warn('Bot kicked!', reason);
-            this.cleanKill('Bot kicked! Killing agent process.');
+            if (!this._disconnectHandled) {
+                const { msg } = handleDisconnection(this.name, reason);
+                this.cleanKill(msg);
+            }
         });
         this.bot.on('messagestr', async (message, _, jsonMsg) => {
             if (jsonMsg.translate && jsonMsg.translate.startsWith('death') && message.startsWith(this.name)) {
