@@ -217,7 +217,7 @@ export function createMindServer(host_public = false, port = 8080) {
         });
     });
 
-    if (host_public)
+    if (host_public) {
         console.log('Public hosting not supported yet. Using localhost.');
     }
     const host = 'localhost';
@@ -226,6 +226,7 @@ export function createMindServer(host_public = false, port = 8080) {
     });
 
     return server;
+}
 
 function agentsStatusUpdate(socket) {
     if (!socket) {
