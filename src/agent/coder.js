@@ -111,19 +111,18 @@ export class Coder {
     
     async  _lintCode(code) {
         let result = '#### CODE ERROR INFO ###\n';
-        // Extract everything in the code between the beginning of 'skills./world.' and the '('
-        const skillRegex = /(?:skills|world)\.(.*?)\(/g;
+        const codeNoComments = code.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+        const skillRegex = /((?:skills|world)\.(.*?))\(/g;
         const skills = [];
         let match;
-        while ((match = skillRegex.exec(code)) !== null) {
+        while ((match = skillRegex.exec(codeNoComments)) !== null) {
             skills.push(match[1]);
         }
         const allDocs = await this.agent.prompter.skill_libary.getAllSkillDocs();
-        // check function exists
-        const missingSkills = skills.filter(skill => !!allDocs[skill]);
+        const knownSkills = new Set(allDocs.map(doc => doc.split('\n')[0]));
+        const missingSkills = skills.filter(skill => !knownSkills.has(skill));
         if (missingSkills.length > 0) {
-            result += 'These functions do not exist.\n';
-            result += '### FUNCTIONS NOT FOUND ###\n';
+            result += 'These functions do not exist:\n';
             result += missingSkills.join('\n');
             console.log(result)
             return result;
@@ -192,7 +191,7 @@ export class Coder {
         const mainFn = compartment.evaluate(src);
         
         if (write_result) {
-            console.error('Error writing code execution file: ' + result);
+            console.error('Error writing code execution file: ' + write_result);
             return null;
         }
         return { func:{main: mainFn}, src_lint_copy: src_lint_copy };
