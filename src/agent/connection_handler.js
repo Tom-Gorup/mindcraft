@@ -55,6 +55,7 @@ export function parseKickReason(reason) {
     // Search for keywords in definitions
     for (const [type, def] of Object.entries(ERROR_DEFINITIONS)) {
         if (def.keywords.some(k => raw.includes(k))) {
+            console.error(`Disconnected: ${raw}`);
             return { type, msg: def.msg, isFatal: def.isFatal };
         }
     }
