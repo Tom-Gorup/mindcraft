@@ -60,12 +60,4 @@ const settings = {
 
 }
 
-if (process.env.SETTINGS_JSON) {
-    try {
-        Object.assign(settings, JSON.parse(process.env.SETTINGS_JSON));
-    } catch (err) {
-        console.error("Failed to parse SETTINGS_JSON:", err);
-    }
-}
-
 export default settings;
