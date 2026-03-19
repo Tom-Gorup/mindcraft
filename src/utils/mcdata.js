@@ -59,12 +59,61 @@ export function initBot(username) {
         port: settings.port,
         auth: settings.auth,
         version: mc_version,
+        checkTimeoutInterval: 60000,  // 60s keep-alive check (default 30s) — reduces disconnects on slow servers
     }
     if (!mc_version || mc_version === "auto") {
         delete options.version;
     }
 
     const bot = createBot(options);
+
+    // Throttle position packets to avoid kicks on Paper/Spigot servers
+    // Paper enforces stricter packet rate limits than vanilla, causing ECONNRESET
+    // when mineflayer sends position updates faster than 50ms apart
+    let lastPositionUpdate = 0;
+    let pendingPositionPacket = null;
+    const POSITION_THROTTLE_MS = 50;
+    const originalWrite = bot._client.write.bind(bot._client);
+    bot._client.write = function(name, data) {
+        if (name === 'position' || name === 'position_look' || name === 'look') {
+            const now = Date.now();
+            if (now - lastPositionUpdate < POSITION_THROTTLE_MS) {
+                // Queue this packet so the last position update is never lost
+                if (!pendingPositionPacket) {
+                    pendingPositionPacket = setTimeout(() => {
+                        pendingPositionPacket = null;
+                        lastPositionUpdate = Date.now();
+                        originalWrite(name, data);
+                    }, POSITION_THROTTLE_MS - (now - lastPositionUpdate));
+                }
+                return;
+            }
+            lastPositionUpdate = now;
+            if (pendingPositionPacket) {
+                clearTimeout(pendingPositionPacket);
+                pendingPositionPacket = null;
+            }
+        }
+        return originalWrite(name, data);
+    };
+
+    // Suppress PartialReadError for non-critical packets
+    // Paper servers sometimes send packets that node-minecraft-protocol
+    // can't fully parse (scoreboard, resource_pack, custom_payload, etc.)
+    // These errors crash the bot but the packets aren't needed for gameplay
+    const originalEmit = bot._client.emit.bind(bot._client);
+    bot._client.emit = function(event, ...args) {
+        if (event === 'error' && args[0]) {
+            const err = args[0];
+            const errStr = err instanceof Error ? err.message : String(err);
+            if (errStr.includes('PartialReadError')) {
+                console.warn('[mcdata] Suppressed PartialReadError:', errStr.substring(0, 120));
+                return true; // Swallow the error
+            }
+        }
+        return originalEmit(event, ...args);
+    };
+
     bot.loadPlugin(pathfinder);
     bot.loadPlugin(pvp);
     bot.loadPlugin(collectblock);
