@@ -10,7 +10,6 @@
   <a href="https://discord.gg/mp73p35dzC">Discord Support</a> | 
   <a href="https://www.youtube.com/watch?v=gRotoL8P8D8">Video Tutorial</a> | 
   <a href="https://kolbynottingham.com/mindcraft/">Blog Post</a> | 
-  <a href="https://github.com/users/kolbytn/projects/1">Contributor TODO</a> | 
   <a href="https://mindcraft-minecollab.github.io/index.html">Paper Website</a> | 
   <a href="https://github.com/mindcraft-bots/mindcraft/blob/main/minecollab.md">MineCollab</a>
 </p>
@@ -21,7 +20,7 @@ Do not connect this bot to public servers with coding enabled. This project allo
 # Getting Started
 ## Requirements
 
-- [Minecraft Java Edition](https://www.minecraft.net/en-us/store/minecraft-java-bedrock-edition-pc) (up to v1.21.6, recommend v1.21.6)
+- [Minecraft Java Edition](https://www.minecraft.net/en-us/store/minecraft-java-bedrock-edition-pc) (up to v1.21.11, recommend v1.21.6)
 - [Node.js Installed](https://nodejs.org/) (Node v18 or v20 LTS recommended. Node v24+ may cause issues with native dependencies)
 - At least one API key from a supported API provider. See [supported APIs](#model-customization). OpenAI is the default.
 
