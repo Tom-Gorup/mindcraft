@@ -247,3 +247,9 @@ This work is published in the paper [Collaborating Action by Action: A Multi-age
   url = {https://arxiv.org/abs/2504.17950},
 }
 ```
+
+## Contributors
+
+Thanks to everyone who has submitted issues on and off Github, made suggestions, and generally helped make this a better project.
+
+![Contributors](https://contrib.rocks/image?repo=mindcraft-bots/mindcraft)
