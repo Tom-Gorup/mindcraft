@@ -22,12 +22,18 @@ import settings from './settings.js';
 import { Task } from './tasks/tasks.js';
 import { speak } from './speak.js';
 import { log, validateNameFormat, handleDisconnection } from './connection_handler.js';
+import { lockdown } from './library/lockdown.js';
 
 export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
         this.last_sender = null;
         this.count_id = count_id;
         this._disconnectHandled = false;
+
+        // Harden intrinsics at boot, not lazily at the first !newAction —
+        // if a dependency is lockdown-incompatible we want a deterministic
+        // startup failure, not a throw deep in the network stack mid-session.
+        lockdown();
 
         // Initialize components
         this.actions = new ActionManager(this);
@@ -530,15 +536,18 @@ export class Agent {
         this.npc.init();
 
         // PIANO-style tier scheduler over the shared blackboard. Registration
-        // order = execution order within a tick: reflexes always run first.
-        // Tiers are skipped (never queued) while their previous run is in
-        // flight, and their errors are isolated from the pump and each other.
+        // order = invocation order within a tick (reflexes are dispatched
+        // first; async tiers may still resolve later — the act tier's
+        // isReflexActive/idle gates are the real coherence barrier). Tiers
+        // are skipped (never queued) while their previous run is in flight,
+        // and their errors are isolated from the pump and each other.
         const cog_opts = this.prompter.profile.cognition || {};
+        const mem_opts = this.prompter.profile.memory || {};
         this.scheduler = new TierScheduler(this.blackboard);
         this.scheduler.addTier('reflex', 0, async () => { await this.bot.modes.update(); });
         this.scheduler.addTier('act', cog_opts.act_cadence_ms ?? 300, (elapsed) => this.cognition.actTick(elapsed));
         this.scheduler.addTier('plan', cog_opts.plan_cadence_ms ?? 1000, (elapsed) => this.cognition.planTick(elapsed));
-        this.scheduler.addTier('reflect', 10000, () => this.memory.reflectTick());
+        this.scheduler.addTier('reflect', mem_opts.reflect_cadence_ms ?? 10000, () => this.memory.reflectTick());
         this.scheduler.addTier('social', 2000, () => {
             // Phase 5 grows this into the full social module; for now it keeps
             // conversational context visible on the blackboard

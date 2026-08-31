@@ -52,9 +52,11 @@ test('reflex interruption: plan survives intact and the next prompt re-assesses'
     cog.active = activeGoal();
     cog.monitor.startStep();
 
-    // reflex seizes the slot from our deliberate action
+    // reflex seizes the slot from our deliberate action (act loop in flight)
     agent.actions.reflex = true;
+    cog.act_busy = true;
     cog.onModeInterruption('self_defense', 'action:collectBlocks');
+    cog.act_busy = false; // the interrupted loop drains
     assert.equal(agent.blackboard.hasUnhandledInterruption(), true);
 
     // act tier never fights a reflex for the slot
@@ -123,6 +125,42 @@ test('act tier stands down while the plan tier is generating', () => {
     cog.actTick(300);
     assert.equal(agent.captured.length, 0);
     assert.equal(cog.idle_ms, 0);
+});
+
+test('step_interrupt never latches after a goal ends (regression: swallowed system prompts)', () => {
+    const agent = makeAgent();
+    const cog = new CognitionLoop(agent);
+    cog.active = activeGoal();
+    cog.monitor.startStep();
+
+    // abandon with NO act loop in flight (e.g. user !endGoal between steps)
+    cog.abandonGoal('user asked');
+    assert.equal(cog.step_interrupt, false); // nothing to break -> not raised
+    assert.equal(cog.shouldInterrupt(true), false); // death msgs etc. unaffected
+
+    // abandon WITH an act loop in flight raises it...
+    cog.active = activeGoal();
+    cog.act_busy = true;
+    cog.abandonGoal('failed hard');
+    assert.equal(cog.shouldInterrupt(true), true);
+    // ...and the first tick after the loop drains clears it, even with no goal
+    cog.act_busy = false;
+    cog.actTick(300);
+    assert.equal(cog.step_interrupt, false);
+    assert.equal(cog.shouldInterrupt(true), false);
+});
+
+test('interruptions from non-act-tier actions are not attributed to the plan', () => {
+    const agent = makeAgent();
+    const cog = new CognitionLoop(agent);
+    cog.active = activeGoal();
+    // act tier NOT busy: this action came from a user conversation
+    cog.onModeInterruption('self_defense', 'action:collectBlocks');
+    assert.equal(agent.blackboard.hasUnhandledInterruption(), false);
+    // act tier busy: genuinely ours
+    cog.act_busy = true;
+    cog.onModeInterruption('self_defense', 'action:collectBlocks');
+    assert.equal(agent.blackboard.hasUnhandledInterruption(), true);
 });
 
 test('blackboard mirrors goal state after a plan tick', () => {

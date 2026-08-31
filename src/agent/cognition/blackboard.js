@@ -14,6 +14,7 @@ export class Blackboard {
         this.social = { in_conversation: false, partner: null };
         this.interruption = null;    // {by, interrupted, at, handled}
         this.tier_status = {};       // {tier: {runs, errors, busy, last_run}}
+        this.cognition_busy = { plan: false, act: false }; // in-flight LLM work
     }
 
     // A reflex seized the action slot from a deliberate action. Kept until the
@@ -47,6 +48,7 @@ export class Blackboard {
             social: { ...this.social },
             interruption: this.interruption ? { ...this.interruption } : null,
             tiers: Object.fromEntries(Object.entries(this.tier_status).map(([k, v]) => [k, { ...v }])),
+            cognition_busy: { ...this.cognition_busy },
         };
     }
 }

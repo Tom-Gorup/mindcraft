@@ -103,10 +103,14 @@ export class Coder {
 
                 const code_output = this.agent.actions.getBotOutputSummary();
                 const summary = "Agent wrote this code: \n```" + this._sanitizeCode(code) + "```\nCode Output:\n" + code_output;
-                if (this._skillsEnabled() && task)
-                    await this.agent.learned_skills.saveFromSuccess(task, this._sanitizeCode(code), code_output);
-                else
-                    this.agent.memory?.record('code', `Wrote working code for the current task. Output: ${code_output.substring(0, 300)}`);
+                // never learn from an interrupted run — the injected interrupt
+                // checks make truncated programs return "successfully"
+                if (!this.agent.bot.interrupt_code) {
+                    if (this._skillsEnabled() && task)
+                        await this.agent.learned_skills.saveFromSuccess(task, this._sanitizeCode(code), code_output);
+                    else
+                        this.agent.memory?.record('code', `Wrote working code for the current task. Output: ${code_output.substring(0, 300)}`);
+                }
                 return summary;
             } catch (e) {
                 if (this.agent.bot.interrupt_code)
@@ -135,14 +139,17 @@ export class Coder {
     }
 
     // The task text driving this code generation: the argument of the most
-    // recent !newAction(...) in the conversation.
+    // recent !newAction(...) in the conversation. Stops at the newest
+    // !newAction mention even if its argument doesn't extract — falling back
+    // to an OLDER task would save/execute skills under the wrong key. Only
+    // double quotes: the command parser never emits single-quoted args.
     _getTaskContext(messages) {
         for (let i = messages.length - 1; i >= 0; i--) {
             const m = messages[i];
             if (m.role === 'system' || !m.content) continue;
-            const match = m.content.match(/!newAction\(\s*["']([\s\S]*?)["']\s*\)/);
-            if (match && match[1].trim().length > 0)
-                return match[1].trim();
+            if (!m.content.includes('!newAction')) continue;
+            const match = m.content.match(/!newAction\(\s*"([\s\S]*?)"\s*\)/);
+            return (match && match[1].trim().length > 0) ? match[1].trim() : null;
         }
         return null;
     }
@@ -150,26 +157,27 @@ export class Coder {
     // Execute a stored skill for a near-identical task. Returns a summary
     // string on success, false to fall through to codegen, null on interrupt.
     async _tryDirectSkill(task) {
-        let skill = null;
         try {
             const match = await this.agent.learned_skills.findBestMatch(task);
             if (!this.agent.learned_skills.shouldDirectExecute(match))
                 return false;
-            skill = match.skill;
+            const skill = match.skill;
             console.log(`Coder: executing learned skill '${skill.name}' (similarity ${match.similarity.toFixed(2)}) instead of regenerating.`);
-            const fn = this._compileLearned(skill.code);
-            await fn(this.agent.bot);
+            // run through the namespace wrapper: same compile pipeline, plus
+            // cycle tracking and success/failure stats in exactly one place
+            await this._learnedNamespace()[skill.name](this.agent.bot);
             if (this.agent.bot.interrupt_code)
                 return null;
-            this.agent.learned_skills.noteResult(skill.name, true);
             const code_output = this.agent.actions.getBotOutputSummary();
+            this.agent.memory?.record('code', `Reused learned skill '${skill.name}' (${skill.docstring})`, { skill: skill.name });
             return `Reused learned skill '${skill.name}' (${skill.docstring}).\nCode Output:\n${code_output}`;
         } catch (err) {
             if (this.agent.bot.interrupt_code)
                 return null;
-            if (skill)
-                this.agent.learned_skills.noteResult(skill.name, false);
             console.warn('Coder: learned skill failed, falling back to code generation:', err.message || err);
+            // don't let the failed skill's partial log contaminate the
+            // fallback codegen's output summary
+            this.agent.bot.output = '';
             return false;
         }
     }
@@ -179,6 +187,7 @@ export class Coder {
     _compileLearned(code) {
         code = this._sanitizeCode(code);
         code = code.replaceAll('console.log(', 'log(bot,');
+        code = code.replaceAll('log("', 'log(bot,"');
         code = code.replaceAll(';\n', '; if(bot.interrupt_code) {log(bot, "Code interrupted.");return;}\n');
         let src = '';
         for (let line of code.split('\n')) {

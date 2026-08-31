@@ -256,11 +256,10 @@ export class AgentMemory {
         this.reflecting = true;
         this.last_reflection_ts = Date.now();
         // consume the budget up front — a failing reflection must not re-fire
-        // on every subsequent record() (reflection storm); importance accrued
-        // *during* the reflection still counts toward the next one
-        const consumed = this.importance_since_reflection;
+        // on the next tick (reflection storm); importance accrued *during*
+        // the reflection still counts toward the next one
         this.importance_since_reflection = 0;
-        this._reflect_task = this._reflect(consumed)
+        this._reflect_task = this._reflect()
             .catch(err => console.error('Memory: reflection failed:', err.message || err))
             .finally(() => { this.reflecting = false; });
     }

@@ -67,9 +67,13 @@ export class CognitionLoop {
     }
 
     // Lets handleMessage's checkInterrupt() break a step's command loop when
-    // the goal it serves has been abandoned/preempted mid-loop.
+    // the goal it serves has been abandoned/preempted mid-loop. The flag is
+    // only ever raised while an act loop is actually in flight (see the
+    // setters), and is cleared on the first tick after that loop drains —
+    // it must never linger, or it silently kills unrelated system prompts
+    // (death messages, mode reprompts, user !goal self-prompting).
     shouldInterrupt(is_self_prompt) {
-        return is_self_prompt && this.step_interrupt;
+        return !!settings.use_cognition && is_self_prompt && this.step_interrupt;
     }
 
     // Compatibility entry point (pre-Phase-4 callers and tests): runs both
@@ -143,12 +147,16 @@ export class CognitionLoop {
     }
 
     _actInner(delta) {
+        // the interrupt flag targets an in-flight act loop; once no loop is
+        // running it has served its purpose — clear it BEFORE any guard so it
+        // can never latch while active is null (that would suppress every
+        // system-sourced prompt in handleMessage)
+        if (this.step_interrupt && !this.act_busy)
+            this.step_interrupt = false;
         if (this.act_busy || this.plan_busy || !this.active || this.pending_replan !== null) {
             this.idle_ms = 0;
             return;
         }
-        if (this.step_interrupt)
-            this.step_interrupt = false; // the loop it targeted has ended
         if (!this._canAct()) {
             this.idle_ms = 0;
             return;
@@ -192,7 +200,8 @@ export class CognitionLoop {
             const active = this.active;
             this.active = null;
             this.pending_replan = null;
-            this.step_interrupt = true;
+            this.step_interrupt = this.act_busy; // only break a loop that exists
+            this.blackboard.interruption = null; // stale reflex notes die with the goal
             this._recordOutcome(active, 'preempted', `${winner} became more urgent`);
             this.last_thought = `Setting aside "${active.goal}" — ${winner} needs attention.`;
             console.log(`Cognition: goal preempted by ${winner}: ${active.goal}`);
@@ -238,7 +247,7 @@ export class CognitionLoop {
         // re-assess instead of blindly continuing
         let interruption_note = '';
         const intr = this.blackboard.takeInterruption();
-        if (intr)
+        if (intr && Date.now() - intr.at < 2 * 60000) // stale notes aren't worth reasoning about
             interruption_note = `NOTE: your previous action '${intr.interrupted.replace('action:', '')}' was interrupted by your ${intr.by} reflex. Re-assess your situation before continuing.\n`;
         const msg = interruption_note
             + `You are autonomously pursuing this goal, motivated by your ${active.drive} drive: "${active.goal}"\n`
@@ -296,6 +305,7 @@ export class CognitionLoop {
         const active = this.active;
         this.active = null;
         this.pending_replan = null;
+        this.blackboard.interruption = null;
         this.drive_state.satisfy(active.drive, 0.8);
         // sensor drives can't hold a satisfy() (the sensor overwrites it next
         // tick) — the success cooldown is what stops instant goal re-fire
@@ -313,7 +323,8 @@ export class CognitionLoop {
         const active = this.active;
         this.active = null;
         this.pending_replan = null;
-        this.step_interrupt = true;
+        this.step_interrupt = this.act_busy; // only break a loop that exists
+        this.blackboard.interruption = null;
         this._recordOutcome(active, 'failed', reason);
         this.drive_state.setCooldown(active.drive, Date.now() + this.drive_cooldown_ms);
         this.last_thought = `Gave up: ${active.goal} (${reason})`;
@@ -331,7 +342,7 @@ export class CognitionLoop {
         if (!this.active) return 'No active autonomous goal.';
         const goal = this.active.goal;
         this._completeGoal();
-        this.step_interrupt = true;
+        this.step_interrupt = this.act_busy; // only break a loop that exists
         return `Goal "${goal}" marked complete.`;
     }
 
@@ -379,6 +390,9 @@ export class CognitionLoop {
     onModeInterruption(mode_name, interrupted_action) {
         if (!settings.use_cognition || !this.isPursuing()) return;
         if (!interrupted_action || !interrupted_action.startsWith('action:')) return;
+        // only attribute actions the act tier actually launched — a reflex
+        // interrupting a user-conversation command is not a plan interruption
+        if (!this.act_busy) return;
         this.blackboard.noteInterruption(mode_name, interrupted_action);
         this._safeRecordMemory('interruption',
             `Action '${interrupted_action.replace('action:', '')}' was interrupted by ${mode_name} reflex during goal: ${this.active.goal}`,
@@ -510,6 +524,9 @@ export class CognitionLoop {
         bb.pending_replan = this.pending_replan;
         bb.last_thought = this.last_thought;
         bb.current_action = this.agent.actions?.currentActionLabel || '';
+        // real work-in-flight state: the scheduler's tier telemetry only sees
+        // the synchronous dispatch, not the launched LLM calls
+        bb.cognition_busy = { plan: this.plan_busy, act: this.act_busy };
     }
 
     async _narrate(message) {
@@ -527,7 +544,7 @@ export class CognitionLoop {
     getStatus() {
         return {
             enabled: settings.use_cognition,
-            state: this.active ? 'pursuing' : 'idle',
+            state: this.isPursuing() ? 'pursuing' : 'idle',
             drive: this.active?.drive ?? null,
             goal: this.active?.goal ?? null,
             step: this.active ? {

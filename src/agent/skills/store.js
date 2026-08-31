@@ -1,7 +1,7 @@
 // Persistence for learned skills. One JSON file per agent
 // (bots/<name>/skills/skills.json) — skill count stays small (hundreds, not
 // millions), so whole-file writes are fine and keep the format inspectable.
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'fs';
 import path from 'path';
 
 export class SkillStore {
@@ -18,8 +18,17 @@ export class SkillStore {
             return { skills: [], embeddings: {} };
         try {
             const data = JSON.parse(readFileSync(this.fp, 'utf8'));
+            const skills = (Array.isArray(data.skills) ? data.skills.filter(s => s && s.name && s.code) : [])
+                .map(s => ({
+                    ...s,
+                    // hand-edited/legacy entries must not NaN-poison the stats
+                    uses: Number(s.uses) || 0,
+                    successes: Number(s.successes) || 0,
+                    failures: Number(s.failures) || 0,
+                    last_used: Number(s.last_used) || 0,
+                }));
             return {
-                skills: Array.isArray(data.skills) ? data.skills.filter(s => s && s.name && s.code) : [],
+                skills,
                 embeddings: data.embeddings && typeof data.embeddings === 'object' ? data.embeddings : {},
             };
         } catch (err) {
@@ -30,7 +39,10 @@ export class SkillStore {
 
     persist(skills, embeddings) {
         try {
-            writeFileSync(this.fp, JSON.stringify({ skills, embeddings }));
+            // atomic: a crash mid-write must not truncate the whole library
+            const tmp = this.fp + '.tmp';
+            writeFileSync(tmp, JSON.stringify({ skills, embeddings }));
+            renameSync(tmp, this.fp);
         } catch (err) {
             console.error('SkillStore: failed to persist:', err.message || err);
         }

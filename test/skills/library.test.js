@@ -44,10 +44,39 @@ test('saveFromSuccess creates a named, docstringed, embedded skill', async () =>
 test('near-duplicate save refreshes the existing skill instead of duplicating', async () => {
     const lib = new LearnedSkills(makeAgent(freshDir()));
     await lib.saveFromSuccess('Mine 10 iron ore and smelt it', 'old code;', 'ok');
-    const again = await lib.saveFromSuccess('Mine 10 iron ore and smelt it please', 'new code;', 'ok');
+    const again = await lib.saveFromSuccess('Mine 10 iron ore and smelt it', 'new code;', 'ok');
     assert.equal(lib.count(), 1);
     assert.equal(again.code, 'new code;');
-    assert.equal(again.successes, 2);
+    assert.equal(again.successes, 1); // refresh does NOT double-count the run
+});
+
+test('code that composes a matching skill is saved as NEW, never a self-referential refresh', async () => {
+    const lib = new LearnedSkills(makeAgent(freshDir()));
+    const base = await lib.saveFromSuccess('Mine iron ore', 'mine();', 'ok');
+    const composed = await lib.saveFromSuccess('Mine iron ore', `await learned.${base.name}(bot); extra();`, 'ok');
+    assert.equal(lib.count(), 2); // refresh would have bricked base with a cycle
+    assert.notEqual(composed.name, base.name);
+    assert.equal(base.code, 'mine();');
+});
+
+test('overlap guard: differing quantities and letterless tasks never direct-execute', async () => {
+    const lib = new LearnedSkills(makeAgent(freshDir(), { no_embed: true }));
+    await lib.saveFromSuccess('mine 5 diamonds', 'mine();', 'ok');
+    const wrong_qty = await lib.findBestMatch('mine 50 diamonds');
+    assert.equal(lib.shouldDirectExecute(wrong_qty), false);
+    const same_qty = await lib.findBestMatch('mine 5 diamonds');
+    assert.ok(lib.shouldDirectExecute(same_qty));
+    assert.equal(lib._taskOverlap('10', '42'), 0); // digit-stripped ['']-overlap bug
+});
+
+test('wrapper does not count interrupted runs as success or failure', async () => {
+    const lib = new LearnedSkills(makeAgent(freshDir()));
+    const a = await lib.saveFromSuccess('Mine iron ore', 'mine();', 'ok');
+    const ns = lib.buildNamespace(() => (bot) => { bot.interrupt_code = true; return Promise.resolve(); });
+    await ns[a.name]({ interrupt_code: false });
+    const skill = lib.getSkill(a.name);
+    assert.equal(skill.successes, 1); // only the original save
+    assert.equal(skill.failures, 0);
 });
 
 test('findBestMatch ranks by task similarity; shouldDirectExecute uses thresholds', async () => {
@@ -76,7 +105,7 @@ test('unreliable skills (more failures than successes) are not direct-executed',
 
 test('stats and skills survive a restart', async () => {
     const dir = freshDir();
-    const first = new LearnedSkills(makeAgent(dir));
+    const first = new LearnedSkills(makeAgent(dir, { persist_throttle_ms: 0 }));
     const skill = await first.saveFromSuccess('Mine iron ore', 'mine();', 'ok');
     first.noteResult(skill.name, true);
 

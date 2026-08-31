@@ -70,12 +70,18 @@ export class SkillLibrary {
             .sort((a, b) => b.similarity_score - a.similarity_score);
         }
 
-        // learned skills rank in the same pool as built-in library docs
+        // learned skills rank in the same pool as built-in library docs —
+        // scored on the same scale (force overlap when the built-in pool has
+        // degraded to overlap) and capped so a large learned store can't
+        // crowd the built-in API out of the model's view
         const learned = this.agent?.learned_skills;
         if (learned?.isEnabled() && learned.count() > 0) {
-            const ranked = await learned.getRankedDocs(message);
-            for (const { doc, score } of ranked)
-                skill_doc_similarities.push({ doc_key: doc, similarity_score: select_num === -1 ? 0 : score });
+            const ranked = await learned.getRankedDocs(message, { force_overlap: !this.embedding_model });
+            ranked.sort((a, b) => b.score - a.score);
+            for (const { doc, score } of ranked.slice(0, learned.max_docs)) {
+                if (doc)
+                    skill_doc_similarities.push({ doc_key: doc, similarity_score: select_num === -1 ? 0 : score });
+            }
             if (select_num !== -1)
                 skill_doc_similarities.sort((a, b) => b.similarity_score - a.similarity_score);
         }
