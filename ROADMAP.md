@@ -324,6 +324,29 @@ reads. Agreement is structural, not coincidental — and trace.py now sees the i
 
 ## Later / parking lot
 
+### Settings changed in the app do not survive a cold start (found 2026-08-31, first live run)
+
+Toggling a setting in the :8080 app sends `set-agent-settings`, which updates
+the `AgentConnection` in the mindserver's **memory** and restarts that agent.
+The agent then re-fetches settings over the socket, so the change sticks across
+`stopAgent`/`startAgent` — but `settings.js` on disk is untouched, so a
+`Ctrl+C` and `node main.js` silently reverts it.
+
+This bit during the first live run: `use_cognition` was enabled in the app, and
+a full restart to pick up a code fix would have turned the agent's autonomy back
+off without saying anything.
+
+- [ ] Persist settings changed in the app, so the UI is the source of truth it
+      claims to be. Writing `settings.js` from the server is one option but it
+      is a JS module, not data — a `settings.local.json` overlay that
+      `settings.js` merges on load is cleaner and keeps the server writing data
+      rather than code.
+- [ ] Until then, the app should say plainly that a change is session-only.
+      Silently reverting a setting is worse than not offering the toggle.
+
+This is a direct violation of the standing UI-parity rule: "any new config
+ships with UI support" is only half the promise if the UI cannot make it stick.
+
 ### Real TV mode (backlogged 2026-08-31, during the first live run)
 
 The `TV mode` button on the Sim tab is currently 16 font-size overrides and a

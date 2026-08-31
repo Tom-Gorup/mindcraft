@@ -34,7 +34,7 @@ const settings = {
         // individual profiles override values from the base profile
     ],
 
-    "use_cognition": false, // autonomous drive-based cognition loop (drives -> goals -> plans). experimental
+    "use_cognition": true, // autonomous drive-based cognition loop (drives -> goals -> plans). experimental
     "use_memory": false, // long-term event memory with retrieval and reflection. experimental
     "use_skill_library": false, // learn/reuse/compose successful newAction code. requires allow_insecure_coding. experimental
     "use_social": false, // per-peer relationships, gossip, and trade. experimental
