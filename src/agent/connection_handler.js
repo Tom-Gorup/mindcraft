@@ -8,7 +8,7 @@ const ERROR_DEFINITIONS = {
         isFatal: true
     },
     'access_denied': {
-        keywords: ['whitelist', 'not white-listed', 'banned', 'suspended', 'verify'],
+        keywords: ['whitelist', 'not white-listed', 'banned', 'suspended', 'failed to verify', 'unable to verify', 'not verified'],
         msg: 'Access Denied: You are not whitelisted or banned.',
         isFatal: true
     },
@@ -18,12 +18,12 @@ const ERROR_DEFINITIONS = {
         isFatal: false
     },
     'version_mismatch': {
-        keywords: ['outdated', 'version', 'client'],
+        keywords: ['outdated_client', 'outdated_server', 'outdated client', 'outdated server', 'version mismatch', 'unsupported protocol', 'wrong version', 'protocol version', 'unsupported_server_version'],
         msg: 'Version Mismatch: Client and server versions do not match.',
         isFatal: true
     },
     'maintenance': {
-        keywords: ['maintenance', 'updating', 'closed', 'restarting'],
+        keywords: ['maintenance', 'updating', 'server closed', 'socketclosed', 'restarting'],
         msg: 'Connection Failed: Server is under maintenance or restarting.',
         isFatal: false
     },
@@ -91,6 +91,9 @@ export function handleDisconnection(agentName, reason) {
 
 // Validates name format.
 export function validateNameFormat(name) {
+    if (/^(__proto__|constructor|prototype)$/.test(String(name))) {
+        return { success: false, msg: `[LoginGuard] Reserved name '${name}' is not allowed.` };
+    }
     if (!name || !/^[a-zA-Z0-9_]{3,16}$/.test(name)) {
         return { 
             success: false, 

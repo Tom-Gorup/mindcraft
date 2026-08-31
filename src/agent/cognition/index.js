@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, renameSync, existsSync } from 'fs';
 import settings from '../settings.js';
 import convoManager from '../conversation.js';
 import { DriveState } from './drives.js';
@@ -37,6 +37,8 @@ export class CognitionLoop {
         this.heartbeat_ms = opts.heartbeat_ms ?? 20000;
         this.pending_event = 'goal started';
         this.since_prompt_ms = 0;
+        this.interrupt_wait_ms = 0;
+        this.interrupt_grace_ms = opts.interrupt_grace_ms ?? 15000;
         this.goal_cooldown_ms = opts.goal_cooldown_ms ?? 15000;
         this.drive_cooldown_ms = opts.drive_cooldown_ms ?? 3 * 60000;
         this.success_cooldown_ms = opts.success_cooldown_ms ?? 60000;
@@ -59,6 +61,7 @@ export class CognitionLoop {
         this.last_goal_attempt = 0;
         this.preempt_accum = 0;
         this.recent_outcomes = [];
+        this.outcome_ttl_ms = opts.outcome_ttl_ms ?? 2 * 3600000;
         this.visited_chunks = new Set();
         this.last_thought = '';
         this.persist_accum = 0;
@@ -129,23 +132,38 @@ export class CognitionLoop {
 
         if (this.plan_busy || !can_act) return;
 
+        // Preemption and the step timeout run BEFORE the replan branch, so a
+        // wedged act loop can never strand them behind an early return.
+        if (this.active) {
+            if (this._maybePreempt(delta)) return;
+            if (this.monitor.isStepTimedOut())
+                this._onFailure(`Step timed out: "${this._currentStep()}"`);
+        }
+
         if (this.pending_replan !== null) {
             if (this.act_busy) {
-                this.step_interrupt = true; // break the act loop first
+                this.step_interrupt = true; // ask the act loop to break
+                this.interrupt_wait_ms += delta;
+                // step_interrupt is only honored at checkInterrupt points; it
+                // cannot break an action blocked inside ActionManager. Past a
+                // grace period, stop the action itself or the agent freezes
+                // here permanently with an active goal and no LLM calls.
+                if (this.interrupt_wait_ms >= this.interrupt_grace_ms) {
+                    this.interrupt_wait_ms = 0;
+                    console.warn('Cognition: act loop did not yield; stopping the running action to replan.');
+                    try { this.agent.actions.stop(); } catch (err) { console.error('Cognition: stop failed:', err); }
+                }
                 return;
             }
+            this.interrupt_wait_ms = 0;
             const reason = this.pending_replan;
             this.pending_replan = null;
             this._runPlan(() => this._replan(reason));
             return;
         }
-        if (this.active) {
-            if (this._maybePreempt(delta)) return;
-            if (this.monitor.isStepTimedOut()) {
-                this._onFailure(`Step timed out: "${this._currentStep()}"`);
-            }
-        }
-        else if (!this.act_busy) {
+        this.interrupt_wait_ms = 0;
+
+        if (!this.active && !this.act_busy) {
             this._maybeStartGoal();
         }
     }
@@ -193,9 +211,12 @@ export class CognitionLoop {
             this.idle_ms = 0;
         // Prompt when something happened (after a short settle), or when the
         // heartbeat expires so a stuck plan still gets re-examined.
-        const ready = this.pending_event
-            ? this.idle_ms >= this.step_cooldown_ms
-            : this.since_prompt_ms >= this.heartbeat_ms;
+        // The heartbeat is an unconditional floor, not the else-branch: a
+        // latched resume action (a standing !followPlayer, say) keeps isIdle()
+        // false forever, so idle_ms never reaches the settle threshold and a
+        // pending event used to starve the act tier permanently.
+        const ready = this.since_prompt_ms >= this.heartbeat_ms
+            || (this.pending_event && this.idle_ms >= this.step_cooldown_ms);
         if (ready) {
             this.idle_ms = 0;
             const reason = this.pending_event;
@@ -249,9 +270,21 @@ export class CognitionLoop {
         this.last_thought = `My ${drive} drive is high, thinking of a goal...`;
         const goal = await this.planner.generateGoal(drive, this._driveStateText());
         if (!goal) {
+            // Back off instead of retrying every goal_cooldown_ms forever: a
+            // model that cannot emit the JSON will not start doing so, and
+            // this tier is billed.
+            this.gen_failures = (this.gen_failures || 0) + 1;
+            this.last_thought = `Could not form a goal (attempt ${this.gen_failures}).`;
             console.warn('Cognition: failed to generate a goal for drive', drive);
+            if (this.gen_failures >= 3) {
+                this.gen_failures = 0;
+                this.drive_state.setCooldown(drive, Date.now() + this.drive_cooldown_ms);
+                this.last_thought = `Giving the ${drive} drive a rest — I keep failing to form a goal.`;
+                console.warn(`Cognition: cooling down '${drive}' after repeated goal-generation failures.`);
+            }
             return;
         }
+        this.gen_failures = 0;
         if (this.active !== null || !this._canAct()) return; // world changed during the LLM call
         const steps = await this.planner.makePlan(goal.goal);
         if (!steps) {
@@ -298,6 +331,11 @@ export class CognitionLoop {
         // cognition_step scopes step_interrupt to THIS loop.
         const used_command = await this.agent.handleMessage('system', msg, this.max_step_responses, { cognition_step: true });
         if (this.active !== active) return; // goal ended during the loop
+        // An interrupted loop produced no command because it was cut short,
+        // not because the model refused to act — counting it as a failure was
+        // the dominant cause of spurious goal abandonment.
+        if (this.step_interrupt || this.agent.shut_up)
+            return;
         if (!used_command) {
             this.no_command_count++;
             if (this.no_command_count >= 3) {
@@ -520,11 +558,17 @@ export class CognitionLoop {
         return this.active ? this.active.steps[this.active.step_index] : null;
     }
 
+    // Only outcomes recent enough to still be informative.
+    _liveOutcomes(now = Date.now()) {
+        return this.recent_outcomes.filter(o => !(this.outcome_ttl_ms > 0) || (now - (o.ts || 0)) < this.outcome_ttl_ms);
+    }
+
     _driveStateText() {
         let text = this.drive_state.describe();
-        if (this.recent_outcomes.length > 0) {
+        const live = this._liveOutcomes();
+        if (live.length > 0) {
             text += '\nRecent goal outcomes:\n';
-            for (const o of this.recent_outcomes.slice(-5))
+            for (const o of live.slice(-5))
                 text += `- ${o.result === 'preempted' ? 'set aside' : o.result}: ${o.goal}${o.reason ? ` (${o.reason})` : ''}\n`;
         }
         return text.trim();
@@ -532,8 +576,7 @@ export class CognitionLoop {
 
     _recordOutcome(active, result, reason) {
         this.recent_outcomes.push({ goal: active.goal, drive: active.drive, result, reason, ts: Date.now() });
-        if (this.recent_outcomes.length > 20)
-            this.recent_outcomes = this.recent_outcomes.slice(-20);
+        this.recent_outcomes = this._liveOutcomes().slice(-20);
     }
 
     _safeRecordMemory(type, content, data) {
@@ -625,7 +668,9 @@ export class CognitionLoop {
                 recent_outcomes: this.recent_outcomes,
                 visited_chunks: [...this.visited_chunks].slice(-4000),
             };
-            writeFileSync(this.state_fp, JSON.stringify(data));
+            const tmp = this.state_fp + '.tmp';
+            writeFileSync(tmp, JSON.stringify(data));
+            renameSync(tmp, this.state_fp);
         } catch (err) {
             console.error('Cognition: failed to persist state:', err);
         }
@@ -641,6 +686,7 @@ export class CognitionLoop {
             const data = JSON.parse(readFileSync(this.state_fp, 'utf8'));
             this.drive_state.loadJson(data.drives);
             this.recent_outcomes = data.recent_outcomes || [];
+            this.recent_outcomes = this._liveOutcomes();
             this.visited_chunks = new Set(data.visited_chunks || []);
             const a = data.active;
             const valid_active = a && typeof a.goal === 'string' && Array.isArray(a.steps)

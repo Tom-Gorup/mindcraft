@@ -1,7 +1,7 @@
 import settings from './settings.js';
 import { containsCommand } from './commands/index.js';
 import { sendBotChatToServer } from './mindserver_proxy.js';
-import { parseOfferMessage } from './social/trade.js';
+import { parseOfferMessage, parseAcceptMessage } from './social/trade.js';
 
 let agent;
 let agent_names = [];
@@ -42,7 +42,22 @@ class Conversation {
     }
 }
 
+// isIdle() only reports the ACTION slot. During an act/plan LLM call the
+// agent is "idle" by that measure but very much busy, and treating it as free
+// made peers interrupt every in-flight prompt.
+function _agentBusy() {
+    if (!agent) return false;
+    if (!agent.isIdle()) return true;          // an action holds the slot
+    const b = agent.blackboard?.cognition_busy; // ...or a tier is mid-LLM-call
+    return !!(b && (b.plan || b.act));
+}
+
 const WAIT_TIME_START = 30000;
+// A partner that is in-game but silent (crashed cognition loop, stuck action)
+// never trips the disconnect path, so the nudge cadence used to double forever
+// — an unbounded series of LLM calls into a conversation that will never
+// resume. Give up after a few tries and let the agent get on with its life.
+const MAX_UNANSWERED_NUDGES = 3;
 class ConversationManager {
     constructor() {
         this.convos = {};
@@ -50,6 +65,7 @@ class ConversationManager {
         this.awaiting_response = false;
         this.connection_timeout = null;
         this.wait_time_limit = WAIT_TIME_START;
+        this.unanswered_nudges = 0;
     }
 
     initAgent(a) {
@@ -64,6 +80,11 @@ class ConversationManager {
 
     _startMonitor() {
         clearInterval(this.connection_monitor);
+        // startConversation can replace activeConversation without ending the
+        // old one, so a fresh conversation must not inherit the previous
+        // partner's doubled timeout or its nudge count.
+        this.wait_time_limit = WAIT_TIME_START;
+        this.unanswered_nudges = 0;
         let wait_time = 0;
         let last_time = Date.now();
         this.connection_monitor = setInterval(() => {
@@ -76,16 +97,29 @@ class ConversationManager {
             last_time = Date.now();
             let convo_partner = this.activeConversation.name;
 
-            if (this.awaiting_response && agent.isIdle()) {
+            if (this.awaiting_response && !_agentBusy()) {
                 wait_time += delta;
                 if (wait_time > this.wait_time_limit) {
-                    agent.handleMessage('system', `${convo_partner} hasn't responded in ${this.wait_time_limit/1000} seconds, respond with a message to them or your own action.`);
                     wait_time = 0;
+                    this.unanswered_nudges++;
+                    if (this.unanswered_nudges > MAX_UNANSWERED_NUDGES) {
+                        // Mirror the disconnect path below: when the
+                        // self-prompter is paused it resumes on its own a few
+                        // seconds later, and prompting here too would drive the
+                        // agent from two loops at once.
+                        const was_paused = agent.self_prompter.isPaused();
+                        this.endConversation(convo_partner);
+                        if (!was_paused)
+                            agent.handleMessage('system', `${convo_partner} stopped responding, conversation has ended.`);
+                        return;
+                    }
+                    agent.handleMessage('system', `${convo_partner} hasn't responded in ${this.wait_time_limit/1000} seconds, respond with a message to them or your own action.`);
                     this.wait_time_limit*=2;
                 }
             }
             else if (!this.awaiting_response){
                 this.wait_time_limit = WAIT_TIME_START;
+                this.unanswered_nudges = 0;
                 wait_time = 0;
             }
 
@@ -115,6 +149,7 @@ class ConversationManager {
 
     _clearMonitorTimeouts() {
         this.awaiting_response = false;
+        this.unanswered_nudges = 0;
         clearTimeout(this.connection_timeout);
         this.connection_timeout = null;
     }
@@ -285,17 +320,17 @@ async function _scheduleProcessInMessage(sender, received, convo) {
 
     const scheduleResponse = (delay) => convo.inMessageTimer = setTimeout(() => _processInMessageQueue(sender), delay);
 
-    if (!agent.isIdle() && otherAgentBusy) {
+    if (_agentBusy() && otherAgentBusy) {
         // both are busy
         let canTalkOver = talkOverActions.some(a => agent.actions.currentActionLabel.includes(a));
         if (canTalkOver)
-            scheduleResponse(fastDelay)
+            scheduleResponse(fastDelay);
         // otherwise don't respond
     }
     else if (otherAgentBusy)
         // other bot is busy but I'm not
         scheduleResponse(longDelay);
-    else if (!agent.isIdle()) {
+    else if (_agentBusy()) {
         // I'm busy but other bot isn't
         let canTalkOver = talkOverActions.some(a => agent.actions.currentActionLabel.includes(a));
         if (canTalkOver) {
@@ -380,6 +415,9 @@ function _handleFullInMessage(sender, received) {
         const offer = parseOfferMessage(received.message);
         if (offer)
             agent.social.receiveTrade(sender, offer.give_item, offer.give_qty, offer.want_item, offer.want_qty);
+        const accepted = parseAcceptMessage(received.message);
+        if (accepted)
+            agent.social.onOfferAccepted(sender, accepted);
         // a peer talking ABOUT a third party is gossip: believe it in proportion
         // to how much we trust the teller, and remember who told us
         _absorbGossip(sender, received.message);

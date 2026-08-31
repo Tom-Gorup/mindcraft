@@ -285,6 +285,33 @@ export class SocialModule {
         }
     }
 
+    // The peer accepted our offer and says they have paid. Mark our outgoing
+    // offer accepted so it is not expired out from under us, and record what
+    // we now owe — without this, an honest trade ends with BOTH sides booking
+    // a renege: theirs on our silence, ours on the expiry.
+    onOfferAccepted(peer, accepted) {
+        if (!this.enabled()) return null;
+        try {
+            const offer = this.trades.outstanding(peer);
+            if (!offer) return null;
+            offer.state = 'accepted';
+            offer.accepted_at = Date.now();
+            this.agent.memory?.record('social',
+                `${peer} accepted the trade and sent ${accepted.sent_qty} ${accepted.sent_item}; I owe ${offer.give_qty} ${offer.give_item}.`,
+                { peer });
+            return offer;
+        } catch (err) {
+            console.error('Social: onOfferAccepted failed:', err.message || err);
+            return null;
+        }
+    }
+
+    // What we still owe a peer, for the $SOCIAL prompt context.
+    owedTo(peer) {
+        const offer = this.trades.outgoing.get(peer);
+        return offer && offer.state === 'accepted' ? offer : null;
+    }
+
     evaluatePending(peer) {
         const offer = this.trades.pending(peer);
         if (!offer) return null;
@@ -315,6 +342,9 @@ export class SocialModule {
                     const o = evaluated.offer;
                     text += `Pending trade with ${peer}: they give ${o.give_qty} ${o.give_item} for your ${o.want_qty} ${o.want_item} — ${evaluated.advice}.\n`;
                 }
+                const owed = this.owedTo(peer);
+                if (owed)
+                    text += `${peer} accepted your trade and has paid — you still owe them ${owed.give_qty} ${owed.give_item}. Use !givePlayer to deliver.\n`;
                 const gossip = this.pickGossipFor(peer);
                 if (gossip)
                     text += gossip + '\n';

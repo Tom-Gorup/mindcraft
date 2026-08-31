@@ -2,10 +2,15 @@ import * as skills from '../library/skills.js';
 import * as world from '../library/world.js';
 import settings from '../settings.js';
 import convoManager from '../conversation.js';
-import { formatOfferMessage } from '../social/trade.js';
+import { formatOfferMessage, formatAcceptMessage } from '../social/trade.js';
 
 
-function runAsAction (actionFn, resume = false, timeout = -1) {
+// Default timeout in minutes. Previously -1 (unbounded) for all 29 actions, so
+// a hung pathfind under server lag latched the act tier indefinitely and the
+// only escape was the 10s cleanKill watchdog killing the process.
+const DEFAULT_ACTION_TIMEOUT_MINS = 10;
+
+function runAsAction (actionFn, resume = false, timeout = DEFAULT_ACTION_TIMEOUT_MINS) {
     let actionLabel = null;  // Will be set on first use
     
     const wrappedAction = async function (agent, ...args) {
@@ -22,7 +27,7 @@ function runAsAction (actionFn, resume = false, timeout = -1) {
         if (code_return.interrupted && !code_return.timedout)
             return;
         return code_return.message;
-    }
+    };
 
     return wrappedAction;
 }
@@ -108,9 +113,10 @@ export const actionsList = [
             'player_name': {type: 'string', description: 'name of the player to follow.'},
             'follow_dist': {type: 'float', description: 'The distance to follow from.', domain: [0, Infinity]}
         },
+        // endless by design (resume action) — exempt from the default timeout
         perform: runAsAction(async (agent, player_name, follow_dist) => {
             await skills.followPlayer(agent.bot, player_name, follow_dist);
-        }, true)
+        }, true, -1)
     },
     {
         name: '!goToCoordinates',
@@ -344,9 +350,10 @@ export const actionsList = [
         name: '!stay',
         description: 'Stay in the current location no matter what. Pauses all modes.',
         params: {'type': { type: 'int', description: 'The number of seconds to stay. -1 for forever.', domain: [-1, Number.MAX_SAFE_INTEGER] }},
+        // may be asked to stay forever (-1) — exempt from the default timeout
         perform: runAsAction(async (agent, seconds) => {
             await skills.stay(agent.bot, seconds);
-        })
+        }, false, -1)
     },
     {
         name: '!setMode',
@@ -459,6 +466,13 @@ export const actionsList = [
             }
             // trust is earned on delivery, not on our own payment
             agent.social.markAwaitingDelivery(player_name, baseline);
+            // Tell the peer. Without this their offer just expires and BOTH
+            // sides of an honest trade end in a renege grudge.
+            const accept_msg = formatAcceptMessage(offer.give_item, offer.give_qty, offer.want_item, offer.want_qty);
+            if (convoManager.isOtherAgent(player_name) && convoManager.inConversation(player_name))
+                convoManager.sendToBot(player_name, accept_msg, false, false);
+            else
+                agent.openChat(`${player_name}, ${accept_msg}`);
             agent.memory?.record('social', `Paid ${offer.want_qty} ${offer.want_item} to ${player_name}, awaiting ${offer.give_qty} ${offer.give_item}.`, { peer: player_name });
             skills.log(agent.bot, `Accepted trade with ${player_name}: gave ${offer.want_qty} ${offer.want_item}, now expecting ${offer.give_qty} ${offer.give_item}.`);
         })
@@ -590,7 +604,7 @@ export const actionsList = [
         description: 'Digs down a specified distance. Will stop if it reaches lava, water, or a fall of >=4 blocks below the bot.',
         params: {'distance': { type: 'int', description: 'Distance to dig down', domain: [1, Number.MAX_SAFE_INTEGER] }},
         perform: runAsAction(async (agent, distance) => {
-            await skills.digDown(agent.bot, distance)
+            await skills.digDown(agent.bot, distance);
         })
     },
     {

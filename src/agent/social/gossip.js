@@ -7,6 +7,21 @@
 // (already-secondhand — relaying it launders hearsay into fresh "evidence").
 export const SHAREABLE_TYPES = new Set(['speech', 'chat_received', 'death', 'goal_completed', 'goal_abandoned', 'discovery', 'place']);
 
+// Chat relayed BY another bot is already secondhand. Excluding 'gossip' alone
+// was not enough: A tells B about C, B stores it as a firsthand-looking
+// chat_received, B retells D, D retells A — the rumor launders itself into new
+// "evidence" on every hop and the network converges on mutual hostility.
+function isSecondhand(event, known_names) {
+    const src = event.data?.source;
+    return event.type === 'chat_received' && src && known_names.includes(src);
+}
+
+// "Bob said: <text>" -> "<text>", so the speaker's name is not mistaken for
+// the subject of what they said.
+export function stripSpeakerPrefix(content) {
+    return String(content ?? '').replace(/^[A-Za-z0-9_]{1,32} said:\s*/, '');
+}
+
 // Subjects mentioned in a memory, excluding the speaker and the listener.
 export function extractSubjects(content, known_names, exclude = []) {
     const subjects = [];
@@ -39,11 +54,16 @@ export function selectGossip(events, listener, known_names, opts = {}) {
         // internal telemetry ('social' disposition dumps) or relayed hearsay,
         // which would otherwise echo between two bots forever
         if (!SHAREABLE_TYPES.has(event.type)) continue;
+        if (isSecondhand(event, known_names)) continue;
         if (event.importance < min_importance) continue;
         if (already_told.has(event.id)) continue;
         // don't retell what the listener told us, or what is about them
         if (event.data?.source === listener || event.data?.teller === listener) continue;
-        const subjects = extractSubjects(event.content, known_names, [listener]);
+        // The speaker's own name is inside the content of a chat_received
+        // ("Bob said: ..."), so without excluding them the TELLER is often
+        // picked as the subject instead of the third party being discussed.
+        const exclude = [listener, event.data?.source, event.data?.teller, event.data?.subject].filter(Boolean);
+        const subjects = extractSubjects(stripSpeakerPrefix(event.content), known_names, exclude);
         if (subjects.length === 0) continue;
         // freshest, most important wins
         const score = event.importance + (1 - (now - event.ts) / max_age_ms) * 0.5;

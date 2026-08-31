@@ -119,6 +119,20 @@ export function formatOfferMessage(give_item, give_qty, want_item, want_qty) {
     return `I'll trade you ${give_qty} ${give_item} for ${want_qty} ${want_item}. Deal?`;
 }
 
+export function formatAcceptMessage(give_item, give_qty, want_item, want_qty) {
+    return `Deal. I've sent you ${want_qty} ${want_item} for your ${give_qty} ${give_item}.`;
+}
+
+const ACCEPT_RE = /Deal\. I've sent you (\d{1,4}) ([a-z0-9_]{1,40}) for your (\d{1,4}) ([a-z0-9_]{1,40})\./i;
+
+// Returns what the ACCEPTER sent and what they expect back, or null.
+export function parseAcceptMessage(message) {
+    const m = String(message || '').match(ACCEPT_RE);
+    if (!m) return null;
+    return { sent_item: m[2].toLowerCase(), sent_qty: parseInt(m[1], 10),
+             owed_item: m[4].toLowerCase(), owed_qty: parseInt(m[3], 10) };
+}
+
 const OFFER_RE = /I'll trade you (\d{1,4}) ([a-z0-9_]{1,40}) for (\d{1,4}) ([a-z0-9_]{1,40})\. Deal\?/i;
 
 // Returns what the SENDER gives and wants, or null.
