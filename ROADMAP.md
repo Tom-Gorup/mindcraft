@@ -30,8 +30,8 @@ behavior only shows up in console logs, it doesn't exist to Phase 8.
 | 3 Skills | done | 16 | yes (S7, S8) | **no** |
 | 4 Concurrency | done | 21 | yes (S7, S8) | **no** |
 | 5 Social | done | 43 | yes (S10) | **no** |
-| 6 Economics | done | 17 | — | **no** |
-| 7 Observability | done | 7 | — | **no** |
+| 6 Economics | done | 17 | yes (S13) | **no** |
+| 7 Observability | done | 7 | yes (S13) | **no** |
 | 8 Research lab | not started | — | — | — |
 
 129 tests total (`npm test`). **Every phase 1-5 acceptance criterion that can be met

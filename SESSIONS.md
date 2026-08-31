@@ -604,3 +604,67 @@ Palette validated with the dataviz validator: all six checks pass on the dark su
 **Next:** Phase 8 (research lab) — the last phase. It has the most existing
 groundwork: `tools/trace.py` is the reference implementation, the memory event stream
 is the substrate, and the `agent-event` channel added here is the live half of it.
+
+---
+
+## Session 13 — 2026-08-31 — Pre-first-run gate (phases 6-7)
+
+Three reviewers; **one of them actually ran `node main.js`. It did not start.** That
+alone justified the gate. All blockers and majors fixed in `cd4ae78`; 153/153 tests.
+
+**The agent process was crashing before any of our code executed.** `agent.js` →
+`vision_interpreter.js` → `camera.js` → `node-canvas-webgl` → the `gl` native addon,
+which is unbuilt on this machine and on any Node >20, and which degenerates into an
+uninterpretable `ERR_INTERNAL_ASSERTION` through the ESM→CJS translator. Vision is off
+by default and the Camera was already built conditionally — it was the *static import*
+that killed it. Now lazy. **This had nothing to do with phases 1-7 and would have
+blocked the first run regardless.**
+
+**Four more blockers:**
+- An Ollama-only or Groq-only setup couldn't boot: the embedding model was built
+  unguarded, failing with a message naming a provider the user never configured.
+- The dashboard's `agentName is not defined` (my regression from `0bdab8d`) froze every
+  agent card as offline with its controls disabled while stats ticked underneath.
+- **Saving a profile disabled `self_preservation`.** No shipped personality profile
+  defines `modes`, so unchecked boxes were written as `false`, and profile keys replace
+  whole objects — the bot would stand in lava. Checkboxes now show the *effective*
+  value and untouched inherited defaults aren't written.
+- The profile editor had no scroll container; the Save button was clipped off-screen.
+
+**Phase 6 correctness, all found by review:**
+- Ollama swallowed transport errors and returned a sentinel *string*, so a dead local
+  model metered as a successful free local call — the dashboard would read "100% local"
+  while the bot chatted "My brain disconnected". This defeated the router's fallback
+  *and* the phase's own acceptance metric. It now throws.
+- `ActionManager.timedout` latched true forever on first timeout, after which
+  interrupted actions stopped being treated as interrupted. Dormant until this phase
+  changed `code_timeout_mins` from -1 to 5.
+- Output truncation cut from the *front*, discarding exactly the tail that matters:
+  `!newAction`'s "Code Output:" and the blueprint placement lists the MineCollab tasks
+  depend on. Now keeps both ends.
+- Liveness: queries never touch ActionManager and emit no `idle`, so an info-gathering
+  turn left the act tier waiting for the heartbeat — stretching the "didn't act"
+  watchdog from ~6s to 135s. And the heartbeat rode on `idle_ms`, which seven guard
+  paths reset, so ambient activity could starve it forever. Now a dedicated
+  accumulator, heartbeat 45s → 20s.
+
+**First-run experience:** `open()` rejection would kill the mindserver 3s in on a
+headless box; `EADDRINUSE` on 8080 gave a raw stack trace; and the single most common
+first-run failure (server down/wrong port) printed `Disconnected: {}` because
+`JSON.stringify(Error)` is `"{}"`. Also reverted my global `"embedding": "ollama"`
+default — it silently degraded retrieval to word-overlap for every non-Ollama user.
+
+**Security:** `set-profile` accepted nested filesystem keys (`memory.dir`,
+`cognition.state_fp`) — arbitrary file write; used `in` (prototype chain) as its
+filter; and ignored the spec's own min/max ranges.
+
+**Docs corrected** because they actively misled: README's `--profiles` example named
+files that don't exist, FAQ's `--no-optional` advice was wrong twice over, and
+CLAUDE.md now states the **Node v18/v20 requirement** (v24 breaks native deps — which
+is exactly what bit us here).
+
+**Still true:** nothing is live-verified. But the known-blocking failures on the path
+to a first run are now fixed, and the three most likely ones (no Minecraft server, no
+Ollama, no API key) all produce a named, actionable error instead of a crash or a lie.
+
+**Next:** Phase 8 (research lab).
