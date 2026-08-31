@@ -121,13 +121,15 @@ export class Claude {
     _warnBreakpointRejected(input_tokens, model_name) {
         if (Claude._warned_rejected) return;
         Claude._warned_rejected = true;
-        const floor = Math.round(minCacheableChars(model_name) / 4.6);
+        // The floor is a fixed provider limit; deriving it back through our own
+        // chars-per-token estimate printed a moving, meaningless number.
+        const floor = /haiku/i.test(String(model_name)) ? 2048 : 1024;
         console.warn(
             `\nPrompt caching: ${model_name} IGNORED the cache breakpoint. The whole prompt measured `
             + `${input_tokens} tokens, and the cacheable prefix is below this model's ${floor}-token floor.\n`
             + `  You are paying full input price on every call. Lengthen the stable text ahead of\n`
             + `  <<<CACHE_BOUNDARY>>> in profiles/defaults/_default.json, or use a model with a lower floor.\n`
-            + `  Check with: node tools/measure_prompt.mjs\n`);
+            + `  Measure it exactly with: node tools/count_prompt_tokens.mjs\n`);
     }
 
     // A prefix under the model's floor is not an error — the request succeeds,
