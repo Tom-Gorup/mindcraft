@@ -71,10 +71,31 @@ if (process.env.SETTINGS_JSON) {
 }
 
 
-Mindcraft.init(false, settings.mindserver_port, settings.auto_open_ui);
+await Mindcraft.init(false, settings.mindserver_port, settings.auto_open_ui);
 
-for (let profile of settings.profiles) {
-    const profile_json = JSON.parse(readFileSync(profile, 'utf8'));
+// Start agents one at a time and report on each. Previously the result of
+// createAgent was discarded, so an unreadable profile or a duplicate name meant
+// an agent simply never appeared, with the reason buried in the boot log.
+const failures = [];
+for (const profile of settings.profiles) {
+    let profile_json;
+    try {
+        profile_json = JSON.parse(readFileSync(profile, 'utf8'));
+    } catch (err) {
+        failures.push(`${profile}: could not be read or is not valid JSON (${err.message})`);
+        continue;
+    }
     settings.profile = profile_json;
-    Mindcraft.createAgent(settings);
+    const result = await Mindcraft.createAgent(settings);
+    if (!result?.success)
+        failures.push(`${profile}: ${result?.error || 'unknown error'}`);
+}
+
+if (failures.length) {
+    console.error(`\n${failures.length} of ${settings.profiles.length} profile(s) did not start:`);
+    for (const f of failures) console.error(`  - ${f}`);
+    if (failures.length === settings.profiles.length) {
+        console.error('No agents started. Exiting.');
+        process.exit(1);
+    }
 }

@@ -2,6 +2,7 @@ import { strictFormat } from '../utils/text.js';
 
 export class Ollama {
     static prefix = 'ollama';
+    static _warned = new Map();   // key -> last warn ts
     constructor(model_name, url, params) {
         this.model_name = model_name;
         this.params = params;
@@ -99,8 +100,19 @@ export class Ollama {
                 throw new Error(`Ollama Status: ${res.status}`);
             }
         } catch (err) {
-            console.error('Failed to send Ollama request.');
-            console.error(err);
+            // The skill library embeds every doc at boot, so one unreachable
+            // Ollama used to print ~90 identical stack traces and bury the
+            // actual cause. Log the reason once per endpoint per run.
+            const reason = err?.message || String(err);
+            const model = body?.model ?? 'unknown';
+            const key = `${url}|${model}|${reason}`;
+            // Re-warn hourly: a run that fails, recovers, then fails again six
+            // hours later must not be silent the second time.
+            const last = Ollama._warned.get(key) ?? -Infinity;
+            if (Date.now() - last > 3600000) {
+                Ollama._warned.set(key, Date.now());
+                console.error(`Ollama request to ${url} (model '${model}') failed: ${reason}`);
+            }
         }
         return data;
     }
