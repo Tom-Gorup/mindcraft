@@ -23,7 +23,7 @@ export class Claude {
         const messages = strictFormat(turns);
         let res = null;
         try {
-            console.log(`Awaiting anthropic response from ${this.model_name}...`)
+            console.log(`Awaiting anthropic response from ${this.model_name}...`);
             if (!this.params.max_tokens) {
                 if (this.params.thinking?.budget_tokens) {
                     this.params.max_tokens = this.params.thinking.budget_tokens + 1000;
@@ -52,7 +52,7 @@ export class Claude {
                 ...(this.params || {})
             });
 
-            console.log('Received.')
+            console.log('Received.');
             // get first content of type text
             const textContent = resp.content.find(content => content.type === 'text');
             if (textContent) {
