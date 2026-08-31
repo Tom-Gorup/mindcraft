@@ -443,3 +443,59 @@ itemized in ROADMAP). Standing homelab ask now covers five phases in one run.
 - Trade item values are a small hardcoded table; unknown items default to 1. Fine for
   fairness *advice*, not a real economy.
 - `social` profile block awaits the Phase 7 profile editor, like the other blocks.
+
+---
+
+## Session 10 — 2026-08-31 — Phase 5 validation gate
+
+Tom asked for a bug/logic check on Phase 5 before Phase 6. Two adversarial reviewers
+(social-module logic; cross-system effects with all flags on) plus manual probing.
+All blockers and majors fixed in `ea1ca6b`; 129/129 tests (14 new regressions).
+
+**The trade feature was fundamentally broken and would not have worked live:**
+- `receiveTrade()` had **no production caller** — an offer was only a sentence, so
+  `!acceptTrade` always answered "No pending trade offer." Offers now travel in a
+  canonical wire format parsed back into the peer's book.
+- `TradeBook` kept incoming and outgoing offers in one map keyed by peer, so an
+  agent's own offer answered `pending()`. The prompt described it inverted ("they
+  give 1 diamond for your 4 bread" to the bot *giving* the diamond), and
+  `!acceptTrade` on your own offer **handed over the goods you meant to receive**
+  while crediting the counterparty with trust.
+- `traded_fairly` was awarded on your own payment, so a peer could farm trust by
+  offering and never delivering — the exact inverse of the intended dynamic. Trust
+  is now earned only on confirmed delivery, and `trade_reneged` (previously dead
+  code) costs the defector.
+
+**Social dynamics were subtly wrong in ways that would have compounded:**
+- Gossip could be relayed straight back to its source (the filter checked
+  `data.source`, but gossip events store `data.teller`), and the agent's own
+  trust/grudge *numbers* were gossip-eligible — two bots would have laundered
+  hearsay into fresh "evidence" every round trip. Fixed with a shareable-type
+  allowlist plus a teller filter.
+- Hearsay manufactured grudges. New `heard_ill_of`/`heard_well_of` move opinion but
+  never resentment — resentment should require something happening to you.
+- `!attackPlayer` recorded the *victim's* event on the aggressor. Separately, there
+  was no victim-side hook at all, so a bot beaten but not killed felt nothing and
+  every firsthand signal in the system was negative. Added `entityHurt` →
+  `attacked_by` and `playerCollect` → `received_item`.
+- Gossip keywords fired on "killed"/"attacked", which in Minecraft almost always
+  refer to mobs ("Greta killed the zombie for me") — constant false grudges. Now
+  interpersonal verbs only, mob context excluded, claims scoped to the sentence.
+
+**Also fixed:** `!offerTrade` hijacked live conversations (orphaning the previous
+partner with no liveness monitor); a 90s delivery timeout punished honest-but-slow
+partners as defectors (now 6 min); `$SOCIAL` was missing from all four profiles that
+override `conversing`, making the feature inert-but-paid-for there; `$SOCIAL` used
+the stale bot-only `last_sender`; a corrupt `relationships.json` produced NaN
+dispositions and silently killed social context for the session; chat spam could
+farm trust; relationship eviction only ran on load; and trade commands were offered
+during benchmark tasks.
+
+**Deferred (documented):** human-to-bot trades can't complete (no way for a human to
+register acceptance — the offer simply expires); `_absorbGossip` only considers bot
+subjects while outbound gossip can name humans; the blackboard ships the relationship
+array twice per dashboard poll. None are correctness risks.
+
+**Next:** Phase 6 (model routing + economics), with the Session 8 measurements as its
+brief. Note Phase 5 adds ~10-16% to prompt tokens (trade command docs ride every
+prompt; `$SOCIAL` adds ~271 typical tokens), which Phase 6 should absorb.
