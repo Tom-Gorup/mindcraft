@@ -161,7 +161,7 @@
         const err = document.getElementById('profileEditorError');
         if (err) err.textContent = '';
         if (title) title.textContent = `Configure ${name}`;
-        modal.style.display = 'flex';
+        modal.classList.add('open');
         sock().emit('get-profile-spec', (res) => {
             spec = res?.spec || {};
             sock().emit('get-profile', name, (r) => {
@@ -176,7 +176,7 @@
     };
 
     window.closeProfileEditor = function () {
-        document.getElementById('profileEditorModal').style.display = 'none';
+        document.getElementById('profileEditorModal').classList.remove('open');
     };
 
     window.saveProfileEditor = function () {

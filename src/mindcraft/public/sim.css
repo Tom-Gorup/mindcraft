@@ -1,343 +1,530 @@
-/* Sim dashboard — dark surface, TV-readable.
-   Palette roles from the validated dark-mode instance:
-   categorical slots 1-3 (#3987e5 / #d95926 / #199e70) pass all six checks on
-   surface #1a1a19 (worst adjacent CVD ΔE 9.4, normal-vision 26.5, all >= 3:1).
-   Diverging blue<->red with a gray midpoint carries relationship polarity.
-   Status palette is fixed and never reused for a series. */
-.sim-root {
-    color-scheme: dark;
-    --surface-1: #1a1a19;
-    --surface-2: #232322;
-    --surface-3: #2b2b29;
-    --hairline: #383835;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #8a8a80;
+/* ============================================================================
+   Mindcraft — Sim and Reports: the data views.
 
-    --series-1: #3987e5;   /* goals / plans */
-    --series-2: #d95926;   /* skills / code */
-    --series-3: #199e70;   /* social */
+   Colour roles come from theme.css (validated categorical slots 1-3, blue
+   sequential ramp, blue<->red diverging pair with a gray midpoint, fixed
+   status palette). Nothing here invents a hue.
 
-    --seq-100: #cde2fb;
-    --seq-400: #3987e5;
-    --seq-600: #184f95;
-
-    --pos: #3987e5;        /* diverging: warm regard */
-    --neg: #d03b3b;        /* diverging: hostility */
-    --mid: #383835;        /* diverging neutral midpoint */
-
-    --good: #0ca30c;
-    --warning: #fab219;
-    --serious: #ec835a;
-    --critical: #d03b3b;
-
-    font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    color: var(--text-primary);
-}
+   Mark specs followed throughout:
+     · bars capped at 24px, 4px rounded data-end, square at the baseline
+     · 2px surface gap between touching/stacked segments — the surface does
+       the separating, never a stroke around the mark
+     · hairline (1px, solid) gridlines one step off the surface
+     · text always wears text tokens; identity comes from a coloured mark
+       beside it, never from colouring the text
+     · legend present for every multi-series chart; direct labels supplement it
+   ========================================================================= */
 
 .sim-root { display: none; }
 .sim-root.active { display: block; }
 
-.sim-empty {
-    color: var(--text-secondary);
-    background: var(--surface-2);
-    border: 1px solid var(--hairline);
-    border-radius: 6px;
-    padding: 28px;
-    text-align: center;
-}
+/* --------------------------------------------------------------- toolbar */
 
-/* ---- stat tiles: hero numbers, no chart ---- */
-.sim-tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 10px;
-    margin-bottom: 16px;
-}
-.sim-tile {
-    background: var(--surface-2);
-    border: 1px solid var(--hairline);
-    border-radius: 6px;
-    padding: 12px 14px;
-}
-.sim-tile .label {
-    font-size: 11px;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-}
-.sim-tile .value {
-    font-size: 30px;
-    font-weight: 600;
-    line-height: 1.15;
-    letter-spacing: -.02em;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-primary);
-}
-.sim-tile .sub { font-size: 12px; color: var(--text-secondary); }
-.sim-tile .value.good { color: var(--good); }
-.sim-tile .value.warning { color: var(--warning); }
-.sim-tile .value.critical { color: var(--critical); }
-
-/* ---- agent panels ---- */
-.sim-agents {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 12px;
-}
-.sim-agent {
-    background: var(--surface-2);
-    border: 1px solid var(--hairline);
-    border-radius: 6px;
-    padding: 14px 16px;
-}
-.sim-agent header {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-.sim-agent h3 {
-    margin: 0;
-    font-size: 18px;
-    letter-spacing: .02em;
-}
-.sim-agent .state {
-    font-size: 11px;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-}
-.sim-agent .offline { color: var(--critical); }
-
-.sim-section {
-    margin-top: 12px;
-    padding-top: 10px;
-    border-top: 1px solid var(--hairline);
-}
-.sim-section > .heading {
-    font-size: 10px;
-    letter-spacing: .18em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 7px;
-}
-
-/* Goal + plan */
-.sim-goal { font-size: 15px; color: var(--text-primary); }
-.sim-goal .drive-tag {
-    color: var(--text-secondary);
-    font-size: 12px;
-}
-.sim-step {
-    margin-top: 5px;
-    color: var(--text-secondary);
-    font-size: 13px;
-}
-.sim-thought {
-    margin-top: 6px;
-    color: var(--text-secondary);
-    font-style: italic;
-    font-size: 13px;
-}
-.sim-progress {
-    display: flex;
-    gap: 2px;                 /* 2px surface gap between adjacent fills */
-    margin-top: 7px;
-}
-.sim-progress i {
-    height: 5px;
-    flex: 1;
-    border-radius: 2px;
-    background: var(--surface-3);
-}
-.sim-progress i.done { background: var(--seq-600); }
-.sim-progress i.current { background: var(--series-1); }
-
-/* Drive meters: magnitude, one hue. The pursued drive is marked by a rail,
-   not by a different hue — color follows the entity, not its rank. */
-.sim-drive {
-    display: grid;
-    grid-template-columns: 92px 1fr 44px;
-    align-items: center;
-    gap: 8px;
-    padding: 2px 0 2px 6px;
-    border-left: 2px solid transparent;
-}
-.sim-drive.active { border-left-color: var(--series-1); }
-.sim-drive .name { color: var(--text-secondary); font-size: 13px; }
-.sim-drive.active .name { color: var(--text-primary); }
-.sim-drive .track {
-    height: 8px;
-    background: var(--surface-3);
-    border-radius: 2px;
-    overflow: hidden;
-}
-.sim-drive .fill {
-    height: 100%;
-    background: var(--seq-400);
-    border-radius: 0 4px 4px 0;   /* 4px rounded data-end, anchored to baseline */
-    min-width: 2px;
-}
-.sim-drive.cooldown .fill { background: var(--seq-600); }
-.sim-drive .num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-    font-size: 12px;
-}
-
-/* Relationships: diverging polarity around a neutral midpoint */
-.sim-rel {
-    display: grid;
-    grid-template-columns: 100px 1fr 46px;
-    align-items: center;
-    gap: 8px;
-    padding: 2px 0;
-}
-.sim-rel .name { color: var(--text-secondary); font-size: 13px; }
-.sim-rel .axis {
-    position: relative;
-    height: 10px;
-    background: var(--surface-3);
-    border-radius: 2px;
-}
-.sim-rel .axis::before {   /* the zero line */
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: -1px;
-    bottom: -1px;
-    width: 1px;
-    background: var(--mid);
-}
-.sim-rel .bar {
-    position: absolute;
-    top: 1px;
-    bottom: 1px;
-    border-radius: 2px;
-    min-width: 2px;
-}
-.sim-rel .bar.pos { background: var(--pos); left: 50%; }
-.sim-rel .bar.neg { background: var(--neg); right: 50%; }
-.sim-rel .num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    font-size: 12px;
-    color: var(--text-secondary);
-}
-.sim-rel .grudge { color: var(--critical); }
-
-/* Event feed */
-.sim-feed {
-    max-height: 420px;
-    overflow-y: auto;
-    background: var(--surface-2);
-    border: 1px solid var(--hairline);
-    border-radius: 6px;
-}
-.sim-event {
-    display: grid;
-    grid-template-columns: 60px 84px 1fr;
-    gap: 10px;
-    padding: 6px 12px;
-    border-bottom: 1px solid #20201f;
-    font-size: 13px;
-    align-items: baseline;
-}
-.sim-event:last-child { border-bottom: 0; }
-.sim-event .when { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.sim-event .who { font-weight: 600; }
-.sim-event .what { color: var(--text-secondary); }
-/* Kind is carried by an icon glyph + the label text, never by color alone. */
-.sim-event .what::before { margin-right: 6px; font-style: normal; }
-.sim-event.k-goal .what::before { content: "◆"; color: var(--series-1); }
-.sim-event.k-skill .what::before { content: "▲"; color: var(--series-2); }
-.sim-event.k-social .what::before { content: "●"; color: var(--series-3); }
-.sim-event.k-death .what::before { content: "✖"; color: var(--critical); }
-.sim-event.k-other .what::before { content: "·"; color: var(--text-muted); }
-
-.sim-legend {
+.sim-toolbar,
+.rp-controls {
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
-    margin: 8px 0 10px;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+    margin-bottom: var(--sp-4);
+    background: var(--surface-1);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+}
+.sim-toolbar .spacer, .rp-controls .spacer { flex: 1 1 auto; }
+.rp-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); width: 100%; }
+.rp-row > label {
     font-size: 11px;
     letter-spacing: .1em;
     text-transform: uppercase;
     color: var(--text-muted);
+    font-weight: 600;
 }
-.sim-legend span::before { margin-right: 5px; font-style: normal; }
-
-/* TV mode: bigger everything, panels side by side */
-.sim-root.tv { font-size: 18px; }
-.sim-root.tv .sim-tile .value { font-size: 44px; }
-.sim-root.tv .sim-agent h3 { font-size: 24px; }
-.sim-root.tv .sim-goal { font-size: 19px; }
-.sim-root.tv .sim-event { font-size: 16px; }
-.sim-root.tv .sim-agents { grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); }
-
-.sim-toolbar {
-    display: flex;
+.rp-row select { width: auto; min-width: 190px; }
+.rp-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+.rp-check {
+    display: inline-flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
-}
-.sim-toolbar .spacer { flex: 1; }
-
-/* ---- Reports tab ---- */
-.rp-controls {
+    gap: 6px;
+    font-size: 12.5px;
+    padding: 4px 10px 4px 8px;
     background: var(--surface-2);
     border: 1px solid var(--hairline);
-    border-radius: 6px;
-    padding: 10px 12px;
-    margin-bottom: 14px;
+    border-radius: var(--r-pill);
+    cursor: pointer;
+    transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
-.rp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0; }
-.rp-row > label {
-    font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--text-muted);
+.rp-check:hover { border-color: var(--hairline-strong); }
+.rp-check:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-quiet);
 }
-.rp-row select {
-    background: var(--surface-3); color: var(--text-primary);
-    border: 1px solid var(--hairline); border-radius: 4px; padding: 4px 8px; font: inherit;
-}
-.rp-checks { display: flex; gap: 12px; flex-wrap: wrap; }
-.rp-check { color: var(--text-secondary); font-size: 13px; }
 .rp-dim { color: var(--text-muted); }
-.rp-note { color: var(--text-secondary); font-size: 12px; margin: 4px 0 10px; max-width: 80ch; }
-.rp-note code { background: var(--surface-3); padding: 1px 5px; border-radius: 3px; }
 
-.rp-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-.rp-table th {
-    text-align: left; font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
-    color: var(--text-muted); font-weight: 600; padding: 6px 8px;
+/* live recording indicator */
+.rec-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 4px 11px 4px 9px;
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--critical) 12%, transparent);
+    color: var(--critical);
+    border: 1px solid color-mix(in srgb, var(--critical) 38%, transparent);
+}
+.rec-pill::before {
+    content: "";
+    width: 7px; height: 7px; border-radius: 50%;
+    background: currentColor;
+    animation: rec-blink 1.6s var(--ease) infinite;
+}
+@keyframes rec-blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* --------------------------------------------------------------- panels */
+
+.sim-empty {
+    color: var(--text-secondary);
+    background: var(--surface-1);
+    border: 1px dashed var(--hairline-strong);
+    border-radius: var(--r-lg);
+    padding: var(--sp-10) var(--sp-6);
+    text-align: center;
+}
+.sim-empty code {
+    background: var(--surface-3);
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
+.sim-section {
+    background: var(--surface-1);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-lg);
+    padding: var(--sp-4);
+    margin-bottom: var(--sp-4);
+    box-shadow: var(--shadow-1);
+}
+.sim-section .heading {
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: var(--sp-3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+}
+
+/* ------------------------------------------------------------ stat tiles */
+/* Figures, not charts: label · value · sub. Proportional figures at display
+   size (tabular-nums makes a large number look loose); tabular only in the
+   tables further down. */
+
+.sim-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-4);
+}
+.sim-tile {
+    background: var(--surface-1);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-lg);
+    padding: var(--sp-4);
+    box-shadow: var(--shadow-1);
+    transition: border-color var(--t-mid) var(--ease), transform var(--t-mid) var(--ease);
+}
+.sim-tile:hover { border-color: var(--hairline-strong); transform: translateY(-1px); }
+.sim-tile .label {
+    font-size: 10.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.sim-tile .value {
+    font-size: 30px;
+    font-weight: 660;
+    line-height: 1.15;
+    letter-spacing: -.025em;
+    color: var(--text-primary);
+    margin: 2px 0 1px;
+}
+.sim-tile .sub { font-size: 12px; color: var(--text-secondary); }
+/* status colours ship with a label beside them, never colour alone */
+.sim-tile .value.good { color: var(--good); }
+.sim-tile .value.warning { color: var(--warning); }
+.sim-tile .value.serious { color: var(--serious); }
+.sim-tile .value.critical { color: var(--critical); }
+
+/* the one hero figure a view is allowed */
+.sim-tile.hero { grid-column: span 2; }
+.sim-tile.hero .value { font-size: 48px; }
+
+/* ----------------------------------------------------------- agent panes */
+
+.sim-agents {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: var(--sp-4);
+    margin-bottom: var(--sp-4);
+    align-items: start;
+}
+.sim-agent {
+    background: var(--surface-1);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-lg);
+    padding: var(--sp-4);
+    box-shadow: var(--shadow-1);
+}
+.sim-agent > header {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding-bottom: var(--sp-3);
+    margin-bottom: var(--sp-3);
     border-bottom: 1px solid var(--hairline);
 }
-.rp-table td { padding: 5px 8px; border-bottom: 1px solid #20201f; vertical-align: top; }
-.rp-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.sim-agent header h3 { font-size: 15px; font-weight: 620; flex: 1 1 auto; min-width: 0; }
+.sim-agent header .state {
+    font-size: 11.5px;
+    font-weight: 550;
+    color: var(--text-secondary);
+    background: var(--surface-3);
+    border: 1px solid var(--hairline);
+    padding: 3px 10px;
+    border-radius: var(--r-pill);
+    white-space: nowrap;
+    max-width: 55%;
+    overflow: hidden; text-overflow: ellipsis;
+}
+.sim-agent header .state.offline { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 34%, transparent); }
+.sim-agent .sim-section {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    margin: 0 0 var(--sp-4);
+}
+.sim-agent .sim-section:last-child { margin-bottom: 0; }
 
-/* Timeline: one column per bucket, height = activity, stacked by category.
-   2px gaps between columns and between stacked segments, per the mark spec. */
+/* ------------------------------------------------------------- the goal */
+
+.sim-goal { font-size: 14px; font-weight: 550; line-height: 1.45; }
+.sim-goal .drive-tag {
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.sim-step { color: var(--text-secondary); font-size: 12.5px; margin-top: 3px; }
+.sim-thought {
+    margin-top: var(--sp-2);
+    padding: 8px var(--sp-3);
+    background: var(--surface-2);
+    border-left: 2px solid var(--series-1);
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    font-style: italic;
+}
+
+/* plan progress: discrete ordered steps. 2px surface gap does the separating. */
+.sim-progress { display: flex; gap: 2px; margin-top: var(--sp-2); }
+.sim-progress i {
+    flex: 1 1 0;
+    height: 5px;
+    border-radius: 2px;
+    background: var(--surface-3);
+    transition: background var(--t-mid) var(--ease);
+}
+.sim-progress i.done { background: var(--seq-400); }
+.sim-progress i.current { background: var(--accent); box-shadow: 0 0 0 1px var(--accent-ring); }
+
+/* -------------------------------------------------------------- drives */
+/* Meter: the fill carries magnitude, the track is a lighter step of the same
+   ramp so state reads across the whole bar. */
+
+.sim-drive {
+    display: grid;
+    grid-template-columns: 96px 1fr 46px;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 3px 0;
+}
+.sim-drive .name {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sim-drive .track {
+    position: relative;
+    height: 8px;                       /* thin mark; well under the 24px cap */
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--seq-400) 16%, var(--surface-3));
+    overflow: hidden;
+}
+.sim-drive .fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: var(--r-pill);
+    background: var(--seq-400);
+    transition: width var(--t-slow) var(--ease-out), background var(--t-mid) var(--ease);
+}
+.sim-drive .num {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    text-align: right;
+}
+/* the drive currently being acted on — the one the reader cares about, so it
+   gets the direct label treatment and the accent */
+.sim-drive.active .name { color: var(--text-primary); font-weight: 600; }
+.sim-drive.active .fill { background: var(--accent); }
+.sim-drive.active .num { color: var(--text-primary); font-weight: 600; }
+.sim-drive.cooldown .fill { background: var(--text-muted); }
+.sim-drive.cooldown .name::after {
+    content: " (cooling)";
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+/* ------------------------------------------------------- relationships */
+/* Diverging: two poles either side of a shared zero axis with a neutral gray
+   midpoint. The centre line is the axis — hairline, recessive. */
+
+.sim-rel {
+    display: grid;
+    grid-template-columns: 96px 1fr 110px;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 3px 0;
+}
+.sim-rel .name {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sim-rel .axis {
+    position: relative;
+    height: 10px;
+    background: var(--div-mid);
+    border-radius: 2px;
+}
+.sim-rel .axis::before {          /* the zero line */
+    content: "";
+    position: absolute;
+    left: 50%; top: -2px; bottom: -2px;
+    width: 1px;
+    background: var(--hairline-strong);
+}
+.sim-rel .bar {
+    position: absolute;
+    top: 0; bottom: 0;
+    display: block;
+    transition: width var(--t-slow) var(--ease-out);
+}
+.sim-rel .bar.pos { left: 50%; background: var(--div-pos); border-radius: 0 3px 3px 0; }
+.sim-rel .bar.neg { right: 50%; background: var(--div-neg); border-radius: 3px 0 0 3px; }
+.sim-rel .num {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    text-align: right;
+}
+.sim-rel .grudge {
+    color: var(--critical);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* legend for the diverging pair — identity never rests on colour alone */
+.sim-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-4);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    margin-bottom: var(--sp-2);
+}
+.sim-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sim-legend i {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    display: inline-block;
+    flex: none;
+}
+
+/* ---------------------------------------------------------- event feed */
+
+.sim-feed {
+    max-height: 420px;
+    overflow-y: auto;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+}
+.sim-event {
+    display: grid;
+    grid-template-columns: 74px 104px 1fr;
+    gap: var(--sp-3);
+    align-items: baseline;
+    padding: 7px var(--sp-3);
+    border-bottom: 1px solid var(--hairline);
+    font-size: 12.5px;
+    border-left: 2px solid transparent;
+    animation: event-in var(--t-mid) var(--ease-out) both;
+}
+@keyframes event-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+.sim-event:last-child { border-bottom: 0; }
+.sim-event .when {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.sim-event .who {
+    font-weight: 600;
+    color: var(--text-secondary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sim-event .what { color: var(--text-primary); overflow-wrap: anywhere; }
+/* kind is carried by a coloured rail beside the text, never by tinting it */
+.sim-event.k-goal   { border-left-color: var(--series-1); }
+.sim-event.k-skill  { border-left-color: var(--series-2); }
+.sim-event.k-social { border-left-color: var(--series-3); }
+.sim-event.k-death  { border-left-color: var(--critical); background: color-mix(in srgb, var(--critical) 7%, transparent); }
+
+/* ============================================================== REPORTS */
+
+/* ---- activity over time: stacked columns, 2px surface gaps ---- */
+.rp-chart { position: relative; }
 .rp-timeline {
-    display: flex; align-items: flex-end; gap: 2px;
-    height: 120px; padding: 8px;
-    background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 6px;
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;                          /* the surface gap between columns */
+    height: 190px;
+    padding: var(--sp-2) 0 0;
+    border-bottom: 1px solid var(--hairline);
 }
-.rp-col { flex: 1; display: flex; flex-direction: column-reverse; gap: 2px; min-height: 2px; border-radius: 2px; overflow: hidden; }
+.rp-col {
+    flex: 1 1 0;
+    min-width: 3px;
+    display: flex;
+    flex-direction: column-reverse;    /* stack grows from the baseline */
+    gap: 2px;                          /* the surface gap inside the stack */
+    border-radius: 4px 4px 0 0;        /* rounded data-end, square baseline */
+    overflow: hidden;
+    cursor: pointer;
+    transition: filter var(--t-fast) var(--ease);
+}
+.rp-col:hover, .rp-col:focus-visible { filter: brightness(1.14); outline: none; }
+.rp-col.is-empty { background: var(--surface-3); min-height: 2px; border-radius: 2px; }
 .rp-seg { display: block; width: 100%; min-height: 2px; }
-.rp-goal { background: var(--series-1); }
-.rp-command { background: var(--series-2); }
-.rp-social { background: var(--series-3); }
-.rp-speech { background: var(--seq-400); }
-.rp-death { background: var(--critical); }
-.rp-combat { background: var(--serious); }
-.rp-belief { background: var(--warning); }
-.rp-narration, .rp-session, .rp-other, .rp-interruption, .rp-discovery { background: var(--surface-3); }
+/* Segment colour is set inline from reports.js's CAT_ROLE map, so the slot
+   order and the stack order stay defined in exactly one place. */
 .rp-axis {
-    display: flex; justify-content: space-between;
-    font-size: 11px; color: var(--text-muted); margin-top: 4px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    margin-top: 6px;
 }
 
-.rp-belief { margin-bottom: 10px; }
-.rp-belief-head { color: var(--text-primary); font-weight: 600; margin-bottom: 2px; }
-.rp-belief ul { margin: 2px 0 0; padding-left: 20px; color: var(--text-secondary); font-size: 13px; }
+/* ---- tables ---- */
+.rp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+}
+.rp-table th {
+    text-align: left;
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+    padding: 6px var(--sp-3) 6px 0;
+    border-bottom: 1px solid var(--hairline);
+    white-space: nowrap;
+}
+.rp-table td {
+    padding: 7px var(--sp-3) 7px 0;
+    border-bottom: 1px solid var(--hairline);
+    color: var(--text-secondary);
+    vertical-align: top;
+}
+.rp-table tr:last-child td { border-bottom: 0; }
+.rp-table tbody tr:hover td { background: var(--surface-2); }
+.rp-table td:first-child { color: var(--text-primary); font-weight: 550; }
+.rp-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.rp-table-wrap { overflow-x: auto; }
+
+/* interaction matrix: a heat cell is its own hit target */
+.rp-matrix td.cell {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    border-radius: 4px;
+    cursor: default;
+    transition: outline-color var(--t-fast) var(--ease);
+    outline: 2px solid transparent;
+}
+.rp-matrix td.cell:hover { outline-color: var(--accent); }
+.rp-matrix td.diag { color: var(--text-muted); }
+
+.rp-belief {
+    padding: var(--sp-3) 0;
+    border-bottom: 1px solid var(--hairline);
+}
+.rp-belief:last-child { border-bottom: 0; }
+.rp-belief-head { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.rp-belief ul { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 12.5px; }
+.rp-belief li { margin: 2px 0; }
+.rp-note { color: var(--text-muted); font-size: 12px; margin: 0 0 var(--sp-3); }
+.rp-note code {
+    background: var(--surface-3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    overflow-wrap: anywhere;
+}
+
+/* refetch keeps the frame: hold the previous render, dimmed. No skeleton,
+   no layout jump. */
+.is-refetching { opacity: .55; transition: opacity var(--t-fast) var(--ease); }
+
+/* =============================================================== TV MODE */
+/* Read from across a room: everything scales, chrome recedes. */
+
+.sim-root.tv {
+    font-size: 19px;
+    --sp-3: 16px;
+    --sp-4: 22px;
+}
+.sim-root.tv .sim-tile .value { font-size: 46px; }
+.sim-root.tv .sim-tile .label { font-size: 13px; }
+.sim-root.tv .sim-tile .sub { font-size: 15px; }
+.sim-root.tv .sim-agents { grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); }
+.sim-root.tv .sim-agent header h3 { font-size: 22px; }
+.sim-root.tv .sim-goal { font-size: 19px; }
+.sim-root.tv .sim-step,
+.sim-root.tv .sim-drive .name,
+.sim-root.tv .sim-rel .name { font-size: 16px; }
+.sim-root.tv .sim-drive .track { height: 12px; }
+.sim-root.tv .sim-rel .axis { height: 14px; }
+.sim-root.tv .sim-event { font-size: 17px; grid-template-columns: 96px 150px 1fr; padding: 10px var(--sp-3); }
+.sim-root.tv .sim-feed { max-height: 50vh; }
+.sim-root.tv .sim-section .heading { font-size: 14px; }
+
+@media (max-width: 720px) {
+    .sim-agents { grid-template-columns: 1fr; }
+    .sim-event { grid-template-columns: 62px 1fr; }
+    .sim-event .who { grid-column: 2; }
+    .sim-event .what { grid-column: 1 / -1; }
+    .sim-drive, .sim-rel { grid-template-columns: 78px 1fr 44px; }
+}

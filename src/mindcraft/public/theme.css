@@ -1,0 +1,242 @@
+/* ============================================================================
+   Mindcraft — design tokens
+   ----------------------------------------------------------------------------
+   One source of truth for surface, ink, series, status, spacing, radius,
+   elevation and motion. Every other stylesheet is written against these roles,
+   never against raw hex, so the light/dark swap happens in exactly one place.
+
+   The data palette is the validated reference instance (see the dataviz
+   method): categorical slots 1-3, a blue sequential ramp, a blue<->red
+   diverging pair with a gray midpoint, and a fixed status palette that is
+   never reused for a series.
+
+     dark  (surface #1a1a19): all six checks PASS
+     light (surface #fcfcfb): all checks pass, with one WARN — aqua (#1baf7a)
+       sits at 2.74:1, below the 3:1 bar. The relief rule applies and is
+       satisfied: every chart here ships a legend, direct labels, and a table
+       view, so aqua never carries meaning by contrast alone.
+
+   Adding a hue means re-running scripts/validate_palette.js. Don't eyeball it.
+   ========================================================================= */
+
+/* ---- light (default) ---- */
+:root {
+    color-scheme: light;
+
+    /* surfaces, lowest to highest */
+    --surface-0: #f4f3f0;   /* app background, behind everything */
+    --surface-1: #fcfcfb;   /* cards, chart surface */
+    --surface-2: #f7f6f3;   /* inset panels, table stripes */
+    --surface-3: #eceae5;   /* wells, tracks, disabled fills */
+    --surface-raised: #ffffff;
+    --hairline: #dedcd6;
+    --hairline-strong: #c9c6bd;
+
+    /* ink */
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7a7873;
+    --text-on-accent: #ffffff;
+
+    /* categorical — identity, assigned in fixed order, never cycled */
+    --series-1: #2a78d6;   /* goals / plans      */
+    --series-2: #eb6834;   /* skills / code      */
+    --series-3: #1baf7a;   /* social             */
+    --series-4: #eda100;   /* beliefs            */
+    --series-5: #e87ba4;   /* deliberate speech  */
+
+    /* sequential — magnitude, one hue light->dark */
+    --seq-100: #cde2fb;
+    --seq-250: #86b6ef;
+    --seq-400: #3987e5;
+    --seq-550: #1c5cab;
+    --seq-700: #0d366b;
+    /* Ink that clears contrast ON each step. Carried as a token because the
+       ramp inverts between modes — picking ink by step index instead put
+       white text on the lightest blue in dark mode. */
+    --seq-100-ink: #0b0b0b;
+    --seq-250-ink: #0b0b0b;
+    --seq-400-ink: #ffffff;
+    --seq-550-ink: #ffffff;
+    --seq-700-ink: #ffffff;
+
+    /* diverging — polarity, two poles + a neutral gray midpoint */
+    --div-pos: #2a78d6;
+    --div-neg: #d03b3b;
+    --div-mid: #f0efec;
+
+    /* status — fixed, never themed, never reused as a series */
+    --good: #0ca30c;
+    --warning: #fab219;
+    --serious: #ec835a;
+    --critical: #d03b3b;
+
+    /* accent = slot 1; the interactive colour of the whole app */
+    --accent: #2a78d6;
+    --accent-hover: #256abf;
+    --accent-quiet: color-mix(in srgb, var(--accent) 12%, transparent);
+    --accent-ring: color-mix(in srgb, var(--accent) 38%, transparent);
+
+    --danger: #d03b3b;
+    --danger-hover: #b32f2f;
+    --danger-quiet: color-mix(in srgb, var(--danger) 12%, transparent);
+
+    /* elevation — soft and wide, never a hard drop shadow */
+    --shadow-1: 0 1px 2px rgba(16, 15, 12, .06), 0 1px 1px rgba(16, 15, 12, .04);
+    --shadow-2: 0 4px 12px rgba(16, 15, 12, .08), 0 1px 3px rgba(16, 15, 12, .06);
+    --shadow-3: 0 18px 48px rgba(16, 15, 12, .16), 0 4px 12px rgba(16, 15, 12, .08);
+    --glow-accent: 0 0 0 1px var(--accent-ring), 0 6px 20px color-mix(in srgb, var(--accent) 22%, transparent);
+
+    --scrim: rgba(28, 27, 24, .42);
+}
+
+/* ---- dark: the same roles, stepped for the dark surface ----
+   Declared under both the OS media query and the explicit stamp so a manual
+   toggle wins either way. */
+@media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+        color-scheme: dark;
+
+        --surface-0: #131312;
+        --surface-1: #1a1a19;
+        --surface-2: #232322;
+        --surface-3: #2b2b29;
+        --surface-raised: #262625;
+        --hairline: #383835;
+        --hairline-strong: #4b4b46;
+
+        --text-primary: #ffffff;
+        --text-secondary: #c3c2b7;
+        --text-muted: #8a8a80;
+        --text-on-accent: #ffffff;
+
+        --series-1: #3987e5;
+        --series-2: #d95926;
+        --series-3: #199e70;
+        --series-4: #c98500;
+        --series-5: #d55181;
+
+        --seq-100: #0d366b;
+        --seq-250: #1c5cab;
+        --seq-400: #3987e5;
+        --seq-550: #86b6ef;
+        --seq-700: #cde2fb;
+        --seq-100-ink: #ffffff;
+        --seq-250-ink: #ffffff;
+        --seq-400-ink: #ffffff;
+        --seq-550-ink: #0b0b0b;
+        --seq-700-ink: #0b0b0b;
+
+        --div-pos: #3987e5;
+        --div-neg: #d03b3b;
+        --div-mid: #383835;
+
+        --accent: #3987e5;
+        --accent-hover: #5598e7;
+
+        --danger: #d03b3b;
+        --danger-hover: #e05252;
+
+        --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+        --shadow-2: 0 6px 18px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .3);
+        --shadow-3: 0 24px 60px rgba(0, 0, 0, .6), 0 6px 16px rgba(0, 0, 0, .4);
+
+        --scrim: rgba(0, 0, 0, .6);
+    }
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --surface-0: #131312;
+    --surface-1: #1a1a19;
+    --surface-2: #232322;
+    --surface-3: #2b2b29;
+    --surface-raised: #262625;
+    --hairline: #383835;
+    --hairline-strong: #4b4b46;
+
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8a8a80;
+    --text-on-accent: #ffffff;
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+
+    --seq-100: #0d366b;
+    --seq-250: #1c5cab;
+    --seq-400: #3987e5;
+    --seq-550: #86b6ef;
+    --seq-700: #cde2fb;
+    --seq-100-ink: #ffffff;
+    --seq-250-ink: #ffffff;
+    --seq-400-ink: #ffffff;
+    --seq-550-ink: #0b0b0b;
+    --seq-700-ink: #0b0b0b;
+
+    --div-pos: #3987e5;
+    --div-neg: #d03b3b;
+    --div-mid: #383835;
+
+    --accent: #3987e5;
+    --accent-hover: #5598e7;
+
+    --danger: #d03b3b;
+    --danger-hover: #e05252;
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-2: 0 6px 18px rgba(0, 0, 0, .45), 0 1px 3px rgba(0, 0, 0, .3);
+    --shadow-3: 0 24px 60px rgba(0, 0, 0, .6), 0 6px 16px rgba(0, 0, 0, .4);
+
+    --scrim: rgba(0, 0, 0, .6);
+}
+
+/* ---- non-colour tokens (mode-independent) ---- */
+:root {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+    /* 4px base scale */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 20px;
+    --sp-6: 24px;
+    --sp-8: 32px;
+    --sp-10: 40px;
+
+    --r-sm: 6px;
+    --r-md: 10px;
+    --r-lg: 14px;
+    --r-xl: 20px;
+    --r-pill: 999px;
+
+    /* motion — one easing, three durations */
+    --ease: cubic-bezier(.2, .7, .3, 1);
+    --ease-out: cubic-bezier(.16, 1, .3, 1);
+    --t-fast: 120ms;
+    --t-mid: 200ms;
+    --t-slow: 380ms;
+
+    --focus-ring: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--accent);
+    --header-h: 60px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --t-fast: 1ms;
+        --t-mid: 1ms;
+        --t-slow: 1ms;
+    }
+    *, *::before, *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+        scroll-behavior: auto !important;
+    }
+}
