@@ -178,7 +178,21 @@ window.addEventListener('load', function () {
       window.simPushEvent({ ts: now - (F.events.length - i) * 47000, agent: e[0], type: e[1], content: e[2] });
     });
     // the whole thing rides in the hash (file:// + ?query is awkward), e.g. #sim?tv
-    const raw = location.hash.replace('#', '');
+    // replay ~20 minutes of economics so the trends chart has a series
+    const base = Date.now() - 20 * 60000;
+    for (let i = 0; i < 40; i++) {
+      const t = base + i * 30000;
+      const st = JSON.parse(JSON.stringify(F.states));
+      st.Wilbur.economics.per_hour = { calls: 320 + Math.round(90 * Math.sin(i / 5)), cost: 0.62 + 0.18 * Math.sin(i / 4) };
+      st.Greta.economics.per_hour = { calls: 210 + Math.round(70 * Math.cos(i / 6)), cost: 0.41 + 0.12 * Math.cos(i / 3) };
+      window.__fakeNow = t;
+      const realNow = Date.now;
+      Date.now = () => t;
+      window.trendsResetThrottle && window.trendsResetThrottle();
+      window.trendsSample && window.trendsSample(st);
+      Date.now = realNow;
+    }
+        const raw = location.hash.replace('#', '');
     const h = raw.split('?')[0];
     if (h === 'sim' || h === 'reports') showView(h);
     if (raw.indexOf('tv') >= 0) simSetTv(true);

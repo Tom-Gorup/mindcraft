@@ -23,7 +23,7 @@ export const CACHE_BOUNDARY = '\n<<<CACHE_BOUNDARY>>>\n';
 // API parsed it, and it silently declined to write anything.
 //
 // Re-probe when adding a model. Do not infer this from documentation.
-const CHARS_PER_TOKEN = 3.6;   // measured; see tools/count_prompt_tokens.mjs
+const CHARS_PER_TOKEN = 3.5;   // measured; see tools/count_prompt_tokens.mjs
 
 // Longest-prefix wins, so a dated id resolves to its family.
 export const CACHE_FLOORS = [

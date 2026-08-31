@@ -51,7 +51,7 @@
     // ---- data ----
     window.trendsSample = function (states) {
         const now = Date.now();
-        if (now - last_sample < SAMPLE_MS) return;
+        if (now - last_sample < SAMPLE_MS) return;   // trendsResetThrottle() bypasses this for the demo
         last_sample = now;
         const values = {};
         let any = false;
@@ -98,9 +98,13 @@
         const y = (v) => M.top + ih - (Math.max(0, v) / yMax) * ih;
 
         // gridlines + y ticks, hairline and recessive
+        // Ticks land on clean numbers (0 / 0.25 / 0.50), never yMax/3 which
+        // produced $0.333 and $0.667.
+        const step = niceMax(yMax / 3);
+        const ticks = [];
+        for (let v = 0; v <= yMax + 1e-9; v += step) ticks.push(v);
         let grid = '';
-        for (let i = 0; i <= 3; i++) {
-            const v = (yMax / 3) * i;
+        for (const v of ticks) {
             const yy = y(v);
             grid += `<line class="tr-grid" x1="${M.left}" y1="${yy}" x2="${M.left + iw}" y2="${yy}"/>`
                 + `<text class="tr-tick" x="${M.left - 8}" y="${yy + 4}" text-anchor="end">${esc(fmt(v))}</text>`;
@@ -108,6 +112,7 @@
 
         // one 2px path per agent, plus an end dot with a surface ring
         let lines = '', dots = '', endLabels = '';
+        const endPoints = [];
         for (const a of agents) {
             const role = slotFor(a);
             let d = '', open = false, lastPt = null;
@@ -123,11 +128,21 @@
             lines += `<path class="tr-line" d="${d.trim()}" style="stroke:var(--${role})"/>`;
             if (lastPt) {
                 dots += `<circle class="tr-dot" cx="${lastPt.px.toFixed(1)}" cy="${lastPt.py.toFixed(1)}" r="4" style="fill:var(--${role})"/>`;
-                // direct label at the line end — sparing, and only where it fits
-                if (agents.length <= 4)
-                    endLabels += `<text class="tr-endlabel" x="${(lastPt.px + 10).toFixed(1)}" y="${(lastPt.py + 4).toFixed(1)}">${esc(a)}</text>`;
+                // Direct label at the line end, but only when it will not collide.
+                // Nudging colliding labels apart detaches them from their lines
+                // and reads as noise; the legend already carries identity.
+                if (agents.length <= 4) endPoints.push({ a, ...lastPt });
             }
         }
+
+        // 14px apart or the label is dropped in favour of the legend
+        endPoints.sort((p, q) => p.py - q.py);
+        endPoints.forEach((p, i) => {
+            const clash = (i > 0 && Math.abs(p.py - endPoints[i - 1].py) < 14)
+                || (i < endPoints.length - 1 && Math.abs(endPoints[i + 1].py - p.py) < 14);
+            if (!clash)
+                endLabels += `<text class="tr-endlabel" x="${(p.px + 10).toFixed(1)}" y="${(p.py + 4).toFixed(1)}">${esc(p.a)}</text>`;
+        });
 
         // crosshair snapped to the hovered sample
         let cross = '';
@@ -243,4 +258,6 @@
     window.addEventListener('resize', () => render());
 
     window.trendsRender = render;
+    // used only by tools/ui_demo.py to replay a series without the 5s throttle
+    window.trendsResetThrottle = () => { last_sample = 0; };
 })();

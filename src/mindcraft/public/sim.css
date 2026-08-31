@@ -528,3 +528,25 @@
     .sim-event .what { grid-column: 1 / -1; }
     .sim-drive, .sim-rel { grid-template-columns: 78px 1fr 44px; }
 }
+
+/* ---- trends: two stacked charts sharing one time axis ---- */
+/* Never one chart with two y-axes: calls/hr and cost/hr have unrelated scales,
+   and a dual axis lets you imply any correlation you like by choosing them. */
+.tr-grid-wrap { display: grid; gap: var(--sp-4); }
+.tr-chart { min-width: 0; }
+.tr-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+.tr-head .tr-unit { font-weight: 400; font-size: 11px; color: var(--text-muted); }
+.tr-chart svg { display: block; overflow: visible; }
+.tr-grid { stroke: var(--hairline); stroke-width: 1; }        /* hairline, solid, recessive */
+.tr-axis { stroke: var(--hairline-strong); stroke-width: 1; }
+.tr-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.tr-dot { stroke: var(--surface-1); stroke-width: 2; }        /* surface ring, so ends stay legible */
+.tr-cross { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.tr-tick { fill: var(--text-muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.tr-endlabel { fill: var(--text-secondary); font-size: 11px; }
+.sim-root.tv .tr-tick { font-size: 13px; }
+.sim-root.tv .tr-endlabel { font-size: 14px; }

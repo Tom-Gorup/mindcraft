@@ -14,7 +14,7 @@
 import { readFileSync, existsSync } from 'fs';
 import settings from '../settings.js';
 import { getCommandDocs } from '../src/agent/commands/index.js';
-import { CACHE_BOUNDARY, minCacheableChars } from '../src/models/cache.js';
+import { CACHE_BOUNDARY, minCacheableChars, cacheFloorTokens } from '../src/models/cache.js';
 
 function key() {
     if (existsSync('./keys.json')) {
@@ -43,9 +43,14 @@ const profile = JSON.parse(readFileSync(profilePath, 'utf8'));
 const defaults = JSON.parse(readFileSync('./profiles/defaults/_default.json', 'utf8'));
 const template = profile.conversing || defaults.conversing;
 
+const defaultsForExamples = JSON.parse(readFileSync('./profiles/defaults/_default.json', 'utf8'));
+const examples = (profile.conversation_examples || defaultsForExamples.conversation_examples || [])
+    .map(convo => convo.map(m => `${m.role}: ${m.content}`).join('\n')).join('\n\n');
+
 const filled = template
     .replaceAll('$NAME', profile.name || 'Agent')
-    .replaceAll('$COMMAND_DOCS', getCommandDocs({ blocked_actions: blockedActions() }));
+    .replaceAll('$COMMAND_DOCS', getCommandDocs({ blocked_actions: blockedActions() }))
+    .replaceAll('$STATIC_EXAMPLES', examples);
 
 const i = filled.indexOf(CACHE_BOUNDARY);
 if (i === -1) {
@@ -77,9 +82,9 @@ const baseline = await count('');
 const withPrefix = await count(prefix);
 const prefixTokens = withPrefix - baseline;
 
-const floorTokens = 2048;                       // Haiku; 1024 on Sonnet/Opus
+const floorTokens = cacheFloorTokens(model);   // measured per model family
 const ratio = prefix.length / prefixTokens;
-const estimate = Math.round(prefix.length / (minCacheableChars(model) / floorTokens));
+const estimate = Math.round(prefix.length / (minCacheableChars(model) / floorTokens));  // our chars/token
 
 console.log(`\nmodel                 ${model}`);
 console.log(`profile               ${profilePath}`);

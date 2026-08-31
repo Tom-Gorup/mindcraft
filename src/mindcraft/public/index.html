@@ -70,6 +70,7 @@
                 <span class="spacer"></span>
                 <button id="tvModeBtn" class="neutral-btn" onclick="simSetTv(!simIsTv())" data-tip="Scale everything up for a wall display&#10;shortcut: t">TV mode</button>
             </div>
+            <div id="simTrends"></div>
             <div id="simBody"></div>
         </section>
 
@@ -159,6 +160,7 @@
 
     <script src="ui.js"></script>
     <script src="sim.js"></script>
+    <script src="trends.js"></script>
     <script src="profile_editor.js"></script>
     <script src="reports.js"></script>
     <script>
@@ -411,7 +413,7 @@
                 tabEl.setAttribute('aria-selected', String(active));
             }
             window.moveTabInk?.();
-            if (which === 'sim' && window.simRender) window.simRender();
+            if (which === 'sim' && window.simRender) { window.simRender(); window.trendsRender?.(); }
             if (which === 'reports' && window.reportsOnShow) window.reportsOnShow();
         }
         window.showView = showView;
@@ -444,6 +446,7 @@
         socket.on('state-update', (states) => {
             window.lastStates = states;
             try { if (window.simRender) window.simRender(); } catch (e) { console.error('sim render failed:', e); }
+            try { if (window.trendsSample) window.trendsSample(states); } catch (e) { console.error('trends failed:', e); }
             Object.keys(states || {}).forEach(name => {
                 const st = states[name];
                 if (!st || st.error) return;
