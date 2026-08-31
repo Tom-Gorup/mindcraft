@@ -1,7 +1,10 @@
 const settings = {
     "minecraft_version": "auto", // or specific version like "1.21.6"
-    "host": "127.0.0.1", // or "localhost", "your.ip.address.here"
-    "port": 55916, // set to -1 to automatically scan for open ports
+    // FIRST RUN: point these at the Proxmox Minecraft server. `host` is relative
+    // to whatever runs the bots, so 127.0.0.1 is only right when they run on the
+    // same box as the server.
+    "host": "127.0.0.1", // <-- set to the Proxmox IP, e.g. "192.168.1.50"
+    "port": 55916, // <-- set to the server's port (vanilla/Paper default is 25565)
     "auth": "offline", // or "microsoft"
     "world": "", // optional label for this Minecraft world; groups agents in the dashboard and reports. Defaults to host:port
 
@@ -11,7 +14,8 @@ const settings = {
     
     "base_profile": "assistant", // survival, assistant, creative, or god_mode
     "profiles": [
-        "./andy.json",
+        "./profiles/first_run.json", // one Haiku agent, no feature flags — start here
+        // "./andy.json",
         // "./profiles/gpt.json",
         // "./profiles/claude.json",
         // "./profiles/gemini.json",

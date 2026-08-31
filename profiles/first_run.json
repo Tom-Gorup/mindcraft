@@ -1,0 +1,26 @@
+{
+    "name": "Wilbur",
+
+    "//": "First live-run profile. Deliberately minimal: one agent, Haiku on every tier, no feature flags. The goal of the first run is only to prove the pipe works end to end — connect, perceive, be talked to, run a command. Layer cognition/memory/skills on afterwards, one at a time, so a failure has one obvious cause.",
+
+    "model": "claude-haiku-4-5-20251001",
+
+    "//tiers": "With no 'tiers' block every tier resolves to the model above. Once cognition is on and you want better goals without paying for them on every step, add: \"tiers\": { \"plan\": \"claude-sonnet-5\", \"reflect\": \"claude-sonnet-5\" }",
+
+    "//embedding": "Only used by memory and the skill library, both off for the first run. When you turn use_memory on, set this to \"ollama\" to keep embeddings free and local (needs `ollama pull embeddinggemma`), otherwise it falls back to word-overlap scoring with a warning.",
+
+    "conversation_examples": [
+        [
+            {"role": "user", "content": "tom: hey, can you come here?"},
+            {"role": "assistant", "content": "On my way! !goToPlayer(\"tom\", 3)"}
+        ],
+        [
+            {"role": "user", "content": "tom: what are you holding?"},
+            {"role": "assistant", "content": "Let me check. !inventory"}
+        ],
+        [
+            {"role": "user", "content": "tom: stop"},
+            {"role": "assistant", "content": "Sure, I'll stop. !stop"}
+        ]
+    ]
+}
