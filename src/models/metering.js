@@ -16,12 +16,22 @@ export const CACHE_READ_MULTIPLIER = 0.1;
 
 // USD per 1M tokens {in, out}. Local models are free; unknown models are
 // counted as free but still tallied so they show up in the distribution.
+//
+// These are list prices for cost ESTIMATES, not billing. Check them against
+// the provider's current pricing page before trusting a number to the cent.
+// Superseded ids are kept so an older profile still prices correctly —
+// priceFor() matches on a known prefix, so dated ids resolve too.
 export const PRICES = {
     'gpt-5.4-mini': { in: 0.25, out: 2.0 },
     'gpt-5.4': { in: 1.25, out: 10.0 },
-    'claude-sonnet-4-6': { in: 3.0, out: 15.0 },
+    // current
     'claude-haiku-4-5': { in: 1.0, out: 5.0 },
+    'claude-sonnet-5': { in: 3.0, out: 15.0 },
+    'claude-opus-5': { in: 15.0, out: 75.0 },
+    // superseded, kept so existing profiles still price
+    'claude-sonnet-4-6': { in: 3.0, out: 15.0 },
     'claude-opus-4-1': { in: 15.0, out: 75.0 },
+    'claude-3-5-sonnet': { in: 3.0, out: 15.0 },
     'text-embedding-3-small': { in: 0.02, out: 0 },
     'text-embedding-3-large': { in: 0.13, out: 0 },
 };

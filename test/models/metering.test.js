@@ -111,3 +111,17 @@ test('with no usage reported the estimate path is unchanged', () => {
     assert.equal(m.totals.in_tokens, 1000);
     assert.equal(m.summary(0).cache_hit_rate, 0);
 });
+
+test('the models actually shipped in profiles all have a price', () => {
+    // A model with no entry silently costs $0.00, which reads as "free" on the
+    // dashboard rather than as "unpriced" — so every id we ship must resolve.
+    for (const id of ['claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-5']) {
+        const p = priceFor(id);
+        assert.ok(p.in > 0 && p.out > 0, `${id} has no price entry`);
+    }
+});
+
+test('superseded ids still price, so an old profile is not silently free', () => {
+    assert.equal(priceFor('claude-sonnet-4-6').in, 3.0);
+    assert.equal(priceFor('claude-3-5-sonnet-latest').in, 3.0);
+});
