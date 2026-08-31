@@ -67,13 +67,19 @@ export class CognitionLoop {
     }
 
     // Lets handleMessage's checkInterrupt() break a step's command loop when
-    // the goal it serves has been abandoned/preempted mid-loop. The flag is
-    // only ever raised while an act loop is actually in flight (see the
-    // setters), and is cleared on the first tick after that loop drains —
-    // it must never linger, or it silently kills unrelated system prompts
-    // (death messages, mode reprompts, user !goal self-prompting).
-    shouldInterrupt(is_self_prompt) {
-        return !!settings.use_cognition && is_self_prompt && this.step_interrupt;
+    // the goal it serves has been abandoned/preempted mid-loop. Only consulted
+    // for the act tier's OWN handleMessage call (opts.cognition_step) — a
+    // global flag would also kill unrelated system prompts that happen to be
+    // running concurrently: death messages, mode reprompts, user !goal loops.
+    shouldInterrupt() {
+        return !!settings.use_cognition && this.step_interrupt;
+    }
+
+    // Break the in-flight step loop (reflex seized the slot, user spoke, etc).
+    // No-op when no loop is running, so the flag can never latch.
+    interruptAct() {
+        if (this.act_busy)
+            this.step_interrupt = true;
     }
 
     // Compatibility entry point (pre-Phase-4 callers and tests): runs both
@@ -255,8 +261,9 @@ export class CognitionLoop {
             + `Work ONLY on the CURRENT step. Your next response MUST contain a command with !commandName syntax. `
             + `When the current step is complete, use !stepDone. If the step is impossible or keeps failing, use !stepFailed("short reason"). Respond:`;
         // bounded so control returns to the loop: timeouts, replans, and
-        // preemption stay live even for chatty query-heavy plans
-        const used_command = await this.agent.handleMessage('system', msg, this.max_step_responses);
+        // preemption stay live even for chatty query-heavy plans.
+        // cognition_step scopes step_interrupt to THIS loop.
+        const used_command = await this.agent.handleMessage('system', msg, this.max_step_responses, { cognition_step: true });
         if (this.active !== active) return; // goal ended during the loop
         if (!used_command) {
             this.no_command_count++;
@@ -305,6 +312,7 @@ export class CognitionLoop {
         const active = this.active;
         this.active = null;
         this.pending_replan = null;
+        this.step_interrupt = this.act_busy; // stop the loop from free-associating past the goal
         this.blackboard.interruption = null;
         this.drive_state.satisfy(active.drive, 0.8);
         // sensor drives can't hold a satisfy() (the sensor overwrites it next
@@ -578,6 +586,10 @@ export class CognitionLoop {
 
     load() {
         try {
+            // don't resurrect goals for a disabled subsystem — a stale active
+            // goal would make isPursuing()/getStatus() misreport and let
+            // !stepDone mutate cross-session state during benchmarks
+            if (!settings.use_cognition) return;
             if (!existsSync(this.state_fp)) return;
             const data = JSON.parse(readFileSync(this.state_fp, 'utf8'));
             this.drive_state.loadJson(data.drives);

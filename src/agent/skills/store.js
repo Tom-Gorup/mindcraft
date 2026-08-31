@@ -18,7 +18,18 @@ export class SkillStore {
             return { skills: [], embeddings: {} };
         try {
             const data = JSON.parse(readFileSync(this.fp, 'utf8'));
-            const skills = (Array.isArray(data.skills) ? data.skills.filter(s => s && s.name && s.code) : [])
+            // skills.json holds executable code that runs without lint on the
+            // direct-execution path — validate shape strictly on the way in
+            const valid = (s) => s
+                && typeof s.name === 'string' && /^[a-z0-9_]{1,45}$/.test(s.name)
+                && typeof s.code === 'string' && s.code.length > 0 && s.code.length <= 20000
+                && (s.task === undefined || (typeof s.task === 'string' && s.task.length <= 500))
+                && (s.docstring === undefined || (typeof s.docstring === 'string' && s.docstring.length <= 500));
+            const raw = Array.isArray(data.skills) ? data.skills : [];
+            const dropped = raw.length - raw.filter(valid).length;
+            if (dropped > 0)
+                console.warn(`SkillStore: dropped ${dropped} malformed skill entr${dropped === 1 ? 'y' : 'ies'}.`);
+            const skills = raw.filter(valid)
                 .map(s => ({
                     ...s,
                     // hand-edited/legacy entries must not NaN-poison the stats

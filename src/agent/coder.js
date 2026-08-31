@@ -1,12 +1,13 @@
 import { writeFile, readFile, mkdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { makeCompartment, lockdown } from './library/lockdown.js';
+import { makeCompartment, lockdown, isLockedDown } from './library/lockdown.js';
 import * as skills from './library/skills.js';
 import * as world from './library/world.js';
 import { Vec3 } from 'vec3';
 import {ESLint} from "eslint";
 import settings from './settings.js';
+import { Prompter } from '../models/prompter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,6 +33,10 @@ export class Coder {
     async generateCode(agent_history) {
         this.agent.bot.modes.pause('unstuck');
         lockdown();
+        // fail closed: without hardened intrinsics the compartment is not an
+        // isolation boundary at all
+        if (!isLockedDown())
+            return 'Code execution is disabled: the JS sandbox (SES lockdown) failed to initialize on this host.';
         // this message history is transient and only maintained in this function
         let messages = agent_history.getHistory();
 
@@ -60,6 +65,12 @@ export class Coder {
             let res = await this.agent.prompter.promptCoding(messages_copy);
             if (this.agent.bot.interrupt_code)
                 return null;
+            if (res === Prompter.NO_CODE_RESPONSE) {
+                // a concurrent codegen owns the model; do NOT compile/execute
+                // the stub or it gets persisted as a no-op "learned skill"
+                console.warn('Coder: another code generation is in progress, aborting this one.');
+                return 'Another code generation is already running. Try again when it finishes.';
+            }
             let contains_code = res.indexOf('```') !== -1;
             if (!contains_code) {
                 if (res.indexOf('!newAction') !== -1) {

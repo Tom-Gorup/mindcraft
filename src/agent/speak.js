@@ -1,4 +1,4 @@
-import { exec, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -83,22 +83,29 @@ async function processQueue() {
     }
 
     if (model === 'system') {
-        // system TTS
-        const cmd = isWin
-            ? `powershell -NoProfile -Command "Add-Type -AssemblyName System.Speech; \
-            $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Rate=2; \
-            $s.Speak('${txt.replace(/'/g,"''")}'); $s.Dispose()"`
-            : isMac
-            ? `say "${txt.replace(/"/g,'\\"')}"`
-            : `espeak "${txt.replace(/"/g,'\\"')}"`;
-
-        exec(cmd, err => {
-            if (err) console.error('TTS error', err);
+        // system TTS.
+        // SECURITY: never build a shell string from `txt` — it is LLM-generated
+        // text that a player can influence, and a shell string would allow
+        // $(...) / backtick command substitution. Always pass argv arrays.
+        let proc;
+        if (isWin) {
+            // the text is passed as an argument, never interpolated into the script
+            const script = 'Add-Type -AssemblyName System.Speech;'
+                + ' $s=New-Object System.Speech.Synthesis.SpeechSynthesizer;'
+                + ' $s.Rate=2; $s.Speak($args[0]); $s.Dispose()';
+            proc = spawn('powershell', ['-NoProfile', '-Command', script, '-args', txt], { stdio: 'ignore', windowsHide: true });
+        }
+        else {
+            proc = spawn(isMac ? 'say' : 'espeak', [txt], { stdio: 'ignore' });
+        }
+        const finish = () => {
             isSpeaking = false;
             processQueue();
-        });
+        };
+        proc.on('error', err => { console.error('TTS error', err); finish(); });
+        proc.on('exit', finish);
 
-    } 
+    }
     else {
         // audioData was already fetched in speak()
         const audioData = item.audioData;

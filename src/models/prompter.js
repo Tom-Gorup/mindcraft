@@ -50,6 +50,10 @@ export class Prompter {
 
         this.convo_examples = null;
         this.coding_examples = null;
+        // small LRU for query embeddings: consecutive prompts in one loop
+        // embed near-identical text, and this path runs thousands of times/hour
+        this._embed_cache = new Map();
+        this._embed_cache_max = 256;
         
         let name = this.profile.name;
         this.cooldown = this.profile.cooldown ? this.profile.cooldown : 0;
@@ -108,6 +112,26 @@ export class Prompter {
 
     getName() {
         return this.profile.name;
+    }
+
+    // Cached embedding for repeated/near-identical retrieval queries.
+    // Rejections are not cached — a transient outage must not poison the map.
+    async embedCached(text) {
+        if (!this.embedding_model) return null;
+        const key = String(text);
+        if (this._embed_cache.has(key)) {
+            const vec = this._embed_cache.get(key);
+            this._embed_cache.delete(key);
+            this._embed_cache.set(key, vec); // refresh LRU position
+            return vec;
+        }
+        const vec = await this.embedding_model.embed(key);
+        if (Array.isArray(vec)) {
+            this._embed_cache.set(key, vec);
+            if (this._embed_cache.size > this._embed_cache_max)
+                this._embed_cache.delete(this._embed_cache.keys().next().value);
+        }
+        return vec;
     }
 
     getInitModes() {
@@ -249,10 +273,13 @@ export class Prompter {
             }
 
             let prompt = this.profile.conversing;
-            prompt = await this.replaceStrings(prompt, messages, this.convo_examples);
             let generation;
 
             try {
+                // inside the try: a throw here (e.g. a blocked query command
+                // used by $STATS) would otherwise escape promptConvo entirely
+                // and silently kill the calling loop
+                prompt = await this.replaceStrings(prompt, messages, this.convo_examples);
                 generation = await this.chat_model.sendRequest(messages, prompt);
                 if (typeof generation !== 'string') {
                     console.error('Error: Generated response is not a string', generation);
@@ -288,20 +315,29 @@ export class Prompter {
         return '';
     }
 
+    // Sentinel returned when a second coding request overlaps the first.
+    // Callers MUST NOT treat it as a successful program (see coder.js).
+    static NO_CODE_RESPONSE = '```//no response```';
+
     async promptCoding(messages) {
         if (this.awaiting_coding) {
             console.warn('Already awaiting coding response, returning no response.');
-            return '```//no response```';
+            return Prompter.NO_CODE_RESPONSE;
         }
         this.awaiting_coding = true;
-        await this.checkCooldown();
-        let prompt = this.profile.coding;
-        prompt = await this.replaceStrings(prompt, messages, this.coding_examples);
+        try {
+            await this.checkCooldown();
+            let prompt = this.profile.coding;
+            prompt = await this.replaceStrings(prompt, messages, this.coding_examples);
 
-        let resp = await this.code_model.sendRequest(messages, prompt);
-        this.awaiting_coding = false;
-        await this._saveLog(prompt, messages, resp, 'coding');
-        return resp;
+            let resp = await this.code_model.sendRequest(messages, prompt);
+            await this._saveLog(prompt, messages, resp, 'coding');
+            return resp;
+        } finally {
+            // without finally, one provider error latches the flag and every
+            // future !newAction silently returns the stub forever
+            this.awaiting_coding = false;
+        }
     }
 
     async promptMemSaving(to_summarize) {

@@ -48,6 +48,12 @@ export function getFullState(agent) {
     } else if (convoManager.inConversation()) {
         const who = convoManager.activeConversation?.name;
         activity = { current: who ? `Chatting with ${who}` : 'Chatting', kind: 'chatting' };
+    } else if (!agent.self_prompter.isStopped()) {
+        // a user-assigned !goal outranks cognition (see cognition._canAct), so
+        // report the self-prompter first or the dashboard names the wrong driver
+        activity = agent.self_prompter.isActive()
+            ? { current: 'Thinking', kind: 'thinking' }
+            : { current: 'Chatting', kind: 'chatting' };
     } else if (agent.cognition?.isPursuing()) {
         activity = { current: `Goal: ${agent.cognition.active.goal}`.substring(0, 80), kind: 'thinking' };
     } else if (agent.self_prompter.isStopped()) {

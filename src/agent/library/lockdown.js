@@ -6,6 +6,15 @@ import 'ses';
 // For configuration, see https://github.com/endojs/endo/blob/master/packages/ses/docs/lockdown.md
 
 let lockeddown = false;
+let lockdown_failed = false;
+
+// True only if SES hardening actually succeeded. Generated code must not run
+// otherwise: with untamed intrinsics, any endowed host function reaches the
+// primal realm via `fn.constructor('return globalThis')()`.
+export function isLockedDown() {
+  return lockeddown && !lockdown_failed;
+}
+
 export function lockdown() {
   if (lockeddown) return;
   lockeddown = true;
@@ -26,7 +35,8 @@ export function lockdown() {
     overrideTaming: 'severe',
     });
   } catch (err) {
-    console.error('SES lockdown failed — generated code runs with reduced isolation:', err.message || err);
+    lockdown_failed = true;
+    console.error('SES lockdown FAILED — code generation will be refused:', err.message || err);
   }
 }
 

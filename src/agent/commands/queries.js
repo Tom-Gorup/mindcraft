@@ -106,7 +106,10 @@ export const queryList = [
         perform: function (agent) {
             let bot = agent.bot;
             let res = 'NEARBY_BLOCKS';
-            let blocks = world.getNearestBlocks(bot);
+            // the result is collapsed to a set of ~30 distinct names, so the
+            // default count of 10000 scans thousands of blocks per prompt for
+            // nothing — this runs on every $STATS substitution
+            let blocks = world.getNearestBlocks(bot, null, 8, 200);
             let block_details = new Set();
             
             for (let block of blocks) {

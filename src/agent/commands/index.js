@@ -15,7 +15,9 @@ export function getCommand(name) {
 }
 
 export function blacklistCommands(commands) {
-    const unblockable = ['!stop', '!stats', '!inventory', '!goal'];
+    // !entities and !nearbyBlocks are executed directly by prompter's $STATS
+    // substitution — blocking them makes every prompt throw
+    const unblockable = ['!stop', '!stats', '!inventory', '!goal', '!entities', '!nearbyBlocks'];
     for (let command_name of commands) {
         if (unblockable.includes(command_name)){
             console.warn(`Command ${command_name} is unblockable`);

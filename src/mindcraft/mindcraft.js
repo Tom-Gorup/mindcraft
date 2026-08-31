@@ -1,6 +1,7 @@
 import { createMindServer, registerAgent, numStateListeners } from './mindserver.js';
 import { AgentProcess } from '../process/agent_process.js';
 import { getServer } from './mcserver.js';
+import { validateNameFormat } from '../agent/connection_handler.js';
 import open from 'open';
 
 let mindserver;
@@ -35,6 +36,14 @@ export async function createAgent(settings) {
             error: 'Agent name is required in profile'
         };
     }
+    // the name becomes a filesystem path in the child process; validate here
+    // so an unvalidated name never reaches a mkdir/write
+    const nameCheck = validateNameFormat(String(settings.profile.name).trim());
+    if (!nameCheck.success) {
+        console.error(nameCheck.msg);
+        return { success: false, error: nameCheck.msg };
+    }
+    settings.profile.name = String(settings.profile.name).trim();
     settings = JSON.parse(JSON.stringify(settings));
     let agent_name = settings.profile.name;
     const agentIndex = agent_count++;

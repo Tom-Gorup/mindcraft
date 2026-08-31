@@ -275,11 +275,22 @@ export class LearnedSkills {
                     () => reject(new Error('docstring generation timed out')), this.docstring_timeout_ms)),
             ]);
             if (typeof res === 'string' && res.trim().length > 0)
-                return res.trim().split('\n')[0].substring(0, 200);
+                return this._sanitizeDocstring(res);
         } catch (err) {
             console.warn('Skills: docstring generation failed, using task text.', err.message || err);
         }
-        return task.substring(0, 200);
+        // fallback must be sanitized too: the task text is player-controllable
+        // (!newAction is executable from chat) and docstrings are rendered into
+        // the coding model's $CODE_DOCS, where newlines forge doc entries
+        return this._sanitizeDocstring(task);
+    }
+
+    _sanitizeDocstring(text) {
+        return String(text)
+            .replace(/[\r\n]+/g, ' ')
+            .replace(/[$#*`]/g, '')
+            .trim()
+            .substring(0, 200);
     }
 
     async _embedSkill(skill) {
@@ -308,10 +319,9 @@ export class LearnedSkills {
     }
 
     async _tryEmbed(text) {
-        const model = this.agent.prompter.embedding_model;
-        if (!model) return null;
+        if (!this.agent.prompter.embedding_model) return null;
         try {
-            const vec = await Promise.resolve().then(() => model.embed(text));
+            const vec = await Promise.resolve().then(() => this.agent.prompter.embedCached(text));
             return Array.isArray(vec) ? vec : null;
         } catch {
             return null;
@@ -338,6 +348,16 @@ export class LearnedSkills {
         let i = 2;
         while (this.getSkill(`${base}_${i}`)) i++;
         return `${base}_${i}`;
+    }
+
+    // Write pending stat updates immediately (shutdown path).
+    flush() {
+        if (!this.store) return;
+        if (this._persist_timer) {
+            clearTimeout(this._persist_timer);
+            this._persist_timer = null;
+        }
+        this._persistNow();
     }
 
     _persistNow() {

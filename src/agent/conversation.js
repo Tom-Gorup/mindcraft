@@ -227,12 +227,15 @@ class ConversationManager {
     endConversation(sender) {
         if (this.convos[sender]) {
             this.convos[sender].end();
-            if (this.activeConversation.name === sender) {
+            if (this.activeConversation?.name === sender) {
                 this._stopMonitor();
                 this.activeConversation = null;
-                if (agent.self_prompter.isPaused() && !this.inConversation()) {
-                    _resumeSelfPrompter();
-                }
+            }
+            // resume whenever nothing is active — previously this only ran for
+            // the active conversation, so ending a non-active one could leave
+            // the self-prompter paused forever (which also blocks cognition)
+            if (agent.self_prompter.isPaused() && !this.inConversation()) {
+                _resumeSelfPrompter();
             }
         }
     }
@@ -271,8 +274,12 @@ const talkOverActions = ['stay', 'followPlayer', 'mode:']; // all mode actions
 const fastDelay = 200;
 const longDelay = 5000;
 async function _scheduleProcessInMessage(sender, received, convo) {
-    if (convo.inMessageTimer)
+    if (convo.inMessageTimer) {
         clearTimeout(convo.inMessageTimer);
+        // must be nulled: responseScheduledFor() reads this field, and a stale
+        // truthy handle permanently interrupts every response to this peer
+        convo.inMessageTimer = null;
+    }
     let otherAgentBusy = containsCommand(received.message);
 
     const scheduleResponse = (delay) => convo.inMessageTimer = setTimeout(() => _processInMessageQueue(sender), delay);

@@ -17,11 +17,14 @@ function stubEmbed(text) {
 }
 
 function makeAgent(dir, opts = {}) {
+    const embedding_model = opts.no_embed ? null : { embed: stubEmbed };
     return {
         name: 'testbot',
         prompter: {
             profile: { skills: { dir, ...opts } },
-            embedding_model: opts.no_embed ? null : { embed: stubEmbed },
+            embedding_model,
+            // mirrors Prompter.embedCached (uncached is fine for tests)
+            embedCached: (text) => embedding_model ? embedding_model.embed(text) : Promise.resolve(null),
             promptSkillDocstring: () => Promise.resolve('Mines 10 iron ore and smelts it into ingots'),
         },
         memory: null,

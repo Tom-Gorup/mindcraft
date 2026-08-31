@@ -35,21 +35,23 @@ export class Agent {
         // startup failure, not a throw deep in the network stack mid-session.
         lockdown();
 
-        // Initialize components
-        this.actions = new ActionManager(this);
-        this.prompter = new Prompter(this, settings.profile);
-        this.name = (this.prompter.getName() || '').trim();
+        // Validate the name BEFORE anything derives a filesystem path from it
+        // (the Prompter constructor writes ./bots/<name>/last_profile.json) —
+        // an unvalidated name is a path-traversal write primitive.
+        this.name = (settings.profile?.name || '').trim();
         console.log(`Initializing agent ${this.name}...`);
-        
-        // Validate Name Format
-        // connection_handler now ensures the message has [LoginGuard] prefix
         const nameCheck = validateNameFormat(this.name);
         if (!nameCheck.success) {
             log(this.name, nameCheck.msg);
             process.exit(1);
             return;
         }
-        
+        settings.profile.name = this.name; // normalized: paths and identity agree
+
+        // Initialize components
+        this.actions = new ActionManager(this);
+        this.prompter = new Prompter(this, settings.profile);
+
         this.history = new History(this);
         this.coder = new Coder(this);
         this.npc = new NPCContoller(this);
@@ -76,8 +78,10 @@ export class Agent {
         }
         this.task = new Task(this, settings.task, taskStart);
         this.blocked_actions = settings.blocked_actions.concat(this.task.blocked_actions || []);
-        if (!settings.use_cognition) {
-            // step commands only exist for the autonomous cognition loop
+        // step commands exist only for the autonomous cognition loop; during a
+        // benchmark task cognition is disabled (see cognition._canAct), so they
+        // must not be offered there either
+        if (!settings.use_cognition || settings.task) {
             this.blocked_actions = this.blocked_actions.concat(['!stepDone', '!stepFailed']);
         }
         blacklistCommands(this.blocked_actions);
@@ -115,10 +119,18 @@ export class Agent {
             serverProxy.login();
             
             // Set skin for profile, requires Fabric Tailor. (https://modrinth.com/mod/fabrictailor)
-            if (this.prompter.profile.skin)
-                this.bot.chat(`/skin set URL ${this.prompter.profile.skin.model} ${this.prompter.profile.skin.path}`);
-            else
+            // bot.chat splits on newlines and sends each line as its own packet,
+            // so unvalidated skin fields would be a command-injection vector.
+            const skin = this.prompter.profile.skin;
+            const skin_model = /^(classic|slim)$/.test(skin?.model || '') ? skin.model : null;
+            const skin_path = /^https?:\/\/[\w.~:/?#[\]@!$&'()*+,;=%-]+$/.test(skin?.path || '') ? skin.path : null;
+            if (skin_model && skin_path)
+                this.bot.chat(`/skin set URL ${skin_model} ${skin_path}`);
+            else {
+                if (skin)
+                    console.warn('Ignoring invalid profile skin (model must be classic|slim, path must be a plain http(s) URL).');
                 this.bot.chat(`/skin clear`);
+            }
         });
 		const spawnTimeoutDuration = settings.spawn_timeout;
         const spawnTimeout = setTimeout(() => {
@@ -272,7 +284,7 @@ export class Agent {
         convoManager.endAllConversations();
     }
 
-    async handleMessage(source, message, max_responses=null) {
+    async handleMessage(source, message, max_responses=null, opts={}) {
         await this.checkTaskDone();
         if (!source || !message) {
             console.warn('Received empty message from', source);
@@ -320,7 +332,10 @@ export class Agent {
         message = await handleEnglishTranslation(message);
         console.log('received message from', source, ':', message);
 
-        const checkInterrupt = () => this.self_prompter.shouldInterrupt(self_prompt) || this.cognition.shouldInterrupt(self_prompt) || this.shut_up || convoManager.responseScheduledFor(source);
+        // step_interrupt only applies to the cognition act loop that raised it
+        const checkInterrupt = () => this.self_prompter.shouldInterrupt(self_prompt)
+            || (opts.cognition_step && this.cognition.shouldInterrupt())
+            || this.shut_up || convoManager.responseScheduledFor(source);
         
         let behavior_log = this.bot.modes.flushBehaviorLog().trim();
         if (behavior_log.length > 0) {
@@ -339,8 +354,12 @@ export class Agent {
             this.memory.record('chat_received', `${source} said: ${message}`, { source });
         this.history.save();
 
-        if (!self_prompt && (this.self_prompter.isActive() || this.cognition.isPursuing())) // message is from user during autonomous behavior
-            max_responses = 1; // force only respond to this message, then let self-prompting/cognition take over
+        if (!self_prompt && (this.self_prompter.isActive() || this.cognition.isPursuing())) {
+            max_responses = 1; // respond to this message, then let self-prompting/cognition take over
+            // stop the autonomous loop from interleaving its turns with this
+            // exchange — two loops sharing history corrupts both transcripts
+            this.cognition.interruptAct();
+        }
         for (let i=0; i<max_responses; i++) {
             if (checkInterrupt()) break;
             let history = this.history.getHistory();
@@ -411,10 +430,16 @@ export class Agent {
 
     async routeResponse(to_player, message) {
         if (this.shut_up) return;
-        // command echoes ('*Tom used stats*') and error notices are not
-        // deliberate speech — keep them out of the trace taxonomy
-        if (!message.startsWith('*') && !message.startsWith("Command '"))
-            this.memory.record('speech', message, { to: to_player });
+        // Only the prose part is deliberate speech: command echoes
+        // ('*Tom used stats*'), error notices, and the trailing !command(...)
+        // syntax are recorded as their own event types, so keep the taxonomy
+        // clean for the research trace (and out of the speech embeddings).
+        if (!message.startsWith('*') && !message.startsWith("Command '")) {
+            const cmd = containsCommand(message);
+            const prose = (cmd ? message.substring(0, message.indexOf(cmd)) : message).trim();
+            if (prose.length > 0)
+                this.memory.record('speech', prose, { to: to_player });
+        }
         let self_prompt = to_player === 'system' || to_player === this.name;
         if (self_prompt && this.last_sender) {
             // this is for when the agent is prompted by system while still in conversation
@@ -593,15 +618,18 @@ export class Agent {
     
 
     cleanKill(msg='Killing agent process...', code=1) {
-        this.history.add('system', msg);
         this.bot.chat(code > 1 ? 'Restarting.': 'Exiting.');
-        this.history.save();
-        try {
-            this.cognition?.persist();
-        } catch (err) {
-            console.error('Failed to persist cognition state on shutdown:', err);
-        }
-        process.exit(code);
+        // flush every store before exiting: history.add is queued (a pending
+        // eviction would otherwise be lost), skills throttle their writes,
+        // and cognition persists on a 60s timer
+        this.history.add('system', msg)
+            .catch(() => {})
+            .finally(() => {
+                try { this.history.save(); } catch (err) { console.error('Failed to save history on shutdown:', err); }
+                try { this.cognition?.persist(); } catch (err) { console.error('Failed to persist cognition state on shutdown:', err); }
+                try { this.learned_skills?.flush(); } catch (err) { console.error('Failed to flush skills on shutdown:', err); }
+                process.exit(code);
+            });
     }
     async checkTaskDone() {
         if (this.task.data) {

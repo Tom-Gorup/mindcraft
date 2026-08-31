@@ -1,4 +1,4 @@
-import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, appendFileSync, mkdirSync, existsSync } from 'fs';
 import { NPCData } from './npc/data.js';
 import settings from './settings.js';
 
@@ -21,9 +21,15 @@ export class History {
         this.max_messages = settings.max_messages;
 
         // Number of messages to remove from current history and save into memory
-        this.summary_chunk_size = 5; 
+        this.summary_chunk_size = 5;
         // chunking reduces expensive calls to promptMemSaving and appendFullHistory
         // and improves the quality of the memory summary
+
+        // add() is called unawaited from many concurrent loops; without a
+        // queue two callers can cross the eviction threshold together, both
+        // summarize from the same stale memory, and one chunk's summary is
+        // silently lost (it survives only in the raw history file)
+        this._add_queue = Promise.resolve();
     }
 
     getHistory() { // expects an Examples object
@@ -42,23 +48,30 @@ export class History {
         console.log("Memory updated to: ", this.memory);
     }
 
-    async appendFullHistory(to_store) {
+    // Append-only JSONL: the previous format re-read, parsed, and rewrote the
+    // entire array on every eviction, which is O(n^2) writes over a long run
+    // (gigabytes/day, and a parse that eventually blocks the update pump).
+    appendFullHistory(to_store) {
         if (this.full_history_fp === undefined) {
             const string_timestamp = new Date().toLocaleString().replace(/[/:]/g, '-').replace(/ /g, '').replace(/,/g, '_');
-            this.full_history_fp = `./bots/${this.name}/histories/${string_timestamp}.json`;
-            writeFileSync(this.full_history_fp, '[]', 'utf8');
+            this.full_history_fp = `./bots/${this.name}/histories/${string_timestamp}.jsonl`;
         }
         try {
-            const data = readFileSync(this.full_history_fp, 'utf8');
-            let full_history = JSON.parse(data);
-            full_history.push(...to_store);
-            writeFileSync(this.full_history_fp, JSON.stringify(full_history, null, 4), 'utf8');
+            appendFileSync(this.full_history_fp, to_store.map(t => JSON.stringify(t)).join('\n') + '\n', 'utf8');
         } catch (err) {
-            console.error(`Error reading ${this.name}'s full history file: ${err.message}`);
+            console.error(`Error writing ${this.name}'s full history file: ${err.message}`);
         }
     }
 
-    async add(name, content) {
+    add(name, content) {
+        // serialized: see _add_queue. Returns a promise callers may await.
+        this._add_queue = this._add_queue
+            .then(() => this._add(name, content))
+            .catch(err => console.error('History add failed:', err));
+        return this._add_queue;
+    }
+
+    async _add(name, content) {
         let role = 'assistant';
         if (name === 'system') {
             role = 'system';
@@ -74,8 +87,12 @@ export class History {
             while (this.turns.length > 0 && this.turns[0].role === 'assistant')
                 chunk.push(this.turns.shift()); // remove until turns starts with system/user message
 
-            await this.summarizeMemories(chunk);
-            await this.appendFullHistory(chunk);
+            this.appendFullHistory(chunk);
+            // when the memory subsystem is on it already holds a richer,
+            // retrievable record of these turns — paying for an LLM call to
+            // maintain a lossy 500-char duplicate is pure overhead
+            if (!settings.use_memory)
+                await this.summarizeMemories(chunk);
         }
     }
 

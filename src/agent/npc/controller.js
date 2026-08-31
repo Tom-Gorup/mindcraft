@@ -67,6 +67,11 @@ export class NPCContoller {
 
         this.agent.bot.on('idle', async () => {
             if (this.data.goals.length === 0 && !this.data.curr_goal) return;
+            // the NPC controller is a third deliberative driver; stand down
+            // when another one owns the agent, or they fight over the action slot
+            if (this.agent.cognition?.isPursuing()) return;
+            if (!this.agent.self_prompter.isStopped()) return;
+            if (this.agent.shut_up) return;
             // Wait a while for inputs before acting independently
             await new Promise((resolve) => setTimeout(resolve, 5000));
             if (!this.agent.isIdle()) return;

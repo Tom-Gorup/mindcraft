@@ -56,6 +56,10 @@ export class AgentMemory {
         // leak every evicted event's vector forever on a 24/7 run
         const live_ids = new Set(this.events.map(e => e.id));
         this.embeddings = new Map([...embeddings].filter(([id]) => live_ids.has(id)));
+        // drop the dead vectors from disk too, or the file grows forever and
+        // every boot pays to parse vectors that are immediately discarded
+        if (embeddings.size > this.embeddings.size)
+            this.store.compactEmbeddings(this.embeddings);
         this.belief_count = this.events.filter(e => e.type === 'belief').length;
         // resume the reflection accumulator: importance since the last belief
         let acc = 0;
@@ -144,7 +148,7 @@ export class AgentMemory {
     async _relevanceFn(query) {
         if (this._embeddingAvailable()) {
             try {
-                const qvec = await this._embed(query.substring(0, 500));
+                const qvec = await this._embed(query.substring(0, 500), true);
                 if (Array.isArray(qvec)) {
                     return (event) => {
                         const evec = this.embeddings.get(event.id);
@@ -167,9 +171,13 @@ export class AgentMemory {
 
     // Wraps model.embed so synchronous throws (e.g. a provider with no embed
     // method) become rejections, and null results become errors.
-    _embed(text) {
+    // Query embeddings go through the prompter's LRU; event embeddings are
+    // one-shot and bypass it (caching them would just evict useful entries).
+    _embed(text, cached = false) {
         return Promise.resolve()
-            .then(() => this.agent.prompter.embedding_model.embed(text))
+            .then(() => cached
+                ? this.agent.prompter.embedCached(text)
+                : this.agent.prompter.embedding_model.embed(text))
             .then(vec => {
                 if (!Array.isArray(vec))
                     throw new Error('embedding model returned no vector');

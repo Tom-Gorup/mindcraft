@@ -124,8 +124,13 @@ const modes_list = [
                 this.stuck_time = 0;
                 execute(this, agent, async () => {
                     const crashTimeout = setTimeout(() => { agent.cleanKill("Got stuck and couldn't get unstuck") }, 10000);
-                    await skills.moveAway(bot, 5);
-                    clearTimeout(crashTimeout);
+                    try {
+                        await skills.moveAway(bot, 5);
+                    } finally {
+                        // without this, a throw in moveAway leaves the timer
+                        // armed and kills the process 10s later
+                        clearTimeout(crashTimeout);
+                    }
                     say(agent, 'I\'m free.');
                 });
             }
@@ -306,6 +311,9 @@ const modes_list = [
 async function execute(mode, agent, func, timeout=-1) {
     if (agent.self_prompter.isActive())
         agent.self_prompter.stopLoop();
+    // break the cognition act loop too, not just the self-prompt loop —
+    // otherwise its next command re-stops the reflex we just started
+    agent.cognition?.interruptAct();
     let interrupted_action = agent.actions.currentActionLabel;
     if (interrupted_action)
         agent.cognition?.onModeInterruption(mode.name, interrupted_action);

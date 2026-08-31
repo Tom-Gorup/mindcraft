@@ -2,7 +2,7 @@
 // agent (bots/<name>/memory/): events.jsonl is the source of truth,
 // embeddings.jsonl is a cache keyed by event id (safe to delete — vectors
 // are recomputed lazily for events that need them).
-import { appendFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
+import { appendFileSync, readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'fs';
 import path from 'path';
 
 export class MemoryStore {
@@ -19,6 +19,23 @@ export class MemoryStore {
 
     appendEmbedding(id, vector) {
         appendFileSync(this.embeddings_fp, JSON.stringify({ id, v: vector }) + '\n');
+    }
+
+    // Rewrite embeddings.jsonl keeping only vectors still referenced in RAM.
+    // Without this the file grows without bound (each line is a full vector,
+    // ~15KB at 768 dims) and is read+parsed in full on every restart — on a
+    // 24/7 run that becomes a multi-GB heap spike at boot.
+    compactEmbeddings(live_embeddings) {
+        try {
+            const tmp = this.embeddings_fp + '.tmp';
+            let out = '';
+            for (const [id, v] of live_embeddings)
+                out += JSON.stringify({ id, v }) + '\n';
+            writeFileSync(tmp, out);
+            renameSync(tmp, this.embeddings_fp);
+        } catch (err) {
+            console.error('MemoryStore: embedding compaction failed:', err.message || err);
+        }
     }
 
     // Returns {events: [], embeddings: Map<id, vector>}. Corrupt lines are

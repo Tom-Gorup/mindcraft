@@ -17,13 +17,16 @@ function stubEmbed(text) {
 }
 
 function makeAgent(dir, opts = {}) {
+    const embedding_model = { embed: opts.broken_embed
+        ? () => Promise.reject(new Error('no embeddings here'))
+        : stubEmbed };
     return {
         name: 'testbot',
         prompter: {
             profile: { memory: { dir, exclude_recent_ms: 0, ...opts } },
-            embedding_model: { embed: opts.broken_embed
-                ? () => Promise.reject(new Error('no embeddings here'))
-                : stubEmbed },
+            embedding_model,
+            // mirrors Prompter.embedCached — retrieval goes through it
+            embedCached: (text) => embedding_model.embed(text),
             promptReflection: () => Promise.resolve(
                 '```json\n{"beliefs": ["Caves near spawn are rich in iron", "Zombies are dangerous at night"]}\n```'),
         },

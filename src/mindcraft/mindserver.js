@@ -48,7 +48,18 @@ export function logoutAgent(agentName) {
 export function createMindServer(host_public = false, port = 8080) {
     const app = express();
     server = http.createServer(app);
-    io = new Server(server);
+    // The control surface is unauthenticated by design (localhost-only), so
+    // reject cross-origin sockets: without this any web page the user visits
+    // can drive agent creation, settings, and chat injection via DNS rebinding
+    // or a plain cross-origin socket.io handshake.
+    io = new Server(server, { cors: { origin: false } });
+    io.use((socket, next) => {
+        const origin = socket.handshake.headers.origin;
+        if (!origin || origin === `http://localhost:${port}` || origin === `http://127.0.0.1:${port}`)
+            return next();
+        console.warn(`Rejected socket connection from disallowed origin: ${origin}`);
+        next(new Error('origin not allowed'));
+    });
 
     // Serve static files
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -206,17 +217,22 @@ export function createMindServer(host_public = false, port = 8080) {
             agent_connections[agentName].socket.emit('chat-message', curAgentName, json);
         });
 
-        socket.on('set-agent-settings', (agentName, settings) => {
+        socket.on('set-agent-settings', (agentName, new_settings) => {
             const agent = agent_connections[agentName];
-            if (agent) {
-                agent.setSettings(settings);
-                agent.socket.emit('restart-agent');
+            if (!agent) return;
+            // apply the same key filtering create-agent uses — otherwise this
+            // handler is a strictly more powerful way to set arbitrary settings
+            for (let key in new_settings) {
+                if (!(key in settings_spec))
+                    delete new_settings[key];
             }
+            agent.setSettings(new_settings);
+            agent.socket?.emit('restart-agent');
         });
 
         socket.on('restart-agent', (agentName) => {
             console.log(`Restarting agent: ${agentName}`);
-            agent_connections[agentName].socket.emit('restart-agent');
+            agent_connections[agentName]?.socket?.emit('restart-agent');
         });
 
         socket.on('stop-agent', (agentName) => {
@@ -313,12 +329,14 @@ function addListener(listener_socket) {
             const states = {};
             for (let agentName in agent_connections) {
                 let agent = agent_connections[agentName];
-                if (agent.in_game) {
+                if (agent.in_game && agent.socket) {
                     try {
-                        const state = await new Promise((resolve) => {
-                            agent.socket.emit('get-full-state', (s) => resolve(s));
-                        });
-                        states[agentName] = state;
+                        // a wedged agent must not stall the poll forever
+                        const state = await Promise.race([
+                            new Promise((resolve) => agent.socket.emit('get-full-state', (s) => resolve(s))),
+                            new Promise((resolve) => setTimeout(() => resolve(null), 800)),
+                        ]);
+                        if (state) states[agentName] = state;
                     } catch (e) {
                         states[agentName] = { error: String(e) };
                     }

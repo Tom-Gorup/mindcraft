@@ -39,3 +39,16 @@ test('empty store loads cleanly', () => {
     assert.deepEqual(events, []);
     assert.equal(embeddings.size, 0);
 });
+
+test('compaction drops dead vectors from disk', () => {
+    const dir = freshDir();
+    const store = new MemoryStore(dir);
+    store.appendEmbedding('old', [1, 2]);
+    store.appendEmbedding('live', [3, 4]);
+    store.compactEmbeddings(new Map([['live', [3, 4]]]));
+
+    const { embeddings } = new MemoryStore(dir).loadAll();
+    assert.equal(embeddings.size, 1);
+    assert.deepEqual(embeddings.get('live'), [3, 4]);
+    assert.equal(embeddings.has('old'), false);
+});

@@ -895,50 +895,63 @@
         closeAgentSettingsBtn.addEventListener('click', closeAgentSettings);
 
 
+        // SECURITY: bot chat text and agent names reach innerHTML below. Chat
+        // is attacker-influenced (a player can get the model to echo markup),
+        // so everything interpolated into HTML must be escaped here.
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
         function renderAgentCard(agent) {
             const cfg = agentSettings[agent.name] || {};
             const showViewer = agent.in_game && cfg.render_bot_view === true;
             const viewerPort = agent.viewerPort;
-            const viewerHTML = showViewer ? `<div class="agent-view-container"><iframe class="agent-viewer" id="viewer-${agent.name}" src="http://localhost:${viewerPort}"></iframe></div>` : '';
-            const lastMessage = agentLastMessage[agent.name] || '';
+            const viewerHTML = showViewer ? `<div class="agent-view-container"><iframe class="agent-viewer" id="viewer-${escapeHtml(agent.name)}" src="http://localhost:${encodeURIComponent(viewerPort)}"></iframe></div>` : '';
+            const lastMessage = escapeHtml(agentLastMessage[agent.name] || '');
+            const agentName = escapeHtml(agent.name);
             const invOpen = inventoryOpen[agent.name] === true;
             const invStyle = invOpen ? '' : 'display:none;';
             return `
-                    <div class="agent" id="agent-${agent.name}">
+                    <div class="agent" id="agent-${agentName}">
                         <div class="agent-grid">
                             <div class="cell title" style="grid-column: 1 / -1; display:flex; align-items:center; justify-content:space-between;">
-                                <span><span class="status-icon ${agent.in_game ? 'online' : 'offline'}">●</span>${agent.name}${agent.socket_connected && !agent.in_game ? '<span style="margin-left:6px;color:#f0ad4e;">joining...</span>' : ''}
-                                    <button class="gear-btn" title="Settings" onclick="openAgentSettings('${agent.name}')">⚙</button>
-                                    <button class="gear-btn" title="Inventory" onclick="toggleDetails('${agent.name}')">Inventory</button>
+                                <span><span class="status-icon ${agent.in_game ? 'online' : 'offline'}">●</span>${agentName}${agent.socket_connected && !agent.in_game ? '<span style="margin-left:6px;color:#f0ad4e;">joining...</span>' : ''}
+                                    <button class="gear-btn" title="Settings" onclick="openAgentSettings('${agentName}')">⚙</button>
+                                    <button class="gear-btn" title="Inventory" onclick="toggleDetails('${agentName}')">Inventory</button>
                                 </span>
                             </div>
                             ${showViewer ? `<div class="cell" style="grid-row: span 3; padding:0;">${viewerHTML}</div>` : ''}
-                            <div class="cell" id="action-${agent.name}">action: -</div>
-                            <div class="cell" id="mode-${agent.name}">gamemode: -</div>
-                            <div class="cell" id="health-${agent.name}">health: -</div>
-                            <div class="cell" id="hunger-${agent.name}">hunger: -</div>
-                            <div class="cell" id="pos-${agent.name}">pos: -</div>
-                            <div class="cell" id="biome-${agent.name}">biome: -</div>
-                            <div class="cell" id="items-${agent.name}">inventory slots: -</div>
-                            <div class="cell" id="equipped-${agent.name}">equipped: -</div>
-                            <div class="agent-inventory" id="inventorySection-${agent.name}" style="${invStyle} grid-column: 1 / -1;">
+                            <div class="cell" id="action-${agentName}">action: -</div>
+                            <div class="cell" id="mode-${agentName}">gamemode: -</div>
+                            <div class="cell" id="health-${agentName}">health: -</div>
+                            <div class="cell" id="hunger-${agentName}">hunger: -</div>
+                            <div class="cell" id="pos-${agentName}">pos: -</div>
+                            <div class="cell" id="biome-${agentName}">biome: -</div>
+                            <div class="cell" id="items-${agentName}">inventory slots: -</div>
+                            <div class="cell" id="equipped-${agentName}">equipped: -</div>
+                            <div class="agent-inventory" id="inventorySection-${agentName}" style="${invStyle} grid-column: 1 / -1;">
                                 <h3>Inventory</h3>
-                                <div class="cell" id="armor-${agent.name}" style="margin-bottom: 8px;">armor: -</div>
-                                <div class="inventory-grid" id="inventory-${agent.name}"></div>
+                                <div class="cell" id="armor-${agentName}" style="margin-bottom: 8px;">armor: -</div>
+                                <div class="inventory-grid" id="inventory-${agentName}"></div>
                             </div>
-                            <div id="lastMessage-${agent.name}" class="last-message" style="grid-column: 1 / -1;"><strong>Last Message:</strong> ${lastMessage}</div>
+                            <div id="lastMessage-${agentName}" class="last-message" style="grid-column: 1 / -1;"><strong>Last Message:</strong> ${lastMessage}</div>
                         </div>
                         <div class="controls-row">
-                            <button class="start-btn" id="sendBtn-${agent.name}" disabled onclick="sendMessage('${agent.name}', document.getElementById('messageInput-${agent.name}').value)">Send</button>
-                            <input class="msg-input" type="text" id="messageInput-${agent.name}" placeholder="Enter message..." 
-                                oninput="onMsgInputChange('${agent.name}')"
-                                onkeydown="if(event.key === 'Enter') document.getElementById('sendBtn-${agent.name}').click()"
+                            <button class="start-btn" id="sendBtn-${agentName}" disabled onclick="sendMessage('${agentName}', document.getElementById('messageInput-${agentName}').value)">Send</button>
+                            <input class="msg-input" type="text" id="messageInput-${agentName}" placeholder="Enter message..." 
+                                oninput="onMsgInputChange('${agentName}')"
+                                onkeydown="if(event.key === 'Enter') document.getElementById('sendBtn-${agentName}').click()"
                                 ${!agent.in_game ? 'disabled' : ''}>
-                            <button class="neutral-btn" onclick="sendMessage('${agent.name}', '!stop')" ${!agent.in_game ? 'disabled' : ''}>Stop Action</button>
-                            <button class="neutral-btn" onclick="sendMessage('${agent.name}', '!stay(-1)')" ${!agent.in_game ? 'disabled' : ''}>Stay Still</button>
-                            <button class="neutral-btn" onclick="restartAgent('${agent.name}')" ${!agent.in_game ? 'disabled' : ''}>Restart</button>
-                            <button class="neutral-btn" ${agent.in_game ? `onclick=\"disconnectAgent('${agent.name}')\"` : (agent.socket_connected ? 'disabled' : `onclick=\"startAgent('${agent.name}')\"`)}>${agent.in_game ? 'Disconnect' : (agent.socket_connected ? 'Connecting...' : 'Connect')}</button>
-                            <button class="stop-btn" onclick="destroyAgent('${agent.name}')">Remove</button>
+                            <button class="neutral-btn" onclick="sendMessage('${agentName}', '!stop')" ${!agent.in_game ? 'disabled' : ''}>Stop Action</button>
+                            <button class="neutral-btn" onclick="sendMessage('${agentName}', '!stay(-1)')" ${!agent.in_game ? 'disabled' : ''}>Stay Still</button>
+                            <button class="neutral-btn" onclick="restartAgent('${agentName}')" ${!agent.in_game ? 'disabled' : ''}>Restart</button>
+                            <button class="neutral-btn" ${agent.in_game ? `onclick=\"disconnectAgent('${agentName}')\"` : (agent.socket_connected ? 'disabled' : `onclick=\"startAgent('${agentName}')\"`)}>${agent.in_game ? 'Disconnect' : (agent.socket_connected ? 'Connecting...' : 'Connect')}</button>
+                            <button class="stop-btn" onclick="destroyAgent('${agentName}')">Remove</button>
                         </div>
                     </div>`;
         }
@@ -970,7 +983,7 @@
 
             // Update only changed agents
             changedAgents.forEach(agent => {
-                const el = document.getElementById(`agent-${agent.name}`);
+                const el = document.getElementById(`agent-${agentName}`);
                 if (el) {
                     // Update existing card
                     el.outerHTML = renderAgentCard(agent);
@@ -1028,7 +1041,7 @@
 
             // Update only changed agents
             changedAgents.forEach(agent => {
-                const el = document.getElementById(`agent-${agent.name}`);
+                const el = document.getElementById(`agent-${agentName}`);
                 if (el) {
                     // Update existing card
                     el.outerHTML = renderAgentCard(agent);
