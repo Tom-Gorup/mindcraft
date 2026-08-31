@@ -66,11 +66,11 @@ planning context instead of the lossy 500-char history summary.
 - Tests: retrieval scoring (recency decay, importance weighting, relevance ranking with stubbed embeddings), reflection triggering.
 
 **Done when:**
-- [ ] Events (chat, damage, deaths, goal outcomes, discoveries) are recorded with importance and persist across restarts
-- [ ] An agent recalls a relevant event from a *prior session* and it demonstrably alters a plan (e.g. returns to a known resource location)
-- [ ] Reflection produces belief entries from accumulated events
-- [ ] Runs fully local with Ollama embeddings
-- [ ] Unit tests pass for retrieval scoring
+- [x] Events (chat, damage, deaths, goal outcomes, discoveries) are recorded with importance and persist across restarts (unit-verified round trip)
+- [ ] An agent recalls a relevant event from a *prior session* and it demonstrably alters a plan (e.g. returns to a known resource location) *(implemented — retrieval feeds goal gen, planning, and conversing; needs live verification)*
+- [x] Reflection produces belief entries from accumulated events (unit-tested with stubbed LLM)
+- [ ] Runs fully local with Ollama embeddings *(Ollama embed endpoint fixed to /api/embed; needs check against homelab Ollama)*
+- [x] Unit tests pass for retrieval scoring (18 new tests; 44 total)
 
 **Verify:** unit tests; two-session experiment (session A: discover something; restart; session B: task whose plan should use it), memory files inspected in `bots/<name>/memory/`.
 

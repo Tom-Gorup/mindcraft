@@ -92,3 +92,57 @@ Tom added two directives, folded into the plan:
   rule added: new behaviors emit typed events (Phase 2 stream), never just log lines —
   Phase 2's event taxonomy is now explicitly required to cover trace.py's categories
   plus goal/plan lifecycle. report.html (7.6MB generated artifact) was not committed.
+
+---
+
+## Session 3 — 2026-08-30 — Phase 2: Memory (implementation)
+
+**What changed** (branch `feat/phase-2-memory`, commit `9eada60`):
+- New `src/agent/memory/`: typed append-only event stream (taxonomy = trace.py
+  categories + goal lifecycle + beliefs), JSONL persistence per agent
+  (`bots/<name>/memory/`), retrieval scored recency × relevance(×2) × importance
+  (embeddings when available, word-overlap degradation otherwise — mirrors the
+  examples/skill-library contract), background reflection that synthesizes belief
+  events once accumulated importance crosses a threshold (default 8).
+- Event emission wired: chat received/speech/commands/damage/death/session/narration
+  in agent.js; goal started/completed/abandoned/replanned in cognition; successful
+  generated code in coder.js.
+- `memory_bank` places are now durable (previously lost every restart): mirrored as
+  `place` events and hydrated on boot. `!rememberHere`/`!savedPlaces` unchanged.
+- Retrieval feeds prompts: `$MEMORY` (conversing) is augmented with memories relevant
+  to the last message; `$RELEVANT_MEMORIES` added to goal_generation/task_planning;
+  new `reflecting` template + `promptReflection`.
+- **Fixed Ollama embed**: was POSTing `input` to legacy `/api/embeddings` (which
+  expects `prompt`) and reading a field that endpoint doesn't return — embeddings
+  silently never worked locally. Now uses `/api/embed`. This also benefits the
+  skill library and examples retrieval.
+- `use_memory` flag (settings.js + settings_spec.json, default false), memory status
+  in full_state for the dashboard. Deps installed in this checkout
+  (`--ignore-scripts` + canvas rebuild; only `gl` unbuilt → vision camera can't
+  load on this Mac — homelab unaffected).
+
+**Verification:** 44/44 unit tests (18 new: scoring math, taxonomy, store round-trip
++ corruption tolerance, retrieval ranking incl. embedding-failure fallback, reflection
+trigger + accumulator resume, disabled no-op). Constructor smoke test with both flags
+on passes (record → retrieve → tick → command dispatch). Module import chain verified
+against real node_modules. No new lint errors vs baseline. **Live acceptance still
+pending** (needs LAN server + Ollama): prior-session recall altering a plan, and
+Ollama embedding end-to-end.
+
+**What's next:**
+- Live verify Phases 1+2 together on the homelab: run with `use_cognition` +
+  `use_memory` true, restart between sessions, confirm recall alters planning; check
+  `bots/<name>/memory/events.jsonl` contents and dashboard status.
+- Phase 3 (skill library) after go-ahead — coder.js already emits `code` events;
+  Phase 3 turns those into a retrievable, composable store.
+
+**Known issues:**
+- Retrieval weight for relevance is doubled after a test exposed high-importance
+  events (deaths) outranking directly relevant memories on unrelated queries.
+- Reflection uses the chat model (frontier routing comes in Phase 6); threshold 8
+  ≈ one reflection per ~16-20 meaningful events.
+- History summarization does not emit its own event (individual messages are already
+  events; a summary event would double-count) — deliberate deviation from the
+  original roadmap wording.
+- Memory tuning (`memory` profile block) awaits the Phase 7 profile editor for UI
+  parity, same as `drives`/`cognition`.
