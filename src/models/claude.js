@@ -123,13 +123,22 @@ export class Claude {
         Claude._warned_rejected = true;
         // The floor is a fixed provider limit; deriving it back through our own
         // chars-per-token estimate printed a moving, meaningless number.
+        // Do NOT assert a cause here. This warning previously claimed the prefix
+        // was under the model's floor, which was a guess and turned out to be
+        // false — the prefix measured 2,985 tokens against a 2,048 floor while
+        // this fired on every call. State the observation, list the candidates.
         const floor = /haiku/i.test(String(model_name)) ? 2048 : 1024;
         console.warn(
-            `\nPrompt caching: ${model_name} IGNORED the cache breakpoint. The whole prompt measured `
-            + `${input_tokens} tokens, and the cacheable prefix is below this model's ${floor}-token floor.\n`
-            + `  You are paying full input price on every call. Lengthen the stable text ahead of\n`
-            + `  <<<CACHE_BOUNDARY>>> in profiles/defaults/_default.json, or use a model with a lower floor.\n`
-            + `  Measure it exactly with: node tools/count_prompt_tokens.mjs\n`);
+            `\nPrompt caching: no cache activity reported by ${model_name}. A breakpoint was sent, but\n`
+            + `  the response reported neither a cache write nor a cache read. Prompt measured `
+            + `${input_tokens} tokens.\n`
+            + `  You are paying full input price on every call. Likely causes, in order:\n`
+            + `    1. The @anthropic-ai/sdk version is too old to support prompt caching\n`
+            + `       (cache_control and the cache_* usage fields arrived around 0.27).\n`
+            + `    2. The cacheable prefix is under this model's ${floor}-token floor.\n`
+            + `    3. Something in the prefix varies between calls, so nothing is ever reused.\n`
+            + `  Check 1 with: npm ls @anthropic-ai/sdk\n`
+            + `  Check 2 with: node tools/count_prompt_tokens.mjs\n`);
     }
 
     // A prefix under the model's floor is not an error — the request succeeds,

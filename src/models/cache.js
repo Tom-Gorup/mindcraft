@@ -23,7 +23,7 @@ export const CACHE_BOUNDARY = '\n<<<CACHE_BOUNDARY>>>\n';
 // Haiku run the true ratio was ~4.41 chars/token for this prompt, and a 4.2
 // estimate wrongly reported 2107 tokens for a prefix Anthropic counted as
 // ~2007 — 41 short of the floor, and the cache never engaged.
-const CHARS_PER_TOKEN = 5.3;
+const CHARS_PER_TOKEN = 3.6;
 export const MIN_CACHEABLE_TOKENS = 1024;
 export const MIN_CACHEABLE_TOKENS_SMALL = 2048;
 export const MIN_CACHEABLE_CHARS = MIN_CACHEABLE_TOKENS * CHARS_PER_TOKEN;
