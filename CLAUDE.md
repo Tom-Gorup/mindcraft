@@ -85,6 +85,7 @@ See `ROADMAP.md` for phases and `SESSIONS.md` for session handoffs.
   has a last-resort `unhandledRejection`/`uncaughtException` net, which is a backstop,
   not a licence to leak rejections; and every shutdown path funnels through
   `agent.cleanKill`, which is re-entrant and flushes behind a 5s guard timer.
+- **Never `pkill -f "Google Chrome"`** (or any broad process-name kill). It matches Tom's own browser, and killing Chrome mid-write leaves stale `SingletonLock`/`SingletonSocket`/`SingletonCookie` files in `~/Library/Application Support/Google/Chrome/` that stop it restarting. A leftover headless instance is just as bad: macOS routes a launch request to the running process, so the real browser appears not to open at all. `tools/ui_shots.sh` kills only its own child PIDs and matches helpers on its own `--user-data-dir`. Recovery if it happens: kill only the offending PIDs, delete the three `Singleton*` symlinks (they hold no data and are recreated on launch), then relaunch.
 - Known quirks (match, don't "fix" casually): `prompter.skill_libary` typo (used across files), `NPCContoller` class name, in-body docstrings with `**/` terminator, cwd-relative paths (always run from repo root).
 - Keys come from `keys.json` (gitignored) or env vars. **Never commit `keys.json`.**
 
