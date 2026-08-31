@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
 // Placeholders that specialized prompt methods substitute AFTER replaceStrings
 // (so untrusted/dynamic content is never re-expanded); replaceStrings must not
 // warn about them.
-const DEFERRED_PLACEHOLDERS = new Set(['$DRIVE', '$DRIVE_STATE', '$RELEVANT_MEMORIES', '$GOAL', '$FAILURE_CONTEXT', '$EVENTS']);
+const DEFERRED_PLACEHOLDERS = new Set(['$DRIVE', '$DRIVE_STATE', '$RELEVANT_MEMORIES', '$GOAL', '$FAILURE_CONTEXT', '$EVENTS', '$TASK', '$CODE', '$OUTPUT']);
 
 export class Prompter {
     constructor(agent, profile) {
@@ -356,6 +356,20 @@ export class Prompter {
         prompt = prompt.replaceAll('$FAILURE_CONTEXT', () => failure_context);
         let res = await this.chat_model.sendRequest([], prompt);
         await this._saveLog(prompt, [], res, 'taskPlanning');
+        return res;
+    }
+
+    async promptSkillDocstring(task, code, output) {
+        await this.checkCooldown();
+        let prompt = this.profile.skill_docstring;
+        prompt = await this.replaceStrings(prompt, null);
+        prompt = prompt.replaceAll('$TASK', () => task);
+        prompt = prompt.replaceAll('$CODE', () => code.substring(0, 2000));
+        prompt = prompt.replaceAll('$OUTPUT', () => (output || '').substring(0, 500));
+        let res = await this.chat_model.sendRequest([], prompt);
+        await this._saveLog(prompt, [], res, 'skillDocstring');
+        if (res?.includes('</think>'))
+            res = res.split('</think>').pop();
         return res;
     }
 

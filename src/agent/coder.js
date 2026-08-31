@@ -6,6 +6,7 @@ import * as skills from './library/skills.js';
 import * as world from './library/world.js';
 import { Vec3 } from 'vec3';
 import {ESLint} from "eslint";
+import settings from './settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,7 +33,19 @@ export class Coder {
         this.agent.bot.modes.pause('unstuck');
         lockdown();
         // this message history is transient and only maintained in this function
-        let messages = agent_history.getHistory(); 
+        let messages = agent_history.getHistory();
+
+        // skill library: a near-identical task solved before is re-executed
+        // from the store instead of regenerated (falls through on failure)
+        const task = this._getTaskContext(messages);
+        if (this._skillsEnabled() && task) {
+            const direct = await this._tryDirectSkill(task);
+            if (direct === null && this.agent.bot.interrupt_code)
+                return null;
+            if (direct)
+                return direct;
+        }
+
         messages.push({role: 'system', content: 'Code generation started. Write code in codeblock in your response:'});
 
         const MAX_ATTEMPTS = 5;
@@ -90,7 +103,10 @@ export class Coder {
 
                 const code_output = this.agent.actions.getBotOutputSummary();
                 const summary = "Agent wrote this code: \n```" + this._sanitizeCode(code) + "```\nCode Output:\n" + code_output;
-                this.agent.memory?.record('code', `Wrote working code for the current task. Output: ${code_output.substring(0, 300)}`);
+                if (this._skillsEnabled() && task)
+                    await this.agent.learned_skills.saveFromSuccess(task, this._sanitizeCode(code), code_output);
+                else
+                    this.agent.memory?.record('code', `Wrote working code for the current task. Output: ${code_output.substring(0, 300)}`);
                 return summary;
             } catch (e) {
                 if (this.agent.bot.interrupt_code)
@@ -113,7 +129,84 @@ export class Coder {
         }
         return `Code generation failed after ${MAX_ATTEMPTS} attempts.`;
     }
-    
+
+    _skillsEnabled() {
+        return settings.use_skill_library && this.agent.learned_skills?.isEnabled();
+    }
+
+    // The task text driving this code generation: the argument of the most
+    // recent !newAction(...) in the conversation.
+    _getTaskContext(messages) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.role === 'system' || !m.content) continue;
+            const match = m.content.match(/!newAction\(\s*["']([\s\S]*?)["']\s*\)/);
+            if (match && match[1].trim().length > 0)
+                return match[1].trim();
+        }
+        return null;
+    }
+
+    // Execute a stored skill for a near-identical task. Returns a summary
+    // string on success, false to fall through to codegen, null on interrupt.
+    async _tryDirectSkill(task) {
+        let skill = null;
+        try {
+            const match = await this.agent.learned_skills.findBestMatch(task);
+            if (!this.agent.learned_skills.shouldDirectExecute(match))
+                return false;
+            skill = match.skill;
+            console.log(`Coder: executing learned skill '${skill.name}' (similarity ${match.similarity.toFixed(2)}) instead of regenerating.`);
+            const fn = this._compileLearned(skill.code);
+            await fn(this.agent.bot);
+            if (this.agent.bot.interrupt_code)
+                return null;
+            this.agent.learned_skills.noteResult(skill.name, true);
+            const code_output = this.agent.actions.getBotOutputSummary();
+            return `Reused learned skill '${skill.name}' (${skill.docstring}).\nCode Output:\n${code_output}`;
+        } catch (err) {
+            if (this.agent.bot.interrupt_code)
+                return null;
+            if (skill)
+                this.agent.learned_skills.noteResult(skill.name, false);
+            console.warn('Coder: learned skill failed, falling back to code generation:', err.message || err);
+            return false;
+        }
+    }
+
+    // Compile stored skill code through the same sanitize/interrupt/template/
+    // compartment pipeline as fresh code — identical security envelope.
+    _compileLearned(code) {
+        code = this._sanitizeCode(code);
+        code = code.replaceAll('console.log(', 'log(bot,');
+        code = code.replaceAll(';\n', '; if(bot.interrupt_code) {log(bot, "Code interrupted.");return;}\n');
+        let src = '';
+        for (let line of code.split('\n')) {
+            src += `    ${line}\n`;
+        }
+        src = this.code_template.replace('/* CODE HERE */', src);
+        const compartment = makeCompartment(this._endowments());
+        return compartment.evaluate(src);
+    }
+
+    _endowments() {
+        const endowments = {
+            skills,
+            log: skills.log,
+            world,
+            Vec3,
+        };
+        if (this._skillsEnabled())
+            endowments.learned = this._learnedNamespace();
+        return endowments;
+    }
+
+    _learnedNamespace() {
+        if (!this._learned_ns)
+            this._learned_ns = this.agent.learned_skills.buildNamespace((code) => this._compileLearned(code));
+        return this._learned_ns;
+    }
+
     async  _lintCode(code) {
         let result = '#### CODE ERROR INFO ###\n';
         const codeNoComments = code.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
@@ -126,6 +219,16 @@ export class Coder {
         const allDocs = await this.agent.prompter.skill_libary.getAllSkillDocs();
         const knownSkills = new Set(allDocs.map(doc => doc.split('\n')[0]));
         const missingSkills = skills.filter(skill => !knownSkills.has(skill));
+        if (this._skillsEnabled()) {
+            // validate learned.<name> calls against the actual skill store
+            const learnedNames = this.agent.learned_skills.names();
+            const learnedRegex = /learned\.(\w+)\s*\(/g;
+            let lm;
+            while ((lm = learnedRegex.exec(codeNoComments)) !== null) {
+                if (!learnedNames.has(lm[1]))
+                    missingSkills.push(`learned.${lm[1]}`);
+            }
+        }
         if (missingSkills.length > 0) {
             result += 'These functions do not exist:\n';
             result += missingSkills.join('\n');
@@ -187,12 +290,7 @@ export class Coder {
         // This is where we determine the environment the agent's code should be exposed to.
         // It will only have access to these things, (in addition to basic javascript objects like Array, Object, etc.)
         // Note that the code may be able to modify the exposed objects.
-        const compartment = makeCompartment({
-            skills,
-            log: skills.log,
-            world,
-            Vec3,
-        });
+        const compartment = makeCompartment(this._endowments());
         const mainFn = compartment.evaluate(src);
         
         if (write_result) {

@@ -9,7 +9,11 @@ let lockeddown = false;
 export function lockdown() {
   if (lockeddown) return;
   lockeddown = true;
-  lockdown({
+  // NOTE: must call the SES global explicitly — a bare `lockdown(...)` here
+  // resolves to this wrapper function and silently recurses into the guard,
+  // meaning SES hardening never actually ran. (Fixed 2026-08-30.)
+  try {
+    globalThis.lockdown({
     // basic devex and quality of life improvements
     localeTaming: 'unsafe',
     consoleTaming: 'unsafe',
@@ -18,7 +22,12 @@ export function lockdown() {
     // allow eval outside of created compartments
     // (mineflayer dep "protodef" uses eval)
     evalTaming: 'unsafeEval',
-  });
+    // libraries loaded before lockdown may hold mutated intrinsics
+    overrideTaming: 'severe',
+    });
+  } catch (err) {
+    console.error('SES lockdown failed — generated code runs with reduced isolation:', err.message || err);
+  }
 }
 
 export const makeCompartment = (endowments = {}) => {

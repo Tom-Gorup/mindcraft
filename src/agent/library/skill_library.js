@@ -43,17 +43,20 @@ export class SkillLibrary {
         let skill_doc_similarities = [];
 
         if (select_num === -1) {
-            skill_doc_similarities = Object.keys(this.skill_docs_embeddings)
+            skill_doc_similarities = (this.skill_docs || [])
             .map(doc_key => ({
                 doc_key,
                 similarity_score: 0
             }));
         }
         else if (!this.embedding_model) {
-            skill_doc_similarities = Object.keys(this.skill_docs_embeddings)
+            // fall back to overlap against the doc TEXT (the embeddings map
+            // may be empty or hold vectors here — comparing against those
+            // previously crashed or returned nothing)
+            skill_doc_similarities = (this.skill_docs || [])
                 .map(doc_key => ({
                     doc_key,
-                    similarity_score: wordOverlapScore(message, this.skill_docs_embeddings[doc_key])
+                    similarity_score: wordOverlapScore(message, doc_key)
                 }))
                 .sort((a, b) => b.similarity_score - a.similarity_score);
         }
@@ -65,6 +68,16 @@ export class SkillLibrary {
                 similarity_score: cosineSimilarity(latest_message_embedding, this.skill_docs_embeddings[doc_key])
             }))
             .sort((a, b) => b.similarity_score - a.similarity_score);
+        }
+
+        // learned skills rank in the same pool as built-in library docs
+        const learned = this.agent?.learned_skills;
+        if (learned?.isEnabled() && learned.count() > 0) {
+            const ranked = await learned.getRankedDocs(message);
+            for (const { doc, score } of ranked)
+                skill_doc_similarities.push({ doc_key: doc, similarity_score: select_num === -1 ? 0 : score });
+            if (select_num !== -1)
+                skill_doc_similarities.sort((a, b) => b.similarity_score - a.similarity_score);
         }
 
         let length = skill_doc_similarities.length;

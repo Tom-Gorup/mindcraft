@@ -11,6 +11,7 @@ import { MemoryBank } from './memory_bank.js';
 import { SelfPrompter } from './self_prompter.js';
 import { CognitionLoop } from './cognition/index.js';
 import { AgentMemory } from './memory/index.js';
+import { LearnedSkills } from './skills/library.js';
 import convoManager from './conversation.js';
 import { handleTranslation, handleEnglishTranslation } from '../utils/translator.js';
 import { addBrowserViewer } from './vision/browser_viewer.js';
@@ -49,6 +50,7 @@ export class Agent {
         this.cognition = new CognitionLoop(this);
         this.memory = new AgentMemory(this);
         this.memory_bank.attachMemory(this.memory); // durable places + place events
+        this.learned_skills = new LearnedSkills(this);
         convoManager.initAgent(this);
         await this.prompter.initExamples();
 

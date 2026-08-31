@@ -46,6 +46,11 @@
         "description": "Whether to enable long-term event memory with retrieval and reflection. Experimental.",
         "default": false
     },
+    "use_skill_library": {
+        "type": "boolean",
+        "description": "Whether to learn, reuse, and compose successful newAction code. Requires allow_insecure_coding. Experimental.",
+        "default": false
+    },
     "init_message": {
         "type": "string",
         "description": "The initial message to send to the bot",
