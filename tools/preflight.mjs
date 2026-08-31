@@ -8,6 +8,16 @@
 import { readFileSync, existsSync } from 'fs';
 import net from 'net';
 import settings from '../settings.js';
+import { getCommandDocs } from '../src/agent/commands/index.js';
+
+// Reproduce exactly what the agent will send: settings.blocked_actions plus
+// whatever the feature flags block.
+function blockedActions() {
+    const blocked = [...(settings.blocked_actions || [])];
+    if (!settings.use_social) blocked.push('!offerTrade', '!acceptTrade', '!declineTrade');
+    if (!settings.use_cognition) blocked.push('!stepDone', '!stepFailed');
+    return blocked;
+}
 
 const results = [];
 const ok = (name, detail) => results.push({ level: 'ok', name, detail });
@@ -94,7 +104,7 @@ for (const m of models) {
 }
 
 // ---- prompt caching ----
-const { minCacheableChars, CACHE_BOUNDARY } = await import('../src/models/cache.js');
+const { minCacheableChars, cacheFloorTokens, CACHE_BOUNDARY } = await import('../src/models/cache.js');
 const anthropic = [...models].filter(m => String(m).startsWith('claude'));
 if (anthropic.length) {
     const dflt = JSON.parse(readFileSync('./profiles/defaults/_default.json', 'utf8'));
@@ -102,11 +112,28 @@ if (anthropic.length) {
         warn('Prompt caching', 'the conversing template has no cache boundary',
             'Every call pays full input price.');
     } else {
+        // Actually build the prefix and check it, rather than warning
+        // unconditionally. The old version divided by a hardcoded 4.2 and
+        // reported a "3413-token floor" for a model whose floor is 4096.
+        const dfl = JSON.parse(readFileSync('./profiles/defaults/_default.json', 'utf8'));
         for (const m of anthropic) {
-            const floor = Math.round(minCacheableChars(m) / 4.2);
-            warn('Prompt caching', `${m} needs a ${floor}-token cacheable prefix`,
-                'Run `node tools/measure_prompt.mjs` to see whether your flag combination clears it. '
-                + 'Below the floor the breakpoint is silently ignored.');
+            const prof = JSON.parse(readFileSync(settings.profiles[0], 'utf8'));
+            const examples = (prof.conversation_examples || dfl.conversation_examples || [])
+                .map(c => c.map(x => `${x.role}: ${x.content}`).join('\n')).join('\n\n');
+            const filled = (prof.conversing || dfl.conversing)
+                .replaceAll('$NAME', prof.name || 'Agent')
+                .replaceAll('$COMMAND_DOCS', getCommandDocs({ blocked_actions: blockedActions() }))
+                .replaceAll('$STATIC_EXAMPLES', examples);
+            const prefix = filled.substring(0, filled.indexOf(CACHE_BOUNDARY));
+            const floor = cacheFloorTokens(m);
+            const est = Math.round(prefix.length / (minCacheableChars(m) / floor));
+            if (prefix.length >= minCacheableChars(m))
+                ok('Prompt caching', `${m}: prefix ~${est} tokens vs a ${floor}-token floor `
+                    + `(+${Math.round((est / floor - 1) * 100)}%)`);
+            else
+                warn('Prompt caching', `${m}: prefix ~${est} tokens is under the ${floor}-token floor`,
+                    'The breakpoint will be silently ignored and you pay full input price. '
+                    + 'Confirm with: node tools/count_prompt_tokens.mjs');
         }
     }
 }
