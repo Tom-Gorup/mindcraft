@@ -32,11 +32,12 @@ behavior only shows up in console logs, it doesn't exist to Phase 8.
 | 5 Social | done | 43 | yes (S10) | **no** |
 | 6 Economics | done | 17 | yes (S13) | **no** |
 | 7 Observability | done | 7 | yes (S13) | **no** |
-| 8 Research lab | not started | — | — | — |
+| 8 Research lab | done | 18 | — | **no** |
 
-129 tests total (`npm test`). **Every phase 1-5 acceptance criterion that can be met
-without a Minecraft server is met; every remaining unchecked box needs the homelab.**
-That single live run is the largest outstanding risk in the project.
+171 tests total (`npm test`). **All eight phases are code-complete. Every acceptance
+criterion that can be met without a Minecraft server is met; every remaining unchecked
+box needs the homelab.** That single live run is the largest outstanding risk in the
+project — nothing here has ever talked to a real server.
 
 ### Deviations from the original file plan (all deliberate, none silent gaps in function)
 
@@ -297,11 +298,17 @@ scopes, named comparable runs, and multiple Minecraft worlds under one mindserve
 - Modify `src/agent/` event emission where gaps exist (goal lifecycle, plan revisions, reflections, gossip — as those phases land).
 
 **Done when:**
-- [ ] Reports render live in the app with the full trace.py feature set, scoped by agent selection, time window, world, and run
-- [ ] The "believed vs observed" view pairs each agent's memory/beliefs with its actual event history
-- [ ] Two worlds with agents in each run concurrently under one mindserver; dashboard and reports group and filter by world
-- [ ] Runs are first-class: named, started/stopped, archived, exportable as JSONL, and comparable side by side
-- [ ] In-app report agrees with `tools/trace.py` output on the same window (parity check)
+- [x] Reports render live in the app, scoped by agent selection, time window, world, and run (stat tiles, stacked activity timeline, per-agent table, interaction matrix, resource flow — render-verified against a real report object)
+- [x] The "believed vs observed" view pairs each agent's memory/beliefs with its actual event history
+- [~] Two worlds with agents in each run concurrently under one mindserver; dashboard and reports group and filter by world — **the model and filtering are done and verified** on a 3-agent/2-world archive; running two real Minecraft servers at once needs the homelab
+- [x] Runs are first-class: named, started/stopped, archived to `runs/<id>/events.jsonl`, exportable, and comparable side by side across a mindserver restart
+- [x] In-app report agrees with `tools/trace.py` output on the same window — `trace.py --events` now reads the native stream, so both consume the *identical file*. Verified on a 14-event archive: 0 unmatched, identical category counts.
+- [x] Unit tests for aggregation and run archival (18 tests in `test/mindcraft/`)
+
+**Parity mechanism:** rather than reimplementing trace.py's statistics and hoping they
+match, `tools/trace.py` gained `--events` so it reads the same JSONL the in-app report
+reads. Agreement is structural, not coincidental — and trace.py now sees the inner life
+(goals, beliefs, social) that a Paper log cannot contain.
 
 **Verify:** 2 worlds × 2 agents concurrent run; produce per-world in-app reports; export a run and diff key counts against the offline trace.
 

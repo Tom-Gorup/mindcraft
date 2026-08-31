@@ -668,3 +668,50 @@ to a first run are now fixed, and the three most likely ones (no Minecraft serve
 Ollama, no API key) all produce a named, actionable error instead of a crash or a lie.
 
 **Next:** Phase 8 (research lab).
+
+---
+
+## Session 14 — 2026-08-31 — Phase 8: Research lab (final phase)
+
+**What changed** (branch `feat/phase-8-research-lab`, commit `54ecc04`). 171/171 tests.
+
+- **`src/mindcraft/report.js`** — pure aggregation over the event stream: per-agent
+  counts by category and command-kind, who-addressed-whom, resource flow, sessions, a
+  bucketed timeline, and the believed-vs-observed pairing. No I/O, so it is fully
+  unit-tested including empty and malformed input.
+- **`src/mindcraft/runs.js`** — named runs with start/stop. Events append to
+  `runs/<id>/events.jsonl` as they arrive, with an index that survives a mindserver
+  restart, so archived runs stay comparable side by side. Run ids are slugified: a run
+  named `../../etc/passwd` cannot escape the directory.
+- **Multi-world** — `AgentConnection.world` from an explicit `world` setting or
+  host:port, stamped **server-side** onto every event (a client-supplied label
+  couldn't be trusted), surfaced in `agents-status`, and filterable in reports.
+- **Reports tab** — run selector with live recording state, world/agent scoping, stat
+  tiles, stacked activity timeline, per-agent table, interaction matrix, resource
+  flow, and believed-vs-observed.
+
+**The parity mechanism is the part I'd defend hardest.** Rather than reimplementing
+trace.py's statistics in JS and hoping they matched, `tools/trace.py` gained
+`--events` so it reads the *same JSONL file* the in-app report reads. Agreement is
+structural rather than coincidental, and trace.py now also sees the inner life — goals,
+beliefs, social state — that a Paper log physically cannot contain. Verified on a
+14-event archive: 0 unmatched, identical category counts, and a real 21KB HTML report.
+
+**Verified end to end:** live capture → archive → in-app report → JSONL export →
+trace.py HTML, including a 3-agent/2-world scenario where scoping to one world
+correctly returned 12 of 14 events and 2 of 3 agents. UI render checked against a real
+report object with XSS payloads in belief content (escaped).
+
+**Known limitations:**
+- Running two *real* Minecraft servers concurrently is untested — the world model and
+  filtering are verified, the concurrency is not.
+- The event feed and therefore all runs require `use_memory`; with it off, runs record
+  nothing and the Reports tab says so.
+- Reports re-aggregate the whole run on each request. Fine for hours; a multi-day run
+  will want incremental aggregation or a time-window default.
+- Run archives are unbounded on disk (`runs/` is gitignored). Deliberate — they are
+  the research corpus — but they need manual pruning eventually.
+
+**All eight phases are now code-complete.** The project has never talked to a real
+Minecraft server; that remains the single largest outstanding risk, and every unchecked
+acceptance box across all phases is waiting on the same homelab run.
