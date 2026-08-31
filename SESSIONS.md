@@ -945,3 +945,94 @@ Unchanged and still the only thing that matters: **the project has never talked
 to a real Minecraft server.** Start with one agent and `use_cognition` only,
 confirm it connects and pursues a goal, then layer on memory, skills, and the
 second agent.
+
+---
+
+## Session 17 — 2026-08-31 — Pre-live-test pass on the Anthropic path
+
+Last check before live testing. Tom is starting with **Haiku via the Anthropic
+API**, so this pass targeted that path specifically rather than sweeping
+broadly again. Commit `576e0cd`. **207 tests** (was 186), zero real lint errors.
+
+### The one that would have wasted the whole first session
+
+`claude.js` caught every error and returned the string *"My brain disconnected,
+try again."* The router then metered that as a **successful** call — no tier
+error, no fallback, no timeout, and a dashboard reporting perfect health. A
+mistyped `ANTHROPIC_API_KEY`, a wrong model id, or a rate limit would all have
+presented as a bot with a strange catchphrase and a green dashboard. This is the
+same bug class already fixed in `ollama.js` in Session 13; it was still sitting
+in the provider Tom was about to use.
+
+Failures now throw with the actual cause named (key / model id / rate limit).
+That change forced three call sites to distinguish *"the model is unreachable"*
+from *"the model chose not to act"*, which is a distinction the codebase did not
+previously have:
+- `handleMessage` catches at the prompt loop, says it once in-game so the
+  failure is visible without reading the terminal, and records it to history.
+  Rethrowing was not an option — most callers are fire-and-forget, so it would
+  only produce an unhandled rejection and a silently dropped turn.
+- The self-prompter backs off rather than spending its three-strikes budget on
+  an outage.
+- The cognition act tier no longer scores an outage as a step that produced no
+  command — which would retry, replan, and eventually abandon a goal that was
+  never actually attempted.
+
+### Prompt caching would not have engaged at all
+
+Anthropic's minimum cacheable prefix is 1024 tokens on Sonnet/Opus but **2048 on
+Haiku**, and the threshold was one constant at the lower bar. `tools/measure_prompt.mjs`
+was written to answer this properly rather than by inspection:
+
+| flags | cacheable prefix | Haiku |
+|---|---|---|
+| default (all off) | 2036 tok | **no cache** (12 tokens short) |
+| `use_cognition` | 2107 tok | caches, +3% margin |
+| `use_cognition` + `use_social` | 2260 tok | caches, +10% margin |
+
+Below the floor a breakpoint is *silently* ignored — no error, no hit, and the
+cache-write premium charged anyway. The threshold is now model-aware, and
+missing it logs once with the numbers and the remedy.
+
+**The margins are thin and that is worth watching.** The cacheable prefix is
+persona + `$COMMAND_DOCS`, and command docs shrink when commands are blocked —
+so feature flags move the prompt across the cache floor as a side effect. A 3%
+margin is one command away from silently losing the discount. Deliberately not
+"fixed" by padding the persona: that is prompt-engineering the agent's
+behaviour to game a billing threshold, and it is Tom's call, not mine.
+
+Caching is now **observable** instead of assumed. The provider exposes real
+`resp.usage`; the router meters that rather than estimating from string length;
+cache reads are priced at 0.1x and writes at 1.25x (the old estimate overstated
+a cache hit by ~10x); and a **Prompt cache** tile plus the hourly `[economics]`
+line report the hit rate. 0% on a paid model is the signal that something moved.
+
+### Hardened for a small model
+
+- **`strictFormat` now drops empty turns.** The default persona instructs the
+  bot to answer with a bare tab when it has nothing to say, and command results
+  can come back blank — either one reaches Anthropic as an empty text block,
+  which is a hard 400. This was a live first-run hazard hiding in the *prompt*.
+- **Goal/plan parsing falls back to the first balanced JSON object.**
+  first-brace-to-last-brace over-reaches when a model appends prose containing a
+  brace or emits a second object; smaller models do both routinely. Verified
+  against six real output shapes.
+- The stale `claude-sonnet-4-6` default model id is now current.
+
+### New tooling
+
+- `tools/measure_prompt.mjs` — what fraction of the conversing prompt is
+  cacheable, per model and per flag combination. Run it after touching a
+  template or a command.
+- `test/models/claude.test.js` — the provider end to end against a stubbed SDK:
+  breakpoint placement, the boundary marker never reaching the wire, usage
+  extraction, stale-usage isolation, and every error path.
+
+### Known issues going into live testing
+
+- Cache margins are thin (see above). Watch the Prompt cache tile.
+- Haiku is a small model; the cognition loop expects it to emit `!stepDone` /
+  `!stepFailed` reliably. Parsing is now forgiving, but if goals churn, that is
+  the first thing to look at — `use_cognition` with a bigger `plan` tier model
+  is the cheap fix, since the profile `tiers` block already supports it.
+- Everything else in the ROADMAP's unchecked boxes still awaits this run.
