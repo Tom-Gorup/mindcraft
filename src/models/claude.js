@@ -84,9 +84,20 @@ export class Claude {
             const textContent = resp.content.find(content => content.type === 'text');
             if (textContent) {
                 res = textContent.text;
+            } else if (resp.stop_reason === 'max_tokens') {
+                // Genuinely broken: the model was cut off before producing any
+                // text. Surface it rather than treating it as silence.
+                throw new Error(`Anthropic response hit max_tokens (${this.params.max_tokens}) before emitting any text.`);
             } else {
-                console.warn('No text content found in the response.');
-                res = 'No response from Claude.';
+                // An empty content array is the model choosing to say nothing —
+                // the default persona tells it to answer with a bare tab when it
+                // has nothing to add, and Anthropic strips whitespace-only text
+                // blocks. Returning prose here put "No response from Claude." in
+                // the bot's mouth, spoke it in chat, and wrote it into history as
+                // a real assistant turn. Empty string is the honest answer:
+                // handleMessage already treats it as "nothing to say" and ends
+                // the loop.
+                res = '';
             }
         }
         catch (err) {

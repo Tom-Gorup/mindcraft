@@ -97,11 +97,29 @@ test('failures throw, with a message that names the actual problem', async () =>
     }
 });
 
-test('a response with no text block does not throw or return undefined', async () => {
+// The default persona tells the bot to answer with a bare tab when it has
+// nothing to add, and Anthropic strips whitespace-only text blocks — so an
+// empty content array means "chose to stay silent", not "failed". Returning
+// prose here made the bot say "No response from Claude." out loud in chat and
+// stored it as a real assistant turn.
+test('an empty content array is silence, not an error string', async () => {
     const c = new Claude('claude-haiku-4-5-20251001');
-    stub(c, async () => ({ content: [{ type: 'thinking', thinking: '...' }], usage: { input_tokens: 1, output_tokens: 1 } }));
+    stub(c, async () => ({ content: [], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }));
     const res = await c.sendRequest([{ role: 'user', content: 'hi' }], 'plain prompt');
-    assert.equal(typeof res, 'string');
+    assert.equal(res, '', 'must be empty so handleMessage ends the turn quietly');
+});
+
+test('a response with only a thinking block is also silence', async () => {
+    const c = new Claude('claude-haiku-4-5-20251001');
+    stub(c, async () => ({ content: [{ type: 'thinking', thinking: '...' }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }));
+    assert.equal(await c.sendRequest([{ role: 'user', content: 'hi' }], 'plain prompt'), '');
+});
+
+// Truncation is a real failure and must not masquerade as silence.
+test('no text because of max_tokens throws rather than going quiet', async () => {
+    const c = new Claude('claude-haiku-4-5-20251001');
+    stub(c, async () => ({ content: [], stop_reason: 'max_tokens', usage: { input_tokens: 1, output_tokens: 4096 } }));
+    await assert.rejects(() => c.sendRequest([{ role: 'user', content: 'hi' }], 'plain prompt'), /max_tokens/);
 });
 
 test('a thinking block before the text block is skipped, not returned', async () => {
