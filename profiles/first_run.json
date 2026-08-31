@@ -1,8 +1,7 @@
 {
     "name": "Wilbur",
     "//": "First live-run profile. Deliberately minimal: one agent, Haiku on every tier, no feature flags. The goal of the first run is only to prove the pipe works end to end — connect, perceive, be talked to, run a command. Layer cognition/memory/skills on afterwards, one at a time, so a failure has one obvious cause.",
-    "model": "claude-sonnet-5",
-    "//tiers": "reflex is memSaving/botResponder: short prompts that do not use the conversing template, so they get no cache benefit from Sonnet and are cheaper on Haiku. Everything else inherits 'model' above.",
+    "model": "claude-haiku-4-5-20251001",
     "//embedding": "Only used by memory and the skill library, both off for the first run. When you turn use_memory on, set this to \"ollama\" to keep embeddings free and local (needs `ollama pull embeddinggemma`), otherwise it falls back to word-overlap scoring with a warning.",
     "conversation_examples": [
         [
@@ -43,8 +42,6 @@
         "step_timeout_ms": 180000,
         "heartbeat_ms": 45000
     },
-    "//model": "Sonnet, not Haiku, because of the cache floor. Haiku 4.5 needs a 4096-token cacheable prefix (measured with tools/probe_cache_floor.mjs); ours is 2,985, so it never cached and paid full price every call. Sonnet's floor is 1024, which this prefix clears by 191%. Measured at ~26 output tok/call: Haiku uncached $12.28/day vs Sonnet cached $9.77/day. If caching ever stops engaging, Sonnet becomes $36.85/day — so treat a 0% cache tile as urgent, not cosmetic.",
-    "tiers": {
-        "reflex": "claude-haiku-4-5-20251001"
-    }
+    "//model": "Back on Haiku. Sonnet was switched to on the theory that caching would make it cheaper; measured, its effective input rate at the real 57% cache rate is $1.46/1M against Haiku's $1.00/1M uncached, so it was never going to win. Haiku WITH caching is $0.23/1M — by far the cheapest option — which needs the cacheable prefix over Haiku 4.5's measured 4096-token floor. Once cached, prefix size is nearly free (0.1x), so a larger prefix that caches beats a smaller one that does not.",
+    "//tiers": "No tiers block: everything is Haiku. Add {\"plan\":\"claude-sonnet-5\"} if goal and plan quality needs it — that tier is a couple of calls per goal, so it barely moves the bill."
 }

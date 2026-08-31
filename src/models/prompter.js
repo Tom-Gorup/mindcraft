@@ -219,6 +219,18 @@ export class Prompter {
         }
         if (prompt.includes('$EXAMPLES') && examples !== null)
             prompt = prompt.replaceAll('$EXAMPLES', await examples.createExampleMessage(messages));
+        // $STATIC_EXAMPLES: every example, always, in profile order — so the
+        // text is byte-identical on every call and can live in the cached
+        // prefix. $EXAMPLES picks the most similar few, which is better
+        // targeting but varies per call and therefore cannot be cached. At
+        // 0.1x for cached tokens, carrying all of them costs less than
+        // carrying two uncached, and the model sees more coverage.
+        if (prompt.includes('$STATIC_EXAMPLES')) {
+            const all = (this.profile.conversation_examples || [])
+                .map(convo => convo.map(m => `${m.role}: ${m.content}`).join('\n'))
+                .join('\n\n');
+            prompt = prompt.replaceAll('$STATIC_EXAMPLES', () => all);
+        }
         // NOTE: $MEMORY is handled at the END of this function — memory
         // content includes recorded chat (untrusted) and must not be
         // re-expanded by the placeholder substitutions below.
