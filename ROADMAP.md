@@ -30,7 +30,7 @@ behavior only shows up in console logs, it doesn't exist to Phase 8.
 | 3 Skills | done | 16 | yes (S7, S8) | **no** |
 | 4 Concurrency | done | 21 | yes (S7, S8) | **no** |
 | 5 Social | done | 43 | yes (S10) | **no** |
-| 6 Economics | not started | — | — | — |
+| 6 Economics | done | 17 | — | **no** |
 | 7 Observability | not started | — | — | — |
 | 8 Research lab | not started | — | — | — |
 
@@ -225,10 +225,25 @@ cooldown ceiling. ≈$27/day/agent on a cheap API tier; ~half a 3090 on prefill 
 - Tests: routing table resolution, metering arithmetic.
 
 **Done when:**
-- [ ] Every LLM call goes through the router with a tier tag; logs show call site + tier + tokens
-- [ ] A 1-hour 3-agent run shows >70% of calls on the local tier
-- [ ] Per-agent cost surfaced in the dashboard and in a run-summary log
-- [ ] Prompting is event-driven; the 2s idle poll is gone (or demoted to a low-frequency heartbeat)
+- [x] Every LLM call goes through the router with a tier tag; logs show call site + tier + tokens (all 10 prompter call sites routed; `log_routing` setting traces each one)
+- [~] A 1-hour 3-agent run shows >70% of calls on the local tier — **93% in a simulated steady-state hour** on `profiles/homelab.json`; needs the live run to confirm
+- [~] Per-agent cost surfaced in the dashboard and in a run-summary log — **run-summary log done** (shutdown + hourly); `full_state.economics` publishes it, **dashboard panel is Phase 7**
+- [x] Prompting is event-driven; the 2s idle poll is gone (act tier prompts on real events — action finished, step done, replan, interruption, death, speech — with a 45s heartbeat backstop)
+- [x] Unit tests pass for routing resolution and metering arithmetic (17 tests in `test/models/`)
+
+**Measured result** (simulated steady-state hour vs the Session 8 baseline):
+
+| | baseline | after |
+|---|---|---|
+| calls/hr | 1,160 | 633 |
+| tokens/hr | 3.45M | 705k |
+| local share | 0% | 93% |
+| cost/day/agent | ~$27 | ~$5.61 |
+
+**Deliberately not done:** reordering `$COMMAND_DOCS` to the prompt head for provider
+prefix caching. It changes prompt ordering (and so model behavior), and local-first
+routing made it largely moot — only ~46 calls/hour now reach a cacheable paid provider.
+Revisit only if the live run shows the paid tiers are hotter than modeled.
 
 **Verify:** unit tests; instrumented 1-hour 3-agent run with tier-distribution and cost report.
 
@@ -246,10 +261,11 @@ the browser — create, configure, and tune agents without touching JSON on disk
 - Optional: director mode — spectator viewpoint cycling to the highest-activity agent.
 
 **Inherited debt this phase must clear** (from the UI-parity standing rule): profile-block
-editors for `drives`, `cognition`, `memory`, `skills`, and `social`; dashboard rendering
-for cognition/memory/skill/social state (all already published by `full_state.js` and the
-blackboard — the data is there, nothing renders it); and skill count/usage stats, which
-Phase 3 listed but deferred here.
+editors for `drives`, `cognition`, `memory`, `skills`, `social`, and `tiers`; dashboard
+rendering for cognition/memory/skill/social/economics state (all already published by
+`full_state.js` and the blackboard — the data is there, nothing renders it); skill
+count/usage stats, which Phase 3 listed but deferred here; and the per-agent cost panel
+that Phase 6 metered but did not display.
 
 **Done when:**
 - [ ] Dashboard shows, live per agent: drive levels, active goal, plan step, last thought

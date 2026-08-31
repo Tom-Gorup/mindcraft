@@ -499,3 +499,60 @@ array twice per dashboard poll. None are correctness risks.
 **Next:** Phase 6 (model routing + economics), with the Session 8 measurements as its
 brief. Note Phase 5 adds ~10-16% to prompt tokens (trade command docs ride every
 prompt; `$SOCIAL` adds ~271 typical tokens), which Phase 6 should absorb.
+
+---
+
+## Session 11 — 2026-08-31 — Phase 6: Model routing + economics
+
+**What changed** (branch `feat/phase-6-economics`, commit `2a34cea`). Measured against
+the Session 8 baseline, a simulated steady-state hour on the new `profiles/homelab.json`:
+
+| | baseline | after |
+|---|---|---|
+| calls/hr | 1,160 | 633 |
+| tokens/hr | 3.45M | 705k |
+| local share | 0% | **93%** (bar was >70%) |
+| cost/day/agent | ~$27 | ~$5.61 |
+
+- `src/models/router.js` — six tiers (reflex/chat/plan/reflect/code/vision). All 10
+  prompter call sites now declare a tier; the router resolves it, meters the call, and
+  retries once on a genuinely different model if a provider fails. **Backwards
+  compatible by construction:** with no `tiers` block in the profile, every tier
+  resolves to exactly the model it used before.
+- `src/models/metering.js` — per-tier/per-site tokens and cost with a rolling window
+  and `localShare()`. Token counts are honest estimates (chars/4.21); real usage
+  numbers would require touching all 20 provider classes, since `sendRequest` returns
+  a bare string.
+- **Event-driven prompting** replaced the fixed 2s idle poll — the single biggest
+  source of volume (the loop ran at ~96% of its own cooldown ceiling, around the
+  clock). The act tier now prompts when something actually happened and otherwise
+  waits for a 45s heartbeat, so a stuck plan is still re-examined. ~786 → ~150
+  conversing calls/hour, and this is most of the token win.
+- Cheap audit wins: `getCommandDocs` memoized (~1,900 tokens rebuilt by string concat
+  on *every* prompt); command output capped at 1,500 chars (`!searchWiki` returned
+  entire wiki articles into history, then charged again for embedding and
+  summarizing); default `embedding` is now `ollama` (it had been silently falling
+  back to the paid chat provider, ~59k calls/day/agent); `code_timeout_mins` now
+  defaults to 5 rather than unbounded.
+
+**One design note worth carrying forward:** `router.js` deliberately does not import
+`_model_map.js`. That module dynamically imports ~20 provider classes behind a
+top-level await, so importing it from library code drags the entire provider surface
+(and its native deps) along — it hung the test runner outright. The model factory is
+injected by `prompter.js` instead. Treat `_model_map.js` as an application-edge module.
+
+**Deliberately not done:** reordering `$COMMAND_DOCS` to the prompt head for provider
+prefix caching (~45% token cut on paid calls). It changes prompt ordering and so model
+behavior, and local-first routing made it largely moot — only ~46 calls/hour now reach
+a cacheable paid provider. Revisit only if the live run shows the paid tiers hotter
+than modeled.
+
+**Verification:** 146/146 tests (17 new: routing resolution, fallback, metering
+arithmetic, local-share windowing, event-driven cadence). Simulated economics run
+above. No new lint errors. **Not live-verified** — same standing gap as phases 1-5.
+
+**Next:** Phase 7 (observability + in-app configurability). It now carries real
+inherited debt: profile-block editors for `drives`/`cognition`/`memory`/`skills`/
+`social`/`tiers`, and dashboard rendering for cognition, memory, skills, social, and
+the new economics payload — all of which `full_state.js` and the blackboard already
+publish, with nothing yet reading them.
