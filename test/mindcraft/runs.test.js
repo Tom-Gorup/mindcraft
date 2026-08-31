@@ -115,3 +115,33 @@ test('oversized event fields are clamped before they reach disk', () => {
     assert.ok(rec.content.length <= 1000);
     assert.ok(rec.world.length <= 64);
 });
+
+test('a run larger than the archive window reports on the tail only', () => {
+    const dir = freshDir();
+    // a tiny window so the test does not have to write 64MB
+    const reg = new RunRegistry(dir, { max_archive_bytes: 400 });
+    reg.start('big', 1000);
+    for (let i = 0; i < 60; i++)
+        reg.record({ ts: 1000 + i, agent: 'wilbur', type: 'chat', content: `msg ${i}` });
+    reg.stop(9999);
+
+    const events = reg.events(reg.list()[0].id);
+    // bounded, non-empty, and every survivor is intact JSON from the end of the run
+    assert.ok(events.length > 0, 'tail read returned nothing');
+    assert.ok(events.length < 60, 'window did not actually bound the read');
+    assert.equal(events.at(-1).content, 'msg 59');
+    for (const e of events) {
+        assert.equal(e.agent, 'wilbur');
+        assert.match(e.content, /^msg \d+$/);   // no torn line, no uninitialized bytes
+    }
+});
+
+test('an archive smaller than the window is read whole', () => {
+    const reg = new RunRegistry(freshDir(), { max_archive_bytes: 1024 * 1024 });
+    reg.start('small', 1000);
+    reg.record({ ts: 1001, agent: 'greta', type: 'chat', content: 'only one' });
+    reg.stop(2000);
+    const events = reg.events(reg.list()[0].id);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].content, 'only one');
+});

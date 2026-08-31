@@ -554,15 +554,15 @@
 
         function iconHTMLForItem(itemName, title, agentName) {
             const cands = buildIconUrlCandidates(itemName, agentName);
-            const icon = cands[0];
+            const safeTitle = escapeHtml(title);
             return `
-                <div class="armor-slot" title="${title}">
-                    <img class="inv-img" src="${icon}" data-url-index="0" data-url-list="${cands.join('||')}" onerror="fallbackItemIcon(this)" alt="${title}">
+                <div class="armor-slot" title="${safeTitle}">
+                    <img class="inv-img" src="${escapeHtml(cands[0])}" data-url-index="0" data-url-list="${escapeHtml(cands.join('||'))}" onerror="fallbackItemIcon(this)" alt="${safeTitle}">
                 </div>
             `;
         }
         function emptySlotHTML(label) {
-            return `<div class="armor-slot empty" title="${label}: none"><span class="armor-placeholder">-</span></div>`;
+            return `<div class="armor-slot empty" title="${escapeHtml(label)}: none"><span class="armor-placeholder">-</span></div>`;
         }
 
         const statusEl = document.getElementById('msStatus');
@@ -799,14 +799,16 @@
                             invGrid.innerHTML = entries
                                 .sort((a, b) => a[0].localeCompare(b[0]))
                                 .map(([k, v]) => {
-                                    const title = prettyItemName(k);
-                                    const safeAttr = k.replace(/'/g, "\\'");
+                                    // Item ids come from the server's registry, not
+                                    // minecraft-data — a modded or renamed item is
+                                    // attacker-influenced text reaching innerHTML.
+                                    const title = escapeHtml(prettyItemName(k));
                                     const iconCandidates = buildIconUrlCandidates(k, name);
-                                    const icon = iconCandidates[0];
+                                    const icon = escapeHtml(iconCandidates[0]);
                                     return `
                                         <div class="inv-item" title="${title}">
-                                            <img class="inv-img" src="${icon}" data-url-index="0" data-url-list="${iconCandidates.join('||')}" onerror="fallbackItemIcon(this)" alt="${title}">
-                                            <div class="inv-count">${v}</div>
+                                            <img class="inv-img" src="${icon}" data-url-index="0" data-url-list="${escapeHtml(iconCandidates.join('||'))}" onerror="fallbackItemIcon(this)" alt="${title}">
+                                            <div class="inv-count">${escapeHtml(v)}</div>
                                             <div class="inv-name">${title}</div>
                                         </div>
                                     `;

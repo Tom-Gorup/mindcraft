@@ -135,11 +135,28 @@ export function sendBotChatToServer(agentName, json) {
 // feed is an observability nicety and must never affect agent behavior.
 export function sendEventToServer(agentName, event) {
     try {
+        // `data` carries the fields the research report is built from —
+        // command name, counterpart, item/qty. Dropping it made the
+        // interaction matrix and resource flow permanently empty. Whitelisted
+        // and size-capped: it reaches the run archive and the report.
+        const d = event.data && typeof event.data === 'object' ? event.data : null;
+        const data = d ? {
+            command: typeof d.command === 'string' ? d.command.substring(0, 40) : undefined,
+            to: typeof d.to === 'string' ? d.to.substring(0, 32) : undefined,
+            peer: typeof d.peer === 'string' ? d.peer.substring(0, 32) : undefined,
+            source: typeof d.source === 'string' ? d.source.substring(0, 32) : undefined,
+            teller: typeof d.teller === 'string' ? d.teller.substring(0, 32) : undefined,
+            subject: typeof d.subject === 'string' ? d.subject.substring(0, 32) : undefined,
+            item: typeof d.item === 'string' ? d.item.substring(0, 40) : undefined,
+            qty: Number.isFinite(d.qty) ? d.qty : undefined,
+            drive: typeof d.drive === 'string' ? d.drive.substring(0, 24) : undefined,
+        } : undefined;
         serverProxy.getSocket()?.emit('agent-event', {
             agent: agentName,
             ts: event.ts,
             type: event.type,
             content: event.content,
+            data,
         });
     } catch { /* dashboard is optional */ }
 }

@@ -25,6 +25,45 @@ const profile_spec = JSON.parse(readFileSync(path.join(__dirname, 'public/profil
 // Research runs capture the agent event stream so experiments are comparable.
 const runs = new RunRegistry();
 
+// Shared profile sanitizer. set-profile, set-agent-settings and create-agent
+// all reach the same sinks in the child process, so the filtering has to live
+// in one place — several of these nested blocks carry filesystem paths that
+// are internal test seams, not user config.
+function sanitizeProfile(profile, pinned_name) {
+    if (!profile || typeof profile !== 'object') return profile;
+    if (pinned_name) profile.name = pinned_name;
+    const passthrough = new Set(['conversation_examples', 'coding_examples', 'npc', 'max_tokens']);
+    const reserved = new Set(['__proto__', 'constructor', 'prototype']);
+    for (const key of Object.keys(profile)) {
+        if (reserved.has(key)
+            || (!Object.hasOwn(profile_spec, key) && !passthrough.has(key) && !key.startsWith('_')))
+            delete profile[key];
+    }
+    for (const [block, fields] of Object.entries(profile)) {
+        if (!fields || typeof fields !== 'object') continue;
+        for (const f of Object.keys(fields)) {
+            if (f === 'dir' || f.endsWith('_fp') || f.endsWith('_path') || reserved.has(f)) {
+                console.warn(`sanitizeProfile: ignoring ${block}.${f}`);
+                delete fields[f];
+            }
+        }
+    }
+    // clamp declared numeric ranges
+    for (const [block, def] of Object.entries(profile_spec)) {
+        if (def?.type !== 'object' || !def.fields || !profile[block]) continue;
+        const clampInto = (obj) => {
+            for (const [f, fd] of Object.entries(def.fields)) {
+                if (fd.type !== 'number' || typeof obj[f] !== 'number' || !Number.isFinite(obj[f])) continue;
+                if (fd.min !== undefined) obj[f] = Math.max(fd.min, obj[f]);
+                if (fd.max !== undefined) obj[f] = Math.min(fd.max, obj[f]);
+            }
+        };
+        if (def.keys) Object.values(profile[block]).forEach(v => v && typeof v === 'object' && clampInto(v));
+        else clampInto(profile[block]);
+    }
+    return profile;
+}
+
 class AgentConnection {
     constructor(settings, viewer_port) {
         this.socket = null;
@@ -158,12 +197,13 @@ export function createMindServer(host_public = false, port = 8080) {
                 }
             }
             for (let key in settings) {
-                if (!(key in settings_spec)) {
+                if (!Object.hasOwn(settings_spec, key)) {
                     delete settings[key];
                 }
             }
+            sanitizeProfile(settings.profile, null);
             if (settings.profile?.name) {
-                if (settings.profile.name in agent_connections) {
+                if (Object.hasOwn(agent_connections, settings.profile.name)) {
                     callback({ success: false, error: 'Agent already exists' });
                     return;
                 }
@@ -203,40 +243,7 @@ export function createMindServer(host_public = false, port = 8080) {
             if (!profile || typeof profile !== 'object') return done({ success: false, error: 'Invalid profile' });
             // the name is a filesystem path in the child process — never let
             // the editor change it out from under a running agent
-            profile.name = agent.settings.profile.name;
-            const passthrough = new Set(['conversation_examples', 'coding_examples', 'npc', 'max_tokens']);
-            for (const key of Object.keys(profile)) {
-                // hasOwn, not `in`: `in` walks the prototype chain, so keys
-                // like 'constructor' and '__proto__' would survive the filter
-                if (!Object.hasOwn(profile_spec, key) && !passthrough.has(key) && !key.startsWith('_'))
-                    delete profile[key];
-            }
-            // Nested config blocks are passed through wholesale, and several of
-            // them carry filesystem paths (memory.dir, social.dir, skills.dir,
-            // cognition.state_fp). Those are internal test seams, not user
-            // config — strip them, or this handler is an arbitrary file write.
-            for (const [block, fields] of Object.entries(profile)) {
-                if (!fields || typeof fields !== 'object') continue;
-                for (const f of Object.keys(fields)) {
-                    if (f === 'dir' || f.endsWith('_fp') || f.endsWith('_path')) {
-                        console.warn(`set-profile: ignoring filesystem key ${block}.${f}`);
-                        delete fields[f];
-                    }
-                }
-            }
-            // clamp numbers to the spec's declared ranges
-            for (const [block, def] of Object.entries(profile_spec)) {
-                if (def?.type !== 'object' || !def.fields || !profile[block]) continue;
-                const clampInto = (obj) => {
-                    for (const [f, fd] of Object.entries(def.fields)) {
-                        if (fd.type !== 'number' || typeof obj[f] !== 'number' || !Number.isFinite(obj[f])) continue;
-                        if (fd.min !== undefined) obj[f] = Math.max(fd.min, obj[f]);
-                        if (fd.max !== undefined) obj[f] = Math.min(fd.max, obj[f]);
-                    }
-                };
-                if (def.keys) Object.values(profile[block]).forEach(v => v && typeof v === 'object' && clampInto(v));
-                else clampInto(profile[block]);
-            }
+            sanitizeProfile(profile, agent.settings.profile.name);
             agent.setSettings({ ...agent.settings, profile });
             agent.socket?.emit('restart-agent');
             done({ success: true });
@@ -296,9 +303,11 @@ export function createMindServer(host_public = false, port = 8080) {
             // apply the same key filtering create-agent uses — otherwise this
             // handler is a strictly more powerful way to set arbitrary settings
             for (let key in new_settings) {
-                if (!(key in settings_spec))
+                if (!Object.hasOwn(settings_spec, key))
                     delete new_settings[key];
             }
+            if (new_settings.profile)
+                sanitizeProfile(new_settings.profile, agent.settings?.profile?.name);
             agent.setSettings(new_settings);
             agent.socket?.emit('restart-agent');
         });

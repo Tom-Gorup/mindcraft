@@ -1,4 +1,4 @@
-import { appendFileSync, readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, readdirSync } from 'fs';
+import { appendFileSync, readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, readdirSync, statSync, openSync, readSync, closeSync } from 'fs';
 import path from 'path';
 
 // Named research runs. A run captures the agent event stream for a window of
@@ -13,9 +13,11 @@ export class RunRegistry {
     constructor(dir = './runs', opts = {}) {
         this.dir = dir;
         this.max_events_in_ram = opts.max_events_in_ram ?? 20000;
+        this.max_archive_bytes = opts.max_archive_bytes ?? 64 * 1024 * 1024;
         this.runs = new Map();     // id -> {id, name, started_at, ended_at, worlds, agents, event_count}
         this.active = null;        // id of the run currently capturing
         this.buffer = [];          // in-RAM events of the active run, for live reports
+        this.last_index_save = 0;
         try {
             mkdirSync(this.dir, { recursive: true });
             this._loadIndex();
@@ -35,6 +37,17 @@ export class RunRegistry {
             for (const r of (Array.isArray(data.runs) ? data.runs : [])) {
                 if (r && typeof r.id === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(r.id))
                     this.runs.set(r.id, r);
+            }
+            // A run that was capturing when the process died stays open
+            // forever otherwise: it can never be stopped (stop() only acts on
+            // this.active) and it mislabels itself as "recording".
+            for (const r of this.runs.values()) {
+                if (r.ended_at == null) {
+                    const last = this.events(r.id).at(-1);
+                    r.ended_at = last?.ts ?? r.started_at;
+                    r.interrupted = true;
+                    console.warn(`Runs: '${r.name}' was interrupted; closed at its last event.`);
+                }
             }
         } catch (err) {
             console.error('Runs: index unreadable, starting fresh:', err.message || err);
@@ -106,10 +119,12 @@ export class RunRegistry {
             if (!run) return;
             const rec = {
                 ts: Number(event.ts) || Date.now(),
-                agent: String(event.agent || 'unknown').substring(0, 32),
+                agent: /^(__proto__|constructor|prototype)$/.test(String(event.agent))
+                    ? 'unknown' : String(event.agent || 'unknown').substring(0, 32),
                 type: String(event.type || 'other').substring(0, 40),
                 content: String(event.content || '').substring(0, 1000),
-                data: (event.data && typeof event.data === 'object') ? event.data : undefined,
+                data: (event.data && typeof event.data === 'object'
+                    && JSON.stringify(event.data).length <= 2000) ? event.data : undefined,
                 world: event.world ? String(event.world).substring(0, 64) : undefined,
                 run: run.id,
             };
@@ -120,6 +135,11 @@ export class RunRegistry {
             run.event_count++;
             if (rec.agent && !run.agents.includes(rec.agent)) run.agents.push(rec.agent);
             if (rec.world && !run.worlds.includes(rec.world)) run.worlds.push(rec.world);
+            // throttled index flush so a crash doesn't lose the run's metadata
+            if (Date.now() - this.last_index_save >= 10000) {
+                this.last_index_save = Date.now();
+                this._saveIndex();
+            }
         } catch (err) {
             console.error('Runs: failed to record event:', err.message || err);
         }
@@ -142,7 +162,7 @@ export class RunRegistry {
             const fp = this._eventsPath(id);
             if (!existsSync(fp)) return [];
             const out = [];
-            for (const line of readFileSync(fp, 'utf8').split('\n')) {
+            for (const line of this._readTail(fp).split('\n')) {
                 if (!line.trim()) continue;
                 try { out.push(JSON.parse(line)); } catch { /* skip torn line */ }
             }
@@ -151,6 +171,31 @@ export class RunRegistry {
             console.error('Runs: could not read events:', err.message || err);
             return [];
         }
+    }
+
+    // A month-long run's archive can outgrow the heap, and a report only ever
+    // wants recent behavior — so read at most the trailing max_archive_bytes and
+    // drop the partial line at the seam. The full file is still on disk for
+    // tools/trace.py, which streams it.
+    _readTail(fp) {
+        const size = statSync(fp).size;
+        if (size <= this.max_archive_bytes) return readFileSync(fp, 'utf8');
+        // alloc, not allocUnsafe, and honour the short-read count: the tail of
+        // an uninitialized buffer would otherwise be decoded and rendered.
+        const buf = Buffer.alloc(this.max_archive_bytes);
+        const fd = openSync(fp, 'r');
+        let read = 0;
+        try {
+            read = readSync(fd, buf, 0, this.max_archive_bytes, size - this.max_archive_bytes);
+        } finally {
+            closeSync(fd);
+        }
+        console.warn(`Runs: archive is ${Math.round(size / 1048576)}MB; reporting on the most recent ${Math.round(read / 1048576)}MB only.`);
+        const text = buf.subarray(0, read).toString('utf8');
+        // Drop the line the window cut in half. With no newline the whole
+        // window is one partial line and there is nothing to salvage.
+        const nl = text.indexOf('\n');
+        return nl === -1 ? '' : text.slice(nl + 1);
     }
 
     // Absolute path of the JSONL a user can hand to tools/trace.py.

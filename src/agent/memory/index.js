@@ -29,7 +29,7 @@ export class AgentMemory {
         this.reflection_min_interval_ms = opts.reflection_min_interval_ms ?? 60000;
         this.max_events_in_ram = opts.max_events_in_ram ?? 5000;
         this.embed_backoff_ms = opts.embed_backoff_ms ?? 5 * 60000;
-        this.feed_min_importance = opts.feed_min_importance ?? 0.5; // dashboard feed cutoff
+        this.stream_min_importance = opts.stream_min_importance ?? 0.01; // archive everything meaningful
 
         this.store = null;
         this.events = [];
@@ -40,6 +40,8 @@ export class AgentMemory {
         this.last_reflection_ts = 0;
         this.importance_since_reflection = 0;
         this.backfill_running = false;
+        this.last_compaction = Date.now();
+        this.compaction_interval_ms = opts.compaction_interval_ms ?? 30 * 60000;
 
         if (settings.use_memory) {
             this.store = new MemoryStore(opts.dir || `./bots/${agent.name}/memory`);
@@ -93,8 +95,12 @@ export class AgentMemory {
             if (shouldEmbed(event))
                 this._embedInBackground(event);
 
-            // stream the notable ones to the dashboard event feed
-            if (event.importance >= this.feed_min_importance)
+            // Stream to the mindserver. The threshold here is deliberately
+            // very low: the RUN ARCHIVE is downstream of this, and the report
+            // is built on exactly the categories a high cutoff removes
+            // (speech 0.4, command 0.15, session 0.3, narration 0.05). The
+            // dashboard feed does its own filtering client-side.
+            if (event.importance >= this.stream_min_importance)
                 sendEventToServer(this.agent.name, event);
 
             if (type === 'belief')
@@ -261,6 +267,13 @@ export class AgentMemory {
     // the tier scheduler, not by whoever happens to record an event.
     reflectTick() {
         if (!this.enabled() || this.reflecting) return;
+        // Compact the embedding archive periodically, not just at boot: it
+        // grows ~15KB per embedded event and is read whole on the next start.
+        if (Date.now() - this.last_compaction >= this.compaction_interval_ms) {
+            this.last_compaction = Date.now();
+            try { this.store.compactEmbeddings(this.embeddings); }
+            catch (err) { console.error('Memory: compaction failed:', err.message || err); }
+        }
         if (this.importance_since_reflection >= this.reflection_threshold
             && Date.now() - this.last_reflection_ts >= this.reflection_min_interval_ms)
             this._reflectInBackground();

@@ -69,10 +69,13 @@ function inWindow(ev, from, to) {
 
 // events: [{agent, ts, type, content, data, importance, world, run}]
 // scope: {agents?: string[], world?: string, run?: string, from?: number, to?: number}
+const RESERVED = /^(__proto__|constructor|prototype)$/;
+
 export function filterEvents(events, scope = {}) {
-    const agents = scope.agents && scope.agents.length ? new Set(scope.agents) : null;
+    const agents = Array.isArray(scope.agents) && scope.agents.length ? new Set(scope.agents) : null;
     return events.filter(ev =>
-        ev && typeof ev.ts === 'number'
+        ev && typeof ev.ts === 'number' && Number.isFinite(ev.ts)
+        && typeof ev.agent === 'string' && !RESERVED.test(ev.agent)
         && (!agents || agents.has(ev.agent))
         && (!scope.world || ev.world === scope.world)
         && (!scope.run || ev.run === scope.run)
@@ -81,11 +84,13 @@ export function filterEvents(events, scope = {}) {
 
 // Who addressed whom, from the events that name a counterpart.
 export function interactionMatrix(events) {
-    const edges = {};
+    // null-prototype: `agent` is untrusted and is used as a KEY here, so a
+    // plain object lets '__proto__' mutate Object.prototype process-wide
+    const edges = Object.create(null);
     for (const ev of events) {
         const to = ev.data?.to || ev.data?.peer || ev.data?.source || ev.data?.teller;
         if (!to || !ev.agent || to === ev.agent || to === 'system') continue;
-        edges[ev.agent] ||= {};
+        edges[ev.agent] ||= Object.create(null);
         edges[ev.agent][to] = (edges[ev.agent][to] || 0) + 1;
     }
     return edges;
@@ -93,12 +98,12 @@ export function interactionMatrix(events) {
 
 // Item movement, from command events that carry item/qty.
 export function resourceFlow(events) {
-    const flow = {};
+    const flow = Object.create(null);
     for (const ev of events) {
         const item = ev.data?.item;
         if (!item) continue;
         const key = `${ev.data?.command || ev.type}:${item}`;
-        flow[ev.agent] ||= {};
+        flow[ev.agent] ||= Object.create(null);
         flow[ev.agent][key] = (flow[ev.agent][key] || 0) + (ev.data?.qty || 1);
     }
     return flow;
@@ -106,7 +111,7 @@ export function resourceFlow(events) {
 
 // Connected/disconnected spans per agent, so downtime is visible.
 export function sessions(events, from, to) {
-    const out = {};
+    const out = Object.create(null);
     for (const ev of events) {
         if (ev.type !== 'session') continue;
         out[ev.agent] ||= [];
@@ -119,6 +124,9 @@ export function sessions(events, from, to) {
 
 // Activity over time, bucketed — the timeline's raw material.
 export function timeline(events, buckets = 60, from = null, to = null) {
+    // clamped: buckets arrives from the client, and a huge Array.from is a
+    // FATAL OOM that no try/catch can contain
+    buckets = Math.min(500, Math.max(1, Math.floor(Number(buckets)) || 60));
     if (events.length === 0) return { from: 0, to: 0, buckets: [] };
     const t0 = from ?? Math.min(...events.map(e => e.ts));
     const t1 = to ?? Math.max(...events.map(e => e.ts));
@@ -135,7 +143,7 @@ export function timeline(events, buckets = 60, from = null, to = null) {
 // The "believed vs observed" pairing: what the agent concluded, next to what
 // actually happened around it. This is the view a server log cannot produce.
 export function believedVsObserved(events) {
-    const out = {};
+    const out = Object.create(null);
     for (const ev of events) {
         out[ev.agent] ||= { beliefs: [], goals_completed: 0, goals_abandoned: 0, deaths: 0, observed: 0 };
         const rec = out[ev.agent];
@@ -154,7 +162,7 @@ export function buildReport(all_events, scope = {}) {
     const agents = [...new Set(events.map(e => e.agent))].sort();
     const worlds = [...new Set(events.map(e => e.world).filter(Boolean))].sort();
 
-    const per_agent = {};
+    const per_agent = Object.create(null);
     for (const agent of agents)
         per_agent[agent] = {
             total: 0, by_category: {}, by_command_kind: {},

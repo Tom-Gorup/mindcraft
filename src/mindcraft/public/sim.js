@@ -180,8 +180,13 @@
     }
 
     window.simRender = render;
+    // The stream now carries the full taxonomy (the run archive needs it), so
+    // the feed does its own filtering — it is a human-readable highlight reel,
+    // not the archive.
+    const FEED_SKIP = new Set(['narration', 'command', 'session', 'damage', 'interruption']);
     window.simPushEvent = function (ev) {
         if (!ev || !ev.content) return;
+        if (FEED_SKIP.has(ev.type)) return;
         feed.unshift({ ts: ev.ts || Date.now(), agent: ev.agent || '?', type: ev.type || 'other', content: ev.content });
         if (feed.length > MAX_FEED) feed.length = MAX_FEED;
         render();

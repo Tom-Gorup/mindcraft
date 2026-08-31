@@ -73,7 +73,27 @@ test('who addressed whom is derived from counterpart fields', () => {
     // self-references and system are never edges
     const self = interactionMatrix([ev('Wilbur', 'speech', 0, { data: { to: 'Wilbur' } }),
         ev('Wilbur', 'speech', 1, { data: { to: 'system' } })]);
-    assert.deepEqual(self, {});
+    assert.equal(Object.keys(self).length, 0);
+});
+
+test('untrusted agent names cannot pollute Object.prototype', () => {
+    // agent names are used as object KEYS throughout the report
+    const hostile = [
+        { agent: '__proto__', ts: T0, type: 'speech', content: 'x', data: { to: 'POLLUTED' } },
+        { agent: 'constructor', ts: T0, type: 'command', content: 'x', data: { item: 'y', qty: 1 } },
+    ];
+    interactionMatrix(hostile);
+    buildReport(hostile);
+    assert.equal({}.POLLUTED, undefined, 'Object.prototype was mutated');
+    assert.equal(buildReport(hostile).agents.length, 0, 'reserved names must be filtered out');
+});
+
+test('a client-supplied bucket count cannot exhaust memory', () => {
+    // Array.from({length:N}) with a huge N is a FATAL OOM no try/catch can hold
+    const r = buildReport(SAMPLE, { buckets: 50_000_000 });
+    assert.ok(r.timeline.buckets.length <= 500);
+    assert.equal(buildReport(SAMPLE, { buckets: -1 }).timeline.buckets.length, 1);
+    assert.equal(buildReport(SAMPLE, { buckets: 'abc' }).timeline.buckets.length, 60);
 });
 
 test('resource flow accumulates quantities per item', () => {

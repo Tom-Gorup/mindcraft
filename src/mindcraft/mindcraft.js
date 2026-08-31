@@ -47,6 +47,13 @@ export async function createAgent(settings) {
         return { success: false, error: nameCheck.msg };
     }
     settings.profile.name = String(settings.profile.name).trim();
+    // Two agents with one name share bots/<name>/ — the same memory stream,
+    // history and cognition file, written by two processes. Refuse instead.
+    if (agent_processes[settings.profile.name]) {
+        const msg = `An agent named '${settings.profile.name}' is already running. Names must be unique — they are the agent's storage directory.`;
+        console.error(msg);
+        return { success: false, error: msg };
+    }
     settings = JSON.parse(JSON.stringify(settings));
     let agent_name = settings.profile.name;
     const agentIndex = agent_count++;
