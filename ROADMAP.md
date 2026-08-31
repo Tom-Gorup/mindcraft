@@ -281,7 +281,7 @@ that Phase 6 metered but did not display.
 - [x] Relationship graph renders and updates from the social store (diverging polarity around a neutral midpoint, grudges called out)
 - [x] Event feed streams notable events (goal changes, disputes, reflections, deaths) — new `agent-event` socket channel, importance ≥ 0.5
 - [x] A new agent can be created and *fully* configured in the browser — personality, models, modes, drives — and edits to a live agent apply on restart (spec-driven editor covers drives/social/cognition/memory/skills/tiers/modes/models/prompts; save restarts the agent)
-- [ ] Tom can pull it up on a TV and follow the sim without reading logs *(TV mode built; only Tom can sign this one off)*
+- [ ] Tom can pull it up on a TV and follow the sim without reading logs *(**partial** — the "TV mode" button currently only scales type and marks up. It does not hide chrome, go fullscreen, hold a wake lock, or rotate between agents. See "Real TV mode" in the parking lot.)*
 - [x] Unit tests guard the spec-driven mechanism (7 tests: drives/tiers/modes lists checked against the engine, so new config can't silently lose its UI)
 
 **Deliberately deferred:** director mode (spectator viewpoint cycling to the most
@@ -323,6 +323,30 @@ reads. Agreement is structural, not coincidental — and trace.py now sees the i
 ---
 
 ## Later / parking lot
+
+### Real TV mode (backlogged 2026-08-31, during the first live run)
+
+The `TV mode` button on the Sim tab is currently 16 font-size overrides and a
+class toggle — a zoom, not a display mode. Confirmed against the running sim:
+everything gets bigger and nothing else changes. What it needs to be a screen
+you actually leave on a wall:
+
+- [ ] Hide the app bar and footer in TV mode; a floating Exit control that
+      appears on mouse move is enough. A glanceable display should not carry a
+      **Full shutdown** button, and the chrome wastes vertical space.
+- [ ] Request real fullscreen via the Fullscreen API, and release it on exit.
+- [ ] Hold a Screen Wake Lock so the display does not blank during a 24/7 run.
+- [ ] Let the event feed fill the remaining height instead of a fixed `50vh`.
+- [ ] Rotate focus between agents when there is more than one (N seconds each,
+      active one enlarged). At 4+ agents the current grid just shrinks them.
+- [ ] Emphasise recent change: a drive or goal that moved in the last few
+      seconds gets a brief highlight, so motion draws the eye to what is new.
+      Everything currently scales by the same factor, so the drive that just
+      spiked reads identically to the one that did not — which is the actual
+      reason the view is hard to follow from a distance.
+
+The first four are mechanical. The last two are what make it watchable rather
+than merely legible, and they are the ones that serve pillar 7.
 
 - Director camera with commentary
 - 10+ agent scaling pass (config, not refactor — validate the assumption)
