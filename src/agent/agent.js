@@ -86,7 +86,9 @@ export class Agent {
         if (!settings.use_cognition || settings.task) {
             this.blocked_actions = this.blocked_actions.concat(['!stepDone', '!stepFailed']);
         }
-        if (!settings.use_social) {
+        // benchmark tasks have their own collaboration protocol; trade
+        // commands there cost prompt space and can hijack task conversations
+        if (!settings.use_social || settings.task) {
             this.blocked_actions = this.blocked_actions.concat(['!offerTrade', '!acceptTrade', '!declineTrade']);
         }
         blacklistCommands(this.blocked_actions);
@@ -329,10 +331,15 @@ export class Agent {
 
         if (from_other_bot)
             this.last_sender = source;
+        // who this exchange is actually with (humans included) — last_sender is
+        // bot-only and persists after a conversation ends, so using it for
+        // social context showed the wrong peer's trades and burned gossip on
+        // someone who was never spoken to
+        this.current_source = self_prompt ? null : source;
 
         if (!self_prompt) {
             this.cognition.onInteraction();
-            this.social.record(source, 'conversed');
+            this.social?.record(source, 'conversed');
         }
 
         // Now translate the message
@@ -532,6 +539,25 @@ export class Agent {
             this.actions.cancelResume();
             this.actions.stop();
         });
+        // Victim side of violence: without this the only firsthand grudge
+        // source is dying, so a bot that gets beaten but survives feels
+        // nothing. 1.20+ reports the responsible entity.
+        this.bot.on('entityHurt', (entity, source) => {
+            if (!entity || entity.id !== this.bot.entity?.id) return;
+            const attacker = source?.username || source?.name;
+            if (attacker && attacker !== this.name && this.bot.players[attacker])
+                this.social?.record(attacker, 'attacked_by');
+        });
+        // Reciprocal positive: someone tossing us items. Only credited when a
+        // single other player is close enough to plausibly be the giver.
+        this.bot.on('playerCollect', (collector, collected) => {
+            if (collector?.username !== this.name || !collected) return;
+            const near = Object.values(this.bot.players)
+                .filter(p => p?.entity && p.username !== this.name
+                    && p.entity.position.distanceTo(this.bot.entity.position) < 6);
+            if (near.length === 1)
+                this.social?.record(near[0].username, 'received_item');
+        });
         this.bot.on('kicked', (reason) => {
             if (!this._disconnectHandled) {
                 const { msg } = handleDisconnection(this.name, reason);
@@ -551,9 +577,13 @@ export class Agent {
                 this.cognition.onDeath();
                 this.memory.record('death', `Died in the ${dimention} dimension at ${death_pos_text || 'unknown position'}: ${message}`);
                 // "<name> was slain by X" — a killer who is a player/bot earns a grudge
-                const killer = message.match(/(?:slain|shot|killed|blown up|fireballed|impaled|squashed|skewered|pricked to death) by ([A-Za-z0-9_]{3,16})/)?.[1];
+                // NOTE: a mob name-tagged with a player's username can spoof
+                // this line, so it is deliberately the only grudge source that
+                // depends on server text. bot.players gating keeps it to real
+                // online names; a spoof costs the victim a decaying grudge.
+                const killer = message.match(/(?:slain|shot|killed|blown up|fireballed|impaled|squashed|skewered|pummeled|stung to death|pricked to death) by ([A-Za-z0-9_]{3,16})/)?.[1];
                 if (killer && killer !== this.name && this.bot.players[killer])
-                    this.social.record(killer, 'killed_by');
+                    this.social?.record(killer, 'killed_by');
                 this.handleMessage('system', `You died at position ${death_pos_text || "unknown"} in the ${dimention} dimension with the final message: '${message}'. Your place of death is saved as 'last_death_position' if you want to return. Previous actions were stopped and you have respawned.`);
             }
         });

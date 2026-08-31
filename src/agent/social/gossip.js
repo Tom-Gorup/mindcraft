@@ -2,6 +2,11 @@
 // believe what you're told. No LLM calls — gossip is selected from memories
 // the agent already has, so the social tier costs nothing per tick.
 
+// Event types worth repeating out loud. A whitelist, not a blacklist: it must
+// never include 'social' (the agent's own trust/grudge numbers) or 'gossip'
+// (already-secondhand — relaying it launders hearsay into fresh "evidence").
+export const SHAREABLE_TYPES = new Set(['speech', 'chat_received', 'death', 'goal_completed', 'goal_abandoned', 'discovery', 'place']);
+
 // Subjects mentioned in a memory, excluding the speaker and the listener.
 export function extractSubjects(content, known_names, exclude = []) {
     const subjects = [];
@@ -25,13 +30,19 @@ export function selectGossip(events, listener, known_names, opts = {}) {
     } = opts;
 
     let best = null;
-    for (const event of events) {
-        if (event.type === 'narration' || event.type === 'command') continue;
+    // events are append-ordered: walk backwards and stop at the age cutoff
+    // instead of scanning the whole (up to 5000-event) buffer on a prompt path
+    for (let i = events.length - 1; i >= 0; i--) {
+        const event = events[i];
+        if (now - event.ts > max_age_ms) break;
+        // only firsthand, sayable observations — never the agent's own
+        // internal telemetry ('social' disposition dumps) or relayed hearsay,
+        // which would otherwise echo between two bots forever
+        if (!SHAREABLE_TYPES.has(event.type)) continue;
         if (event.importance < min_importance) continue;
-        if (now - event.ts > max_age_ms) continue;
         if (already_told.has(event.id)) continue;
         // don't retell what the listener told us, or what is about them
-        if (event.data?.source === listener) continue;
+        if (event.data?.source === listener || event.data?.teller === listener) continue;
         const subjects = extractSubjects(event.content, known_names, [listener]);
         if (subjects.length === 0) continue;
         // freshest, most important wins

@@ -16,7 +16,9 @@ const ITEM_VALUES = {
 };
 
 export function itemValue(item, qty = 1) {
-    return (ITEM_VALUES[item] ?? 1) * qty;
+    // hasOwn, not ??: inherited keys like 'constructor' would otherwise
+    // return a function and poison every downstream ratio with NaN
+    return (Object.hasOwn(ITEM_VALUES, item) ? ITEM_VALUES[item] : 1) * qty;
 }
 
 export function newOffer(from, to, give_item, give_qty, want_item, want_qty, now = Date.now()) {
@@ -47,46 +49,83 @@ export function evaluateOffer(offer, disposition, generosity = 0.5) {
     return { ratio: Number(ratio.toFixed(2)), fair, threshold: Number(threshold.toFixed(2)), advice };
 }
 
+// Incoming and outgoing offers are kept in SEPARATE maps. Sharing one map
+// keyed by peer meant an agent's own outgoing offer answered pending() and
+// could be "accepted" by itself — handing over the goods it meant to receive.
 export class TradeBook {
     constructor() {
-        this.offers = new Map(); // peer name -> offer
+        this.incoming = new Map(); // peer -> offer they made us
+        this.outgoing = new Map(); // peer -> offer we made them
     }
 
     propose(offer) {
-        this.offers.set(offer.to, offer);
+        this.outgoing.set(offer.to, offer);
         return offer;
     }
 
     receive(offer) {
-        this.offers.set(offer.from, offer);
+        this.incoming.set(offer.from, offer);
         return offer;
     }
 
+    // Only offers made TO us can be accepted.
     pending(peer) {
-        const offer = this.offers.get(peer);
+        const offer = this.incoming.get(peer);
+        return offer && offer.state === 'pending' ? offer : null;
+    }
+
+    outstanding(peer) {
+        const offer = this.outgoing.get(peer);
         return offer && offer.state === 'pending' ? offer : null;
     }
 
     resolve(peer, state) {
-        const offer = this.offers.get(peer);
+        const offer = this.incoming.get(peer) || this.outgoing.get(peer);
         if (!offer) return null;
         offer.state = state;
         return offer;
     }
 
+    // Offers we accepted and are waiting to be paid for.
+    awaitingDelivery() {
+        return [...this.incoming.values()].filter(o => o.state === 'awaiting_delivery');
+    }
+
     clear(peer) {
-        this.offers.delete(peer);
+        this.incoming.delete(peer);
+        this.outgoing.delete(peer);
     }
 
     // Expire stale offers so a forgotten proposal can't be accepted hours later.
     expire(max_age_ms = 5 * 60000, now = Date.now()) {
         const expired = [];
-        for (const [peer, offer] of this.offers) {
-            if (offer.state === 'pending' && now - offer.created_at > max_age_ms) {
-                offer.state = 'expired';
-                expired.push(peer);
+        for (const map of [this.incoming, this.outgoing]) {
+            for (const [peer, offer] of map) {
+                if (offer.state === 'pending' && now - offer.created_at > max_age_ms) {
+                    offer.state = 'expired';
+                    expired.push(peer);
+                }
             }
         }
         return expired;
     }
+}
+
+// Canonical wire format for offers between bots. The sentence doubles as the
+// chat line a human sees, and is parsed deterministically on the far side —
+// so an offer actually reaches the peer's TradeBook instead of being a
+// sentence nobody records.
+export function formatOfferMessage(give_item, give_qty, want_item, want_qty) {
+    return `I'll trade you ${give_qty} ${give_item} for ${want_qty} ${want_item}. Deal?`;
+}
+
+const OFFER_RE = /I'll trade you (\d{1,4}) ([a-z0-9_]{1,40}) for (\d{1,4}) ([a-z0-9_]{1,40})\. Deal\?/i;
+
+// Returns what the SENDER gives and wants, or null.
+export function parseOfferMessage(message) {
+    const m = String(message || '').match(OFFER_RE);
+    if (!m) return null;
+    const give_qty = parseInt(m[1], 10), want_qty = parseInt(m[3], 10);
+    if (!(give_qty > 0) || !(want_qty > 0)) return null;
+    return { give_item: m[2].toLowerCase(), give_qty, want_item: m[4].toLowerCase(), want_qty };
 }

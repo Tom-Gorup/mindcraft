@@ -1,6 +1,7 @@
 import settings from './settings.js';
 import { containsCommand } from './commands/index.js';
 import { sendBotChatToServer } from './mindserver_proxy.js';
+import { parseOfferMessage } from './social/trade.js';
 
 let agent;
 let agent_names = [];
@@ -329,20 +330,35 @@ function _compileInMessages(convo) {
     return pack;
 }
 
-const NEGATIVE_GOSSIP = /\b(stole|steal|attacked|killed|lied|cheat|betray|refused|hoard|greedy|threat|hostile|dangerous|untrustworthy|griefed)\b/i;
-const POSITIVE_GOSSIP = /\b(helped|gave|shared|saved|generous|kind|trustworthy|friend|built|rescued)\b/i;
+// Interpersonal verbs only. 'killed'/'attacked' are excluded on purpose: they
+// are the most common words in Minecraft chat and almost always refer to mobs
+// ("Greta killed the zombie for me"), so they produced constant false grudges.
+// Real violence between agents is captured firsthand by !attackPlayer and by
+// the death-message hook, which don't need to guess.
+const NEGATIVE_GOSSIP = /\b(stole|steals|stealing|lied|lies to|cheated|betrayed|griefed|hoarding|hoards|selfish|greedy|untrustworthy|broke my|took my|refused to (?:share|help))\b/i;
+const POSITIVE_GOSSIP = /\b(helped|helps|shared|shares|gave me|saved|generous|trustworthy|looked after|rescued)\b/i;
+
+// Mob nouns near a verb mean the sentence is about combat, not about a person.
+const MOB_CONTEXT = /\b(zombie|skeleton|creeper|spider|enderman|witch|slime|drowned|husk|phantom|blaze|piglin|hoglin|ghast|pillager|ravager|guardian|wither|dragon|mob|monster|cow|pig|sheep|chicken)\b/i;
 
 // Detect third-party mentions in an inbound bot message and route them into
-// the social module. Cheap string work — no model call.
+// the social module. Cheap string work — no model call. Claims are scoped to
+// the sentence naming the subject so one clause can't tar everyone mentioned.
 function _absorbGossip(sender, message) {
     try {
-        const negative = NEGATIVE_GOSSIP.test(message);
-        const positive = POSITIVE_GOSSIP.test(message);
-        if (!negative && !positive) return;
-        for (const name of convoManager.getInGameAgents()) {
-            if (name === agent.name || name === sender) continue;
-            if (!new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(message)) continue;
-            agent.social.receiveGossip(sender, name, message, negative ? 'negative' : 'positive');
+        const known = convoManager.getInGameAgents()
+            .filter(n => n !== agent.name && n !== sender);
+        if (known.length === 0) return;
+        for (const sentence of String(message).split(/(?<=[.!?])\s+|\n+/)) {
+            if (MOB_CONTEXT.test(sentence)) continue;
+            const negative = NEGATIVE_GOSSIP.test(sentence);
+            const positive = POSITIVE_GOSSIP.test(sentence);
+            if (negative === positive) continue; // neither, or ambiguous
+            for (const name of known) {
+                const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                if (!new RegExp(`\\b${escaped}\\b`, 'i').test(sentence)) continue;
+                agent.social.receiveGossip(sender, name, sentence.trim(), negative ? 'negative' : 'positive');
+            }
         }
     } catch (err) {
         console.error('Social: gossip absorption failed:', err.message || err);
@@ -356,10 +372,18 @@ function _handleFullInMessage(sender, received) {
     convo.active = true;
 
     let message = _tagMessage(received.message);
-    // a peer talking ABOUT a third party is gossip: believe it in proportion
-    // to how much we trust the teller, and remember who told us
-    if (agent.social?.enabled() && !received.end)
+    if (agent.social?.enabled() && !received.end) {
+        // a peer's canonical offer sentence becomes a real entry in our trade
+        // book — otherwise !acceptTrade could never find anything to accept
+        // messages arrive batched, so a batch can carry both an offer and
+        // unrelated talk — handle both rather than either/or
+        const offer = parseOfferMessage(received.message);
+        if (offer)
+            agent.social.receiveTrade(sender, offer.give_item, offer.give_qty, offer.want_item, offer.want_qty);
+        // a peer talking ABOUT a third party is gossip: believe it in proportion
+        // to how much we trust the teller, and remember who told us
         _absorbGossip(sender, received.message);
+    }
     if (received.end) {
         convoManager.endConversation(sender);
         message = `Conversation with ${sender} ended with message: "${message}"`;

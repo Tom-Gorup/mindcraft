@@ -25,6 +25,14 @@ export const INTERACTIONS = {
     killed_by:      { trust: -0.40, affinity: -0.45, grudge: 0.80 },
     ignored:        { trust: -0.01, affinity: -0.03, grudge: 0.02 },
     lied_to:        { trust: -0.20, affinity: -0.15, grudge: 0.20 },
+    // Aggressor's own view of someone they attacked: you don't attack people
+    // you like, but being the aggressor earns you no grudge and costs little
+    // trust — that asymmetry vs attacked_by/killed_by is the point.
+    attacked:       { trust: -0.05, affinity: -0.20, grudge: 0 },
+    // Hearsay about a third party. Moves opinion but manufactures NO grudge —
+    // resentment should require something happening to you, not a rumor.
+    heard_ill_of:   { trust: -0.06, affinity: -0.10, grudge: 0 },
+    heard_well_of:  { trust: 0.05, affinity: 0.09, grudge: 0 },
 };
 
 export const DEFAULT_PERSONALITY = {

@@ -2,6 +2,7 @@ import * as skills from '../library/skills.js';
 import * as world from '../library/world.js';
 import settings from '../settings.js';
 import convoManager from '../conversation.js';
+import { formatOfferMessage } from '../social/trade.js';
 
 
 function runAsAction (actionFn, resume = false, timeout = -1) {
@@ -191,7 +192,7 @@ export const actionsList = [
         },
         perform: runAsAction(async (agent, player_name, item_name, num) => {
             const gave = await skills.giveToPlayer(agent.bot, item_name, player_name, num);
-            if (gave !== false)
+            if (gave === true) // only a confirmed pickup counts as a gift
                 agent.social?.record(player_name, 'gave_item');
         })
     },
@@ -328,7 +329,7 @@ export const actionsList = [
                 skills.log(agent.bot, `Could not find player ${player_name}.`);
                 return false;
             }
-            agent.social?.record(player_name, 'attacked_by'); // attacking sours it both ways
+            agent.social?.record(player_name, 'attacked'); // aggressor's side, not the victim's
             await skills.attackEntity(agent.bot, player, true);
         })
     },
@@ -409,11 +410,21 @@ export const actionsList = [
             if ((counts[give_item] || 0) < give_num)
                 return `You only have ${counts[give_item] || 0} ${give_item}, cannot offer ${give_num}.`;
             agent.social.proposeTrade(player_name, give_item, give_num, want_item, want_num);
-            const msg = `I'll trade you ${give_num} ${give_item} for ${want_num} ${want_item}. Deal?`;
-            if (convoManager.isOtherAgent(player_name))
-                convoManager.sendToBot(player_name, msg, true, false);
+            // canonical wording: the peer parses this back into a real offer
+            const msg = formatOfferMessage(give_item, give_num, want_item, want_num);
+            if (convoManager.isOtherAgent(player_name)) {
+                // never hijack a live conversation with someone else: that
+                // orphans the old partner (no liveness monitor) and resets
+                // their queue mid-exchange
+                if (convoManager.inConversation(player_name))
+                    convoManager.sendToBot(player_name, msg, false, false);
+                else if (convoManager.inConversation())
+                    return `You are already talking to someone else. End that conversation before trading with ${player_name}.`;
+                else
+                    await convoManager.startConversation(player_name, msg);
+            }
             else
-                agent.openChat(`${player_name}, ${msg}`);
+                await agent.openChat(`${player_name}, ${msg}`);
             return `Offered ${give_num} ${give_item} for ${want_num} ${want_item} to ${player_name}.`;
         }
     },
@@ -439,15 +450,17 @@ export const actionsList = [
                 skills.log(agent.bot, `You do not have ${offer.want_qty} ${offer.want_item} to complete this trade.`);
                 return;
             }
+            // record what we already hold so delivery can be detected
+            const baseline = counts[offer.give_item] || 0;
             const gave = await skills.giveToPlayer(agent.bot, offer.want_item, player_name, offer.want_qty);
-            if (gave === false) {
+            if (gave !== true) {
                 skills.log(agent.bot, `Could not deliver ${offer.want_item} to ${player_name}.`);
                 return;
             }
-            agent.social.trades.resolve(player_name, 'accepted');
-            agent.social.record(player_name, 'traded_fairly');
-            agent.memory?.record('social', `Traded ${offer.want_qty} ${offer.want_item} to ${player_name} for ${offer.give_qty} ${offer.give_item}.`, { peer: player_name });
-            skills.log(agent.bot, `Accepted trade with ${player_name}: gave ${offer.want_qty} ${offer.want_item}, expecting ${offer.give_qty} ${offer.give_item}.`);
+            // trust is earned on delivery, not on our own payment
+            agent.social.markAwaitingDelivery(player_name, baseline);
+            agent.memory?.record('social', `Paid ${offer.want_qty} ${offer.want_item} to ${player_name}, awaiting ${offer.give_qty} ${offer.give_item}.`, { peer: player_name });
+            skills.log(agent.bot, `Accepted trade with ${player_name}: gave ${offer.want_qty} ${offer.want_item}, now expecting ${offer.give_qty} ${offer.give_item}.`);
         })
     },
     {
@@ -461,8 +474,8 @@ export const actionsList = [
                 return 'Trading is not enabled.';
             if (!agent.social.trades.pending(player_name))
                 return `No pending trade offer from ${player_name}.`;
+            // declining is OUR choice — it must not penalize the offerer
             agent.social.trades.resolve(player_name, 'declined');
-            agent.social.record(player_name, 'trade_refused');
             return `Declined the trade offer from ${player_name}.`;
         }
     },

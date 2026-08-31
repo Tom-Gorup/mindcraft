@@ -234,10 +234,8 @@ export class Prompter {
             // Substituted here (late, via function replacer) because it can
             // contain peer names and remembered chat — untrusted text.
             let social_text = '';
-            if (this.agent.social?.enabled()) {
-                const peer = this.agent.last_sender || null;
-                social_text = this.agent.social.getContext(peer);
-            }
+            if (this.agent.social?.enabled())
+                social_text = this.agent.social.getContext(this.agent.current_source || null);
             prompt = prompt.replaceAll('$SOCIAL', () => social_text);
         }
 

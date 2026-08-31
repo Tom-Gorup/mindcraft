@@ -6,6 +6,7 @@ import path from 'path';
 import { setSettings } from '../../src/agent/settings.js';
 import { SocialModule } from '../../src/agent/social/index.js';
 import { AgentMemory } from '../../src/agent/memory/index.js';
+import { formatOfferMessage, parseOfferMessage } from '../../src/agent/social/trade.js';
 
 setSettings({ use_social: true, use_memory: true });
 
@@ -76,23 +77,40 @@ test('hearsay never outweighs firsthand experience', () => {
     assert.ok(b.social.dispositionToward('Steve') > firsthand);
 });
 
-test('a full trade cycle updates both sides and clears the offer', () => {
+test('an honest trade pays off only once the goods actually arrive', () => {
     const seller = makeAgent('Seller');
     const buyer = makeAgent('Buyer');
 
+    // the offer travels as a chat sentence and is parsed back into the book
     seller.social.proposeTrade('Buyer', 'diamond', 1, 'bread', 4);
-    buyer.social.receiveTrade('Seller', 'diamond', 1, 'bread', 4);
+    const wire = formatOfferMessage('diamond', 1, 'bread', 4);
+    const parsed = parseOfferMessage(wire);
+    buyer.social.receiveTrade('Seller', parsed.give_item, parsed.give_qty, parsed.want_item, parsed.want_qty);
 
     const evaluated = buyer.social.evaluatePending('Seller');
     assert.ok(evaluated.ratio > 1, 'a diamond for 4 bread favors the buyer');
     assert.match(buyer.social.getContext('Seller'), /Pending trade with Seller/);
 
-    buyer.social.trades.resolve('Seller', 'accepted');
-    buyer.social.record('Seller', 'traded_fairly');
-    seller.social.record('Buyer', 'traded_fairly');
-    assert.equal(buyer.social.evaluatePending('Seller'), null);
+    // buyer pays first — and earns nothing yet
+    buyer.social.markAwaitingDelivery('Seller', 0);
+    assert.equal(buyer.social.dispositionToward('Seller'), 0, 'paying is not evidence of good faith');
+
+    // the diamond arrives
+    buyer.social.checkDeliveries({ diamond: 1 });
     assert.ok(buyer.social.dispositionToward('Seller') > 0);
-    assert.ok(seller.social.dispositionToward('Buyer') > 0);
+    assert.equal(buyer.social.trades.awaitingDelivery().length, 0);
+});
+
+test('a peer who takes payment and never delivers earns a grudge, not trust', () => {
+    const buyer = makeAgent('Buyer2');
+    buyer.social.receiveTrade('Cheater', 'diamond', 1, 'bread', 4);
+    buyer.social.markAwaitingDelivery('Cheater', 0);
+
+    // nothing arrives before the deadline
+    buyer.social.checkDeliveries({}, Date.now() + 10 * 60000);
+    assert.ok(buyer.social.dispositionToward('Cheater') < -0.1, 'reneging must cost the cheater');
+    assert.ok(buyer.social.get('Cheater').grudge > 0.2);
+    assert.match(buyer.social.get('Cheater').notes.at(-1), /reneged on a trade/);
 });
 
 test('relationships survive a restart', () => {
