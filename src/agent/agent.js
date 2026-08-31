@@ -12,6 +12,7 @@ import { SelfPrompter } from './self_prompter.js';
 import { CognitionLoop } from './cognition/index.js';
 import { AgentMemory } from './memory/index.js';
 import { LearnedSkills } from './skills/library.js';
+import { SocialModule } from './social/index.js';
 import { Blackboard } from './cognition/blackboard.js';
 import { TierScheduler } from './cognition/scheduler.js';
 import convoManager from './conversation.js';
@@ -62,6 +63,7 @@ export class Agent {
         this.memory = new AgentMemory(this);
         this.memory_bank.attachMemory(this.memory); // durable places + place events
         this.learned_skills = new LearnedSkills(this);
+        this.social = new SocialModule(this);
         convoManager.initAgent(this);
         await this.prompter.initExamples();
 
@@ -83,6 +85,9 @@ export class Agent {
         // must not be offered there either
         if (!settings.use_cognition || settings.task) {
             this.blocked_actions = this.blocked_actions.concat(['!stepDone', '!stepFailed']);
+        }
+        if (!settings.use_social) {
+            this.blocked_actions = this.blocked_actions.concat(['!offerTrade', '!acceptTrade', '!declineTrade']);
         }
         blacklistCommands(this.blocked_actions);
 
@@ -325,8 +330,10 @@ export class Agent {
         if (from_other_bot)
             this.last_sender = source;
 
-        if (!self_prompt)
+        if (!self_prompt) {
             this.cognition.onInteraction();
+            this.social.record(source, 'conversed');
+        }
 
         // Now translate the message
         message = await handleEnglishTranslation(message);
@@ -543,6 +550,10 @@ export class Agent {
                 let dimention = this.bot.game.dimension;
                 this.cognition.onDeath();
                 this.memory.record('death', `Died in the ${dimention} dimension at ${death_pos_text || 'unknown position'}: ${message}`);
+                // "<name> was slain by X" — a killer who is a player/bot earns a grudge
+                const killer = message.match(/(?:slain|shot|killed|blown up|fireballed|impaled|squashed|skewered|pricked to death) by ([A-Za-z0-9_]{3,16})/)?.[1];
+                if (killer && killer !== this.name && this.bot.players[killer])
+                    this.social.record(killer, 'killed_by');
                 this.handleMessage('system', `You died at position ${death_pos_text || "unknown"} in the ${dimention} dimension with the final message: '${message}'. Your place of death is saved as 'last_death_position' if you want to return. Previous actions were stopped and you have respawned.`);
             }
         });
@@ -574,12 +585,12 @@ export class Agent {
         this.scheduler.addTier('plan', cog_opts.plan_cadence_ms ?? 1000, (elapsed) => this.cognition.planTick(elapsed));
         this.scheduler.addTier('reflect', mem_opts.reflect_cadence_ms ?? 10000, () => this.memory.reflectTick());
         this.scheduler.addTier('social', 2000, () => {
-            // Phase 5 grows this into the full social module; for now it keeps
-            // conversational context visible on the blackboard
             this.blackboard.social = {
                 in_conversation: convoManager.inConversation(),
                 partner: convoManager.activeConversation?.name ?? null,
+                relationships: this.social.getStatus().relationships,
             };
+            this.social.tick(); // relationship decay + trade-offer expiry, no LLM calls
         });
 
         // This update loop ensures that each update() is called one at a time, even if it takes longer than the interval
@@ -628,6 +639,7 @@ export class Agent {
                 try { this.history.save(); } catch (err) { console.error('Failed to save history on shutdown:', err); }
                 try { this.cognition?.persist(); } catch (err) { console.error('Failed to persist cognition state on shutdown:', err); }
                 try { this.learned_skills?.flush(); } catch (err) { console.error('Failed to flush skills on shutdown:', err); }
+                try { this.social?.flush(); } catch (err) { console.error('Failed to flush social state on shutdown:', err); }
                 process.exit(code);
             });
     }

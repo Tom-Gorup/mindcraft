@@ -13,6 +13,8 @@ export const EVENT_TYPES = {
     damage:         { importance: 0.4,  embed: false },
     session:        { importance: 0.3,  embed: false },  // spawned / disconnected
     interruption:   { importance: 0.3,  embed: false }, // reflex seized the action slot
+    social:         { importance: 0.6,  embed: true },  // relationship shift, trade
+    gossip:         { importance: 0.55, embed: true },  // secondhand, with attribution
     goal_started:   { importance: 0.6,  embed: true },
     goal_completed: { importance: 0.7,  embed: true },
     goal_abandoned: { importance: 0.7,  embed: true },

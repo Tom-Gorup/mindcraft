@@ -229,6 +229,18 @@ export class Prompter {
             }
         }
 
+        if (prompt.includes('$SOCIAL')) {
+            // relationship state + any pending trade + optional gossip cue.
+            // Substituted here (late, via function replacer) because it can
+            // contain peer names and remembered chat — untrusted text.
+            let social_text = '';
+            if (this.agent.social?.enabled()) {
+                const peer = this.agent.last_sender || null;
+                social_text = this.agent.social.getContext(peer);
+            }
+            prompt = prompt.replaceAll('$SOCIAL', () => social_text);
+        }
+
         if (prompt.includes('$MEMORY')) {
             let memory_text = this.agent.history.memory;
             // augment the lossy summary with retrieved long-term memories,

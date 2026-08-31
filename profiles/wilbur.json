@@ -13,6 +13,15 @@
         "food": { "weight": 0.8 }
     },
 
+    "social": {
+        "trust_gain": 1.3,
+        "trust_loss": 0.7,
+        "forgiveness": 1.8,
+        "warmth": 1.3,
+        "gossip_propensity": 0.6,
+        "generosity": 0.8
+    },
+
     "cognition": {
         "min_urgency": 0.2,
         "switch_margin": 0.1

@@ -1,4 +1,5 @@
 import * as skills from '../library/skills.js';
+import * as world from '../library/world.js';
 import settings from '../settings.js';
 import convoManager from '../conversation.js';
 
@@ -189,7 +190,9 @@ export const actionsList = [
             'num': { type: 'int', description: 'The number of items to give.', domain: [1, Number.MAX_SAFE_INTEGER] }
         },
         perform: runAsAction(async (agent, player_name, item_name, num) => {
-            await skills.giveToPlayer(agent.bot, item_name, player_name, num);
+            const gave = await skills.giveToPlayer(agent.bot, item_name, player_name, num);
+            if (gave !== false)
+                agent.social?.record(player_name, 'gave_item');
         })
     },
     {
@@ -325,6 +328,7 @@ export const actionsList = [
                 skills.log(agent.bot, `Could not find player ${player_name}.`);
                 return false;
             }
+            agent.social?.record(player_name, 'attacked_by'); // attacking sours it both ways
             await skills.attackEntity(agent.bot, player, true);
         })
     },
@@ -386,6 +390,80 @@ export const actionsList = [
                 return agent.cognition.completeGoalByRequest();
             }
             return 'Self-prompting stopped.';
+        }
+    },
+    {
+        name: '!offerTrade',
+        description: 'Offer a trade to another player or bot: you give one item, you want another in return. They must accept for it to happen.',
+        params: {
+            'player_name': { type: 'string', description: 'Who to trade with.' },
+            'give_item': { type: 'ItemName', description: 'The item you are offering.' },
+            'give_num': { type: 'int', description: 'How many you offer.', domain: [1, Number.MAX_SAFE_INTEGER] },
+            'want_item': { type: 'ItemName', description: 'The item you want in return.' },
+            'want_num': { type: 'int', description: 'How many you want.', domain: [1, Number.MAX_SAFE_INTEGER] }
+        },
+        perform: async function (agent, player_name, give_item, give_num, want_item, want_num) {
+            if (!agent.social?.enabled())
+                return 'Trading is not enabled.';
+            const counts = world.getInventoryCounts(agent.bot);
+            if ((counts[give_item] || 0) < give_num)
+                return `You only have ${counts[give_item] || 0} ${give_item}, cannot offer ${give_num}.`;
+            agent.social.proposeTrade(player_name, give_item, give_num, want_item, want_num);
+            const msg = `I'll trade you ${give_num} ${give_item} for ${want_num} ${want_item}. Deal?`;
+            if (convoManager.isOtherAgent(player_name))
+                convoManager.sendToBot(player_name, msg, true, false);
+            else
+                agent.openChat(`${player_name}, ${msg}`);
+            return `Offered ${give_num} ${give_item} for ${want_num} ${want_item} to ${player_name}.`;
+        }
+    },
+    {
+        name: '!acceptTrade',
+        description: 'Accept a pending trade offer from another player or bot, giving them what they asked for.',
+        params: {
+            'player_name': { type: 'string', description: 'Whose offer to accept.' }
+        },
+        perform: runAsAction(async (agent, player_name) => {
+            if (!agent.social?.enabled()) {
+                skills.log(agent.bot, 'Trading is not enabled.');
+                return;
+            }
+            const evaluated = agent.social.evaluatePending(player_name);
+            if (!evaluated) {
+                skills.log(agent.bot, `No pending trade offer from ${player_name}.`);
+                return;
+            }
+            const offer = evaluated.offer;
+            const counts = world.getInventoryCounts(agent.bot);
+            if ((counts[offer.want_item] || 0) < offer.want_qty) {
+                skills.log(agent.bot, `You do not have ${offer.want_qty} ${offer.want_item} to complete this trade.`);
+                return;
+            }
+            const gave = await skills.giveToPlayer(agent.bot, offer.want_item, player_name, offer.want_qty);
+            if (gave === false) {
+                skills.log(agent.bot, `Could not deliver ${offer.want_item} to ${player_name}.`);
+                return;
+            }
+            agent.social.trades.resolve(player_name, 'accepted');
+            agent.social.record(player_name, 'traded_fairly');
+            agent.memory?.record('social', `Traded ${offer.want_qty} ${offer.want_item} to ${player_name} for ${offer.give_qty} ${offer.give_item}.`, { peer: player_name });
+            skills.log(agent.bot, `Accepted trade with ${player_name}: gave ${offer.want_qty} ${offer.want_item}, expecting ${offer.give_qty} ${offer.give_item}.`);
+        })
+    },
+    {
+        name: '!declineTrade',
+        description: 'Decline a pending trade offer from another player or bot.',
+        params: {
+            'player_name': { type: 'string', description: 'Whose offer to decline.' }
+        },
+        perform: function (agent, player_name) {
+            if (!agent.social?.enabled())
+                return 'Trading is not enabled.';
+            if (!agent.social.trades.pending(player_name))
+                return `No pending trade offer from ${player_name}.`;
+            agent.social.trades.resolve(player_name, 'declined');
+            agent.social.record(player_name, 'trade_refused');
+            return `Declined the trade offer from ${player_name}.`;
         }
     },
     {

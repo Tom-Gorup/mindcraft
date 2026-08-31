@@ -329,6 +329,26 @@ function _compileInMessages(convo) {
     return pack;
 }
 
+const NEGATIVE_GOSSIP = /\b(stole|steal|attacked|killed|lied|cheat|betray|refused|hoard|greedy|threat|hostile|dangerous|untrustworthy|griefed)\b/i;
+const POSITIVE_GOSSIP = /\b(helped|gave|shared|saved|generous|kind|trustworthy|friend|built|rescued)\b/i;
+
+// Detect third-party mentions in an inbound bot message and route them into
+// the social module. Cheap string work — no model call.
+function _absorbGossip(sender, message) {
+    try {
+        const negative = NEGATIVE_GOSSIP.test(message);
+        const positive = POSITIVE_GOSSIP.test(message);
+        if (!negative && !positive) return;
+        for (const name of convoManager.getInGameAgents()) {
+            if (name === agent.name || name === sender) continue;
+            if (!new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(message)) continue;
+            agent.social.receiveGossip(sender, name, message, negative ? 'negative' : 'positive');
+        }
+    } catch (err) {
+        console.error('Social: gossip absorption failed:', err.message || err);
+    }
+}
+
 function _handleFullInMessage(sender, received) {
     console.log(`${agent.name} responding to "${received.message}" from ${sender}`);
     
@@ -336,6 +356,10 @@ function _handleFullInMessage(sender, received) {
     convo.active = true;
 
     let message = _tagMessage(received.message);
+    // a peer talking ABOUT a third party is gossip: believe it in proportion
+    // to how much we trust the teller, and remember who told us
+    if (agent.social?.enabled() && !received.end)
+        _absorbGossip(sender, received.message);
     if (received.end) {
         convoManager.endConversation(sender);
         message = `Conversation with ${sender} ended with message: "${message}"`;
