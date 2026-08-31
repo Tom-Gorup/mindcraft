@@ -20,8 +20,11 @@ export class ActionManager {
             && this.currentActionLabel.startsWith('mode:');
     }
 
-    async resumeAction(actionFn, timeout) {
-        return this._executeResume(actionFn, timeout);
+    // Args are optional: with none, this re-fires whatever action is latched.
+    // (The parameter list must match _executeResume's — passing a function as
+    // the label silently latched a number as the resume function.)
+    async resumeAction(actionLabel, actionFn, timeout) {
+        return this._executeResume(actionLabel, actionFn, timeout);
     }
 
     async runAction(actionLabel, actionFn, { timeout, resume = false } = {}) {
@@ -54,7 +57,7 @@ export class ActionManager {
         const new_resume = actionFn != null;
         if (new_resume) { // start new resume
             this.resume_func = actionFn;
-            assert(actionLabel != null, 'actionLabel is required for new resume');
+            if (actionLabel == null) throw new Error('actionLabel is required for new resume');
             this.resume_name = actionLabel;
         }
         if (this.resume_func != null && (this.agent.isIdle() || new_resume) && (!this.agent.self_prompter.isActive() || new_resume)) {
@@ -146,12 +149,12 @@ export class ActionManager {
             // Log the full stack trace
             console.error(err.stack);
             await this.stop();
-            err = err.toString();
+            const stack = err?.stack || '(no stack)';
 
             let message = this.getBotOutputSummary() +
                 '!!Code threw exception!!\n' +
-                'Error: ' + err + '\n' +
-                'Stack trace:\n' + err.stack+'\n';
+                'Error: ' + String(err) + '\n' +
+                'Stack trace:\n' + stack + '\n';
 
             let interrupted = this.agent.bot.interrupt_code;
             this.agent.clearBotLogs();

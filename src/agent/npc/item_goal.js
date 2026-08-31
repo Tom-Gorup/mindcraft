@@ -17,7 +17,7 @@ const blacklist = [
     'crimson',
     'warped',
     'dye'
-]
+];
 
 
 class ItemNode {
@@ -160,7 +160,7 @@ class ItemNode {
             await skills.smeltItem(this.manager.agent.bot, to_smelt_name, to_smelt_quantity);
         } else if (this.type === 'hunt') {
             for (let i=0; i<quantity; i++) {
-                res = await skills.attackNearest(this.manager.agent.bot, this.source);
+                const res = await skills.attackNearest(this.manager.agent.bot, this.source);
                 if (!res || this.manager.agent.bot.interrupt_code)
                     break;
             }
@@ -218,7 +218,7 @@ class ItemWrapper {
                     if (includes_blacklisted) break;
                 }
                 if (includes_blacklisted) continue;
-                this.add_method(new ItemNode(this.manager, this, this.name).setRecipe(recipe))
+                this.add_method(new ItemNode(this.manager, this, this.name).setRecipe(recipe));
             }
         }
 
@@ -263,7 +263,7 @@ class ItemWrapper {
                 best_method = method;
             }
         }
-        return best_method
+        return best_method;
     }
 
     isDone(q=1) {

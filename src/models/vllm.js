@@ -17,7 +17,7 @@ export class VLLM {
         else
             vllm_config.baseURL = 'http://0.0.0.0:8000/v1';
 
-        vllm_config.apiKey = ""
+        vllm_config.apiKey = "";
 
         this.vllm = new OpenAIApi(vllm_config);
     }
@@ -38,13 +38,13 @@ export class VLLM {
 
         let res = null;
         try {
-            console.log('Awaiting openai api response...')
+            console.log('Awaiting openai api response...');
             // console.log('Messages:', messages);
             // todo set max_tokens, temperature, top_p, etc. in pack
             let completion = await this.vllm.chat.completions.create(pack);
             if (completion.choices[0].finish_reason == 'length')
                 throw new Error('Context length exceeded');
-            console.log('Received.')
+            console.log('Received.');
             res = completion.choices[0].message.content;
         }
         catch (err) {
@@ -63,20 +63,5 @@ export class VLLM {
         throw new Error('Embeddings are not supported by vllm.');
     }
 
-    async saveToFile(logFile, logEntry) {
-        let task_id = this.agent.task.task_id;
-        console.log(task_id)
-        let logDir;
-        if (this.task_id === null) {
-            logDir = path.join(__dirname, `../../bots/${this.agent.name}/logs`);
-        } else {
-            logDir = path.join(__dirname, `../../bots/${this.agent.name}/logs/${task_id}`);
-        }
-
-        await fs.mkdir(logDir, { recursive: true });
-
-        logFile = path.join(logDir, logFile);
-        await fs.appendFile(logFile, String(logEntry), 'utf-8');
-    }
 
 }
