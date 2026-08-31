@@ -28,7 +28,14 @@
     const SLOTS = ['series-1', 'series-2', 'series-3', 'series-4', 'series-5'];
     const OVERFLOW_SLOT = 'text-muted';
 
-    const samples = [];          // [{ t, values: { agent: {calls, cost} } }]
+    const RANGES = [
+        ['1h', 3600000], ['3h', 3 * 3600000], ['24h', 24 * 3600000], ['7d', 7 * 24 * 3600000],
+    ];
+    let range_ms = 3600000;
+    let oldest = null;           // earliest sample the server holds
+    let resolution_ms = 30000;
+
+    let samples = [];            // [{ t, values: { agent: {calls, cost} } }]
     let last_sample = 0;
     let slots = {};              // agent -> slot index, stable for the life of the agent
     let hover = null;            // sample index under the pointer, or null
@@ -62,10 +69,38 @@
             any = true;
         }
         if (!any) return;
-        samples.push({ t: now, values });
-        if (samples.length > MAX_SAMPLES) samples.splice(0, samples.length - MAX_SAMPLES);
-        render();
+        // Only the live tail is tracked locally; anything longer is served by
+        // the mindserver, whose history survives a browser refresh.
+        if (range_ms <= 3600000) {
+            samples.push({ t: now, values });
+            if (samples.length > MAX_SAMPLES) samples.splice(0, samples.length - MAX_SAMPLES);
+            render();
+        }
     };
+
+    // Pull the selected window from the server. Falls back to whatever the live
+    // buffer holds if the socket is not up yet.
+    function fetchRange() {
+        const sock = window.socket;
+        if (!sock) return render();
+        sock.emit('get-trends', { window_ms: range_ms }, (res) => {
+            if (res?.samples) {
+                samples = res.samples.map(r => ({ t: r.t, values: r.v }));
+                oldest = res.oldest;
+                resolution_ms = res.resolution_ms || 30000;
+            }
+            render();
+        });
+    }
+
+    window.trendsSetRange = function (ms) {
+        range_ms = Number(ms) || 3600000;
+        samples = [];
+        hover = null;
+        fetchRange();
+    };
+    // keep longer windows fresh without hammering the socket
+    setInterval(() => { if (range_ms > 3600000) fetchRange(); }, 30000);
 
     // ---- scales & ticks ----
     // Round a maximum up to a clean number so the axis reads 0 / 250 / 500,
@@ -185,9 +220,18 @@
         }
         const agents = [...new Set(samples.flatMap(s => Object.keys(s.values)))].sort();
         const width = host.clientWidth || 900;
+        const spanMin = Math.round((samples[samples.length - 1].t - samples[0].t) / 60000);
+        const label = RANGES.find(([, ms]) => ms === range_ms)?.[0] || '1h';
+        // Say plainly when the window is wider than the history we actually
+        // have, rather than drawing a 7-day axis over 20 minutes of data.
+        const short = oldest && (Date.now() - oldest) < range_ms * 0.9
+            ? `<span class="tr-note">only ${spanMin} min recorded so far</span>` : '';
         host.innerHTML = '<div class="sim-section"><div class="heading">'
-            + '<span>Trends — last ' + Math.round((samples[samples.length - 1].t - samples[0].t) / 60000) + ' min</span>'
-            + '<span style="font-weight:400;letter-spacing:0;text-transform:none;">one line per agent</span></div>'
+            + `<span>Trends — last ${esc(label)}</span>`
+            + '<span class="tr-ranges">' + RANGES.map(([txt, ms]) =>
+                `<button class="tr-range${ms === range_ms ? ' active' : ''}" onclick="trendsSetRange(${ms})">${txt}</button>`).join('')
+            + '</span></div>'
+            + short
             + legend(agents)
             + '<div class="tr-grid-wrap">'
             + chart('calls', 'Calls / hr', 'rolling rate', fmtCalls, width - 40)

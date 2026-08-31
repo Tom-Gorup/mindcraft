@@ -33,6 +33,18 @@ window.io = function () {
       if (ev === 'get-settings' && cb) cb({ settings: { render_bot_view: false } });
       if (ev === 'list-runs' && cb) cb({ runs: window.__RUNS, active: window.__RUNS[0].id });
       if (ev === 'get-report' && cb) cb({ success: true, report: window.__REPORT, export_path: 'runs/wilbur-vs-greta-1/events.jsonl' });
+      if (ev === 'get-trends' && cb) {
+        const win = (a && a.window_ms) || 3600000;
+        const now = Date.now(), n = 120, rows = [];
+        for (let i = 0; i < n; i++) {
+          const t = now - win + (i * win) / n;
+          rows.push({ t, v: {
+            Wilbur: { calls: 320 + Math.round(90 * Math.sin(i / 9)), cost: 0.62 + 0.18 * Math.sin(i / 7), cache: 0.67 },
+            Greta:  { calls: 210 + Math.round(70 * Math.cos(i / 11)), cost: 0.41 + 0.12 * Math.cos(i / 6), cache: 0.61 },
+          } });
+        }
+        cb({ samples: rows, oldest: now - 8 * 24 * 3600 * 1000, resolution_ms: 30000 });
+      }
       return api;
     },
     _fire(ev) { const h = handlers[ev]; if (h) h.apply(null, [].slice.call(arguments, 1)); },
@@ -200,7 +212,8 @@ window.addEventListener('load', function () {
     if (raw.indexOf('dark') >= 0) document.documentElement.setAttribute('data-theme', 'dark');
     if (raw.indexOf('newagent') >= 0) document.getElementById('openCreateAgentBtn').click();
     if (raw.indexOf('settings') >= 0) openAgentSettings('Wilbur');
-    setTimeout(function () { document.documentElement.dataset.ready = '1'; }, 1100);
+    if (raw.indexOf('sim') >= 0) window.trendsSetRange && window.trendsSetRange(3*3600000);
+    setTimeout(function () { document.documentElement.dataset.ready = '1'; }, 1400);
   }, 30);
 });
 </script>"""

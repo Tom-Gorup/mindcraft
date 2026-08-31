@@ -25,6 +25,49 @@ const profile_spec = JSON.parse(readFileSync(path.join(__dirname, 'public/profil
 // Research runs capture the agent event stream so experiments are comparable.
 const runs = new RunRegistry();
 
+// Economics history for the Sim trends chart. Kept server-side because the
+// browser's buffer resets on refresh, which would make "last 24 hours" a lie.
+// 30s resolution for 7 days is 20,160 points — a few MB, and the chart
+// downsamples to ~200 for drawing regardless of range.
+const TREND_SAMPLE_MS = 30000;
+const TREND_MAX = Math.ceil((7 * 24 * 3600 * 1000) / TREND_SAMPLE_MS);
+const trend_history = [];      // [{ t, v: { agent: {calls, cost, cache} } }]
+let last_trend_sample = 0;
+
+function sampleTrends(states) {
+    const now = Date.now();
+    if (now - last_trend_sample < TREND_SAMPLE_MS) return;
+    last_trend_sample = now;
+    const v = {};
+    let any = false;
+    for (const [name, s] of Object.entries(states || {})) {
+        const e = s && !s.error ? s.economics : null;
+        if (!e?.per_hour) continue;
+        v[name] = {
+            calls: e.per_hour.calls || 0,
+            cost: e.per_hour.cost || 0,
+            cache: e.cache_hit_rate ?? 0,
+        };
+        any = true;
+    }
+    if (!any) return;
+    trend_history.push({ t: now, v });
+    if (trend_history.length > TREND_MAX)
+        trend_history.splice(0, trend_history.length - TREND_MAX);
+}
+
+// Evenly thin to at most `max` points. Always keeps the newest sample, so the
+// right edge of the chart is the live value rather than whatever the stride
+// happened to land on.
+function thin(rows, max) {
+    if (rows.length <= max) return rows;
+    const step = rows.length / max;
+    const out = [];
+    for (let i = 0; i < max; i++) out.push(rows[Math.floor(i * step)]);
+    if (out[out.length - 1] !== rows[rows.length - 1]) out.push(rows[rows.length - 1]);
+    return out;
+}
+
 // Shared profile sanitizer. set-profile, set-agent-settings and create-agent
 // all reach the same sinks in the child process, so the filtering has to live
 // in one place — several of these nested blocks carry filesystem paths that
@@ -423,6 +466,20 @@ export function createMindServer(host_public = false, port = 8080) {
             io.emit('bot-output', agentName, message);
         });
 
+        socket.on('get-trends', (opts, callback) => {
+            if (typeof callback !== 'function') return;
+            const window_ms = Number(opts?.window_ms) || 3600000;
+            const cutoff = Date.now() - window_ms;
+            const rows = trend_history.filter(r => r.t >= cutoff);
+            callback({
+                samples: thin(rows, 240),
+                // so the client can say "only 20 min of history yet" rather
+                // than drawing a 7-day axis with two points on it
+                oldest: trend_history.length ? trend_history[0].t : null,
+                resolution_ms: TREND_SAMPLE_MS,
+            });
+        });
+
         socket.on('listen-to-agents', () => {
             addListener(socket);
         });
@@ -496,6 +553,7 @@ function addListener(listener_socket) {
                 const states = {};
                 for (const [name, state] of entries)
                     if (state) states[name] = state;
+                sampleTrends(states);
                 for (let listener of agent_listeners)
                     listener.emit('state-update', states);
             }).catch(err => {
