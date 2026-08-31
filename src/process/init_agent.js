@@ -37,6 +37,25 @@ const argv = yargs(args)
     })
     .argv;
 
+// Last-resort net for a 24/7 run. Mineflayer, pathfinder and the model
+// providers all produce promises the agent deliberately does not await, and
+// since Node 15 an unhandled rejection terminates the process — one failed
+// pathfinder call at 3am would otherwise end the simulation. Log and continue;
+// only give up if failures arrive faster than the agent can absorb them.
+let recent_faults = 0;
+setInterval(() => { recent_faults = 0; }, 60000).unref?.();
+
+function survive(kind, err) {
+    console.error(`${kind}:`, err?.stack || err?.message || err);
+    if (++recent_faults > 20) {
+        console.error('Too many unhandled faults in one minute; restarting the agent process.');
+        process.exit(1);
+    }
+}
+
+process.on('unhandledRejection', (err) => survive('Unhandled promise rejection', err));
+process.on('uncaughtException', (err) => survive('Uncaught exception', err));
+
 (async () => {
     try {
         console.log('Connecting to MindServer');
@@ -44,6 +63,15 @@ const argv = yargs(args)
         console.log('Starting agent');
         const agent = new Agent();
         serverProxy.setAgent(agent);
+        // stopAgent/forceRestart/shutdown all send SIGINT; without a handler Node
+        // kills instantly and every throttled store loses its pending write.
+        for (const sig of ['SIGINT', 'SIGTERM']) {
+            process.on(sig, () => {
+                console.log(`Received ${sig}, shutting down cleanly...`);
+                try { agent.cleanKill(`Received ${sig}.`, 0); }
+                catch { process.exit(0); }
+            });
+        }
         await agent.start(argv.load_memory, argv.init_message, argv.count_id);
     } catch (error) {
         console.error('Failed to start agent process:');

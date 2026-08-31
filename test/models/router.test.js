@@ -94,3 +94,26 @@ test('embeddings are metered on their own tier', () => {
     assert.equal(s.by_tier.embed.cost, 0); // local
     assert.equal(s.local_share, 1);
 });
+
+test('a hung provider times out instead of wedging the tier', async () => {
+    const router = new ModelRouter({}, roles(), { call_timeout_ms: 20 });
+    await assert.rejects(
+        router.run('chat', 'test_site', () => new Promise(() => {}), { no_fallback: true }),
+        /timed out after/);
+    // and it is metered as an error, so the dashboard shows the outage
+    assert.equal(router.meter.totals.errors, 1);
+});
+
+test('a timed-out call still falls back to a different model', async () => {
+    const r = roles();
+    const router = new ModelRouter({}, r, { call_timeout_ms: 20 });
+    router.models.set('reflex', { model: fakeModel('hung'), api: 'ollama', name: 'hung' });
+    const res = await router.run('reflex', 'test_site',
+        (model) => model.model_name === 'hung' ? new Promise(() => {}) : model.sendRequest());
+    assert.equal(res, 'ok from chat-model');
+});
+
+test('a fast call is unaffected by the timeout', async () => {
+    const router = new ModelRouter({}, roles(), { call_timeout_ms: 5000 });
+    assert.equal(await router.run('chat', 'test_site', (m) => m.sendRequest()), 'ok from chat-model');
+});

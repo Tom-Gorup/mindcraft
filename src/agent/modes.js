@@ -1,13 +1,15 @@
 import * as skills from './library/skills.js';
 import * as world from './library/world.js';
 import * as mc from '../utils/mcdata.js';
-import settings from './settings.js'
+import settings from './settings.js';
 import convoManager from './conversation.js';
 
-async function say(agent, message) {
+function say(agent, message) {
     agent.bot.modes.behavior_log += message + '\n';
     if (agent.shut_up || !settings.narrate_behavior) return;
-    agent.openChat(message);
+    // fire-and-forget by design, but a rejected chat must not kill the process
+    Promise.resolve(agent.openChat(message))
+        .catch(err => console.warn('Mode narration failed:', err?.message || err));
 }
 
 // a mode is a function that is called every tick to respond immediately to the world
@@ -123,7 +125,7 @@ const modes_list = [
                 say(agent, 'I\'m stuck!');
                 this.stuck_time = 0;
                 execute(this, agent, async () => {
-                    const crashTimeout = setTimeout(() => { agent.cleanKill("Got stuck and couldn't get unstuck") }, 10000);
+                    const crashTimeout = setTimeout(() => { agent.cleanKill("Got stuck and couldn't get unstuck"); }, 10000);
                     try {
                         await skills.moveAway(bot, 5);
                     } finally {
@@ -311,17 +313,29 @@ const modes_list = [
 async function execute(mode, agent, func, timeout=-1) {
     if (agent.self_prompter.isActive())
         agent.self_prompter.stopLoop();
-    // break the cognition act loop too, not just the self-prompt loop —
-    // otherwise its next command re-stops the reflex we just started
-    agent.cognition?.interruptAct();
     let interrupted_action = agent.actions.currentActionLabel;
-    if (interrupted_action)
+    if (interrupted_action) {
+        // Break the cognition act loop too, but ONLY when there is a real
+        // action to protect. Modes also fire while the agent is merely idle
+        // mid-LLM-call, and interrupting then threw away a paid generation
+        // and scored the step as "didn't act".
+        agent.cognition?.interruptAct();
         agent.cognition?.onModeInterruption(mode.name, interrupted_action);
+    }
     mode.active = true;
-    let code_return = await agent.actions.runAction(`mode:${mode.name}`, async () => {
-        await func();
-    }, { timeout });
-    mode.active = false;
+    let code_return;
+    try {
+        code_return = await agent.actions.runAction(`mode:${mode.name}`, async () => {
+            await func();
+        }, { timeout });
+    } catch (err) {
+        // A reflex that throws is a bad tick, not a fatal condition. Callers
+        // never await this, so rethrowing would take the whole process down.
+        console.warn(`Mode ${mode.name} threw:`, err?.message || err);
+        return;
+    } finally {
+        mode.active = false;
+    }
     console.log(`Mode ${mode.name} finished executing, code_return: ${code_return.message}`);
 
     let should_reprompt =

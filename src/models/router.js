@@ -45,6 +45,8 @@ export class ModelRouter {
         this.meter = new Meter({ now: opts.now ?? Date.now() });
         this.models = new Map();   // tier -> {model, api, name}
         this.warned = new Set();
+        // A hung provider must surface as an error, not as a wedged tier.
+        this.call_timeout_ms = opts.call_timeout_ms ?? 120000;
         this._resolveTiers();
     }
 
@@ -110,7 +112,10 @@ export class ModelRouter {
         const started = Date.now();
         let result;
         try {
-            result = await fn(entry.model, this.prepareSystem(entry, opts.system));
+            result = await this._withTimeout(
+                fn(entry.model, this.prepareSystem(entry, opts.system)),
+                opts.timeout_ms ?? this.call_timeout_ms,
+                `${site} (${entry.api})`);
         } catch (err) {
             this.meter.record({ tier, site, model: entry.name, local: isLocalApi(entry.api), in_text: opts.in_text, out_text: '', now: started, error: true });
             // one retry on a genuinely different model, if there is one
@@ -132,6 +137,17 @@ export class ModelRouter {
         if (settings.log_routing)
             console.log(`[route] ${site} tier=${tier} api=${entry.api} model=${entry.name} in≈${estimateTokens(opts.in_text)}tok`);
         return result;
+    }
+
+    _withTimeout(promise, ms, label) {
+        if (!(ms > 0)) return promise;
+        return new Promise((resolve, reject) => {
+            const t = setTimeout(() => reject(new Error(`Model call timed out after ${Math.round(ms / 1000)}s: ${label}`)), ms);
+            t.unref?.();
+            Promise.resolve(promise).then(
+                (v) => { clearTimeout(t); resolve(v); },
+                (e) => { clearTimeout(t); reject(e); });
+        });
     }
 
     _fallbackFor(tier, failed) {

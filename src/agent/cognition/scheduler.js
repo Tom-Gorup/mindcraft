@@ -8,6 +8,7 @@ export class TierScheduler {
     constructor(blackboard = null) {
         this.blackboard = blackboard;
         this.tiers = [];
+        this.stall_ms = 180000;
     }
 
     // runFn(elapsed_ms) — sync or async. Registration order = execution order
@@ -41,12 +42,25 @@ export class TierScheduler {
                 continue;
             }
             if (result && typeof result.then === 'function') {
-                // async tier: stays busy (skipped, not queued) until it settles
+                // async tier: stays busy (skipped, not queued) until it settles.
+                // A tier that never settles would otherwise wedge forever with
+                // errors=0 — i.e. look healthy on the dashboard while doing
+                // nothing — so warn once past a generous deadline.
+                const stuck = setTimeout(() => {
+                    if (tier.busy) {
+                        tier.stalled = true;
+                        console.warn(`Tier '${tier.name}' has not completed after ${Math.round(this.stall_ms / 1000)}s; it may be waiting on a hung provider.`);
+                        this._publish(tier);
+                    }
+                }, this.stall_ms);
+                stuck.unref?.();
                 result
                     .then(() => { tier.runs++; })
                     .catch(err => this._fail(tier, err))
                     .then(() => {
+                        clearTimeout(stuck);
                         tier.busy = false;
+                        tier.stalled = false;
                         this._publish(tier);
                     });
             } else {
@@ -74,6 +88,7 @@ export class TierScheduler {
             runs: tier.runs,
             errors: tier.errors,
             busy: tier.busy,
+            stalled: !!tier.stalled,
             last_run: tier.last_run,
             cadence_ms: tier.cadence_ms,
         };
