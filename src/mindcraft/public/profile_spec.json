@@ -1,0 +1,112 @@
+{
+    "_comment": "Schema for agent profile JSON. The mindserver validates against this and the dashboard generates the profile editor from it, so a new profile key gets UI by adding a row here. Sections group fields in the editor; 'advanced' fields are collapsed by default.",
+
+    "name": { "type": "string", "section": "identity", "required": true, "description": "The bot's Minecraft username. 3-16 characters, letters/numbers/underscore." },
+
+    "model": { "type": "model", "section": "models", "required": true, "description": "Chat model. Either \"provider/model\" or an object {api, model, url, params}.", "default": "gpt-5.4-mini" },
+    "code_model": { "type": "model", "section": "models", "description": "Model for writing code (!newAction). Defaults to the chat model." },
+    "vision_model": { "type": "model", "section": "models", "description": "Model for image analysis. Defaults to the chat model." },
+    "embedding": { "type": "model", "section": "models", "description": "Embedding model for memory/skill/example retrieval. Keep local if you can.", "default": "ollama" },
+    "speak_model": { "type": "string", "section": "models", "description": "Text-to-speech as \"provider/model/voice\", or \"system\".", "default": "openai/tts-1/echo" },
+    "cooldown": { "type": "number", "section": "models", "description": "Minimum milliseconds between model calls.", "default": 3000, "advanced": true },
+
+    "tiers": {
+        "type": "object", "section": "routing", "advanced": true,
+        "description": "Per-tier model overrides. Omit to send every tier to the chat model.",
+        "fields": {
+            "reflex": { "type": "model", "description": "Cheap, frequent calls: bot responder, skill docstrings. Keep local." },
+            "chat": { "type": "model", "description": "Conversation and autonomous step prompting — the bulk of traffic. Keep local." },
+            "plan": { "type": "model", "description": "Goal generation and task planning. A mid-tier API model earns its keep here." },
+            "reflect": { "type": "model", "description": "Reflection and pivotal judgements. The only tier worth a frontier model." },
+            "code": { "type": "model", "description": "Program synthesis for !newAction." },
+            "vision": { "type": "model", "description": "Image analysis." }
+        }
+    },
+
+    "drives": {
+        "type": "object", "section": "personality",
+        "description": "Intrinsic drives. Weight scales urgency; decay is per minute for non-sensor drives.",
+        "each": { "type": "drive" },
+        "keys": ["safety", "food", "curiosity", "social", "wealth"],
+        "fields": {
+            "weight": { "type": "number", "min": 0, "max": 2, "step": 0.05, "description": "How much this drive matters to this personality." },
+            "decay_per_min": { "type": "number", "min": 0, "max": 1, "step": 0.005, "description": "How fast it builds up when unsatisfied (decay drives only)." },
+            "description": { "type": "string", "description": "Shown to the model when it generates a goal for this drive." }
+        }
+    },
+
+    "social": {
+        "type": "object", "section": "personality",
+        "description": "How this personality forms and keeps relationships.",
+        "fields": {
+            "trust_gain": { "type": "number", "min": 0, "max": 3, "step": 0.1, "default": 1.0, "description": "How readily trust is earned." },
+            "trust_loss": { "type": "number", "min": 0, "max": 3, "step": 0.1, "default": 1.0, "description": "How readily trust is lost. Above 1 is suspicious." },
+            "forgiveness": { "type": "number", "min": 0, "max": 3, "step": 0.1, "default": 1.0, "description": "How fast grudges fade." },
+            "warmth": { "type": "number", "min": 0, "max": 3, "step": 0.1, "default": 1.0, "description": "Strength of like/dislike swings." },
+            "gossip_propensity": { "type": "number", "min": 0, "max": 1, "step": 0.05, "default": 0.5, "description": "Likelihood of passing on news about others." },
+            "generosity": { "type": "number", "min": 0, "max": 1, "step": 0.05, "default": 0.5, "description": "Willingness to give and to accept lopsided trades." }
+        }
+    },
+
+    "cognition": {
+        "type": "object", "section": "tuning", "advanced": true,
+        "description": "Autonomous loop tuning.",
+        "fields": {
+            "min_urgency": { "type": "number", "min": 0, "max": 1, "step": 0.05, "default": 0.25, "description": "Urgency needed before the agent invents a goal at all." },
+            "switch_margin": { "type": "number", "min": 0, "max": 1, "step": 0.05, "default": 0.1, "description": "How much a rival drive must beat the current one to take over." },
+            "heartbeat_ms": { "type": "number", "min": 5000, "max": 300000, "step": 1000, "default": 45000, "description": "How long to wait with nothing happening before re-examining the plan." },
+            "step_cooldown_ms": { "type": "number", "min": 500, "max": 30000, "step": 500, "default": 2000, "description": "Settle time after an event before prompting." },
+            "max_step_responses": { "type": "number", "min": 1, "max": 10, "default": 5, "description": "Commands allowed per step prompt." },
+            "step_timeout_ms": { "type": "number", "min": 30000, "max": 1800000, "step": 30000, "default": 300000, "description": "Active time a single step may consume before it counts as failed." }
+        }
+    },
+
+    "memory": {
+        "type": "object", "section": "tuning", "advanced": true,
+        "description": "Long-term memory tuning.",
+        "fields": {
+            "retrieval_k": { "type": "number", "min": 1, "max": 20, "default": 5, "description": "Memories injected into a prompt." },
+            "half_life_hours": { "type": "number", "min": 1, "max": 720, "default": 24, "description": "How fast recency fades in retrieval scoring." },
+            "reflection_threshold": { "type": "number", "min": 1, "max": 50, "default": 8, "description": "Accumulated importance before the agent reflects." },
+            "max_events_in_ram": { "type": "number", "min": 100, "max": 50000, "default": 5000, "description": "Events held in memory (all are still written to disk)." }
+        }
+    },
+
+    "skills": {
+        "type": "object", "section": "tuning", "advanced": true,
+        "description": "Learned-skill library tuning.",
+        "fields": {
+            "direct_execute_cosine": { "type": "number", "min": 0.5, "max": 1, "step": 0.01, "default": 0.92, "description": "Embedding similarity needed to rerun a stored skill instead of writing new code." },
+            "direct_execute_overlap": { "type": "number", "min": 0.3, "max": 1, "step": 0.05, "default": 0.8, "description": "Same, for the word-overlap fallback." },
+            "max_skills": { "type": "number", "min": 10, "max": 2000, "default": 500, "description": "Cap on stored skills." },
+            "max_compose_depth": { "type": "number", "min": 1, "max": 6, "default": 3, "description": "How deep learned skills may call each other." }
+        }
+    },
+
+    "modes": {
+        "type": "object", "section": "behavior",
+        "description": "Reflexes that run every tick.",
+        "fields": {
+            "self_preservation": { "type": "boolean", "default": true, "description": "React to fire, lava, drowning, and lethal damage." },
+            "unstuck": { "type": "boolean", "default": true, "description": "Break out of being stuck in one place." },
+            "cowardice": { "type": "boolean", "default": false, "description": "Run from hostile mobs." },
+            "self_defense": { "type": "boolean", "default": true, "description": "Fight back against nearby hostiles." },
+            "hunting": { "type": "boolean", "default": true, "description": "Hunt animals when idle." },
+            "item_collecting": { "type": "boolean", "default": true, "description": "Pick up nearby dropped items." },
+            "torch_placing": { "type": "boolean", "default": true, "description": "Light dark areas." },
+            "elbow_room": { "type": "boolean", "default": true, "description": "Step away from crowding players." },
+            "idle_staring": { "type": "boolean", "default": true, "description": "Look around when idle." },
+            "cheat": { "type": "boolean", "default": false, "description": "Use commands to place blocks and teleport instantly." }
+        }
+    },
+
+    "conversing": { "type": "prompt", "section": "prompts", "advanced": true, "description": "System prompt for conversation and autonomous steps." },
+    "coding": { "type": "prompt", "section": "prompts", "advanced": true, "description": "System prompt for writing code." },
+    "saving_memory": { "type": "prompt", "section": "prompts", "advanced": true, "description": "Prompt for compressing chat history." },
+    "goal_generation": { "type": "prompt", "section": "prompts", "advanced": true, "description": "Prompt that turns drive state into a goal." },
+    "task_planning": { "type": "prompt", "section": "prompts", "advanced": true, "description": "Prompt that breaks a goal into steps." },
+    "reflecting": { "type": "prompt", "section": "prompts", "advanced": true, "description": "Prompt that turns events into durable beliefs." },
+    "skill_docstring": { "type": "prompt", "section": "prompts", "advanced": true, "description": "Prompt that describes a newly learned skill." },
+    "bot_responder": { "type": "prompt", "section": "prompts", "advanced": true, "description": "Prompt deciding whether to answer another bot now." },
+    "image_analysis": { "type": "prompt", "section": "prompts", "advanced": true, "description": "Prompt for describing a screenshot." }
+}

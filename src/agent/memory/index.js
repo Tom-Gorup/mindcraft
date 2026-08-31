@@ -5,6 +5,7 @@ import { rankEvents, humanizeAge, DEFAULT_WEIGHTS } from './scoring.js';
 import { cosineSimilarity } from '../../utils/math.js';
 import { wordOverlapScore } from '../../utils/text.js';
 import { parseJsonResponse } from '../cognition/planner.js';
+import { sendEventToServer } from '../mindserver_proxy.js';
 
 // Generative-Agents-style memory: an append-only event stream with importance,
 // retrieval scored by recency x relevance x importance, and a reflection pass
@@ -28,6 +29,7 @@ export class AgentMemory {
         this.reflection_min_interval_ms = opts.reflection_min_interval_ms ?? 60000;
         this.max_events_in_ram = opts.max_events_in_ram ?? 5000;
         this.embed_backoff_ms = opts.embed_backoff_ms ?? 5 * 60000;
+        this.feed_min_importance = opts.feed_min_importance ?? 0.5; // dashboard feed cutoff
 
         this.store = null;
         this.events = [];
@@ -90,6 +92,10 @@ export class AgentMemory {
 
             if (shouldEmbed(event))
                 this._embedInBackground(event);
+
+            // stream the notable ones to the dashboard event feed
+            if (event.importance >= this.feed_min_importance)
+                sendEventToServer(this.agent.name, event);
 
             if (type === 'belief')
                 this.belief_count++;

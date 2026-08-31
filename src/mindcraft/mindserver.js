@@ -18,6 +18,7 @@ const agent_connections = {};
 const agent_listeners = [];
 
 const settings_spec = JSON.parse(readFileSync(path.join(__dirname, 'public/settings_spec.json'), 'utf8'));
+const profile_spec = JSON.parse(readFileSync(path.join(__dirname, 'public/profile_spec.json'), 'utf8'));
 
 class AgentConnection {
     constructor(settings, viewer_port) {
@@ -169,6 +170,37 @@ export function createMindServer(host_public = false, port = 8080) {
             }
         });
 
+        // Profile editing: the dashboard generates its form from
+        // public/profile_spec.json, so a new profile key gets UI by adding a
+        // row there rather than by writing more form code.
+        socket.on('get-profile-spec', (callback) => {
+            if (typeof callback === 'function') callback({ spec: profile_spec });
+        });
+
+        socket.on('get-profile', (agentName, callback) => {
+            const agent = agent_connections[agentName];
+            if (typeof callback !== 'function') return;
+            if (!agent) return callback({ success: false, error: 'Agent not found' });
+            callback({ success: true, profile: agent.settings?.profile ?? {} });
+        });
+
+        socket.on('set-profile', (agentName, profile, callback) => {
+            const agent = agent_connections[agentName];
+            const done = typeof callback === 'function' ? callback : () => {};
+            if (!agent) return done({ success: false, error: 'Agent not found' });
+            if (!profile || typeof profile !== 'object') return done({ success: false, error: 'Invalid profile' });
+            // the name is a filesystem path in the child process — never let
+            // the editor change it out from under a running agent
+            profile.name = agent.settings.profile.name;
+            for (const key in profile) {
+                if (!(key in profile_spec) && key !== 'conversation_examples' && key !== 'coding_examples' && key !== 'npc')
+                    delete profile[key];
+            }
+            agent.setSettings({ ...agent.settings, profile });
+            agent.socket?.emit('restart-agent');
+            done({ success: true });
+        });
+
         socket.on('get-settings', (agentName, callback) => {
             if (agent_connections[agentName]) {
                 callback({ settings: agent_connections[agentName].settings });
@@ -282,6 +314,12 @@ export function createMindServer(host_public = false, port = 8080) {
 				console.error('Error: ', error);
 			}
 		});
+
+        // relay an agent's notable memory events to dashboard listeners
+        socket.on('agent-event', (event) => {
+            for (let listener of agent_listeners)
+                listener.emit('agent-event', event);
+        });
 
         socket.on('bot-output', (agentName, message) => {
             io.emit('bot-output', agentName, message);

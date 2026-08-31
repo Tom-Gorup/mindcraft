@@ -3,6 +3,7 @@
 <head>
     <title>Mindcraft</title>
     <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="sim.css">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -369,6 +370,27 @@
             border-top: 1px solid #3a3a3a;
         }
         .footer-left { color: #cccccc; font-style: italic; }
+    .tab-bar { display: flex; gap: 6px; }
+        .tab-btn {
+            background: #363636; color: #c9c9c9; border: 1px solid #454545;
+            padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 0.95em;
+        }
+        .tab-btn.active { background: #2196F3; color: #fff; border-color: #2196F3; }
+    .pf-section { margin-bottom: 18px; }
+        .pf-section h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: #8a8a80; }
+        .pf-group { background: #2f2f2f; border: 1px solid #3d3d3d; border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; }
+        .pf-group summary { cursor: pointer; font-weight: 600; }
+        .pf-desc-inline { font-weight: 400; color: #8a8a80; font-size: 0.85em; }
+        .pf-sub { border-left: 2px solid #3d3d3d; padding-left: 10px; margin: 8px 0; }
+        .pf-sub-title { color: #c3c2b7; font-size: 0.9em; margin-bottom: 4px; }
+        .pf-field { display: grid; grid-template-columns: 170px 1fr; gap: 8px; align-items: center; margin: 6px 0; }
+        .pf-field label { color: #c3c2b7; font-size: 0.9em; }
+        .pf-field input[type=text], .pf-field input[type=number], .pf-field textarea {
+            background: #262626; border: 1px solid #555; color: #e0e0e0; border-radius: 4px; padding: 4px 6px; width: 100%; font: inherit;
+        }
+        .pf-field textarea { grid-column: 1 / -1; font-size: 0.85em; }
+        .pf-desc { grid-column: 2; color: #7d7d75; font-size: 0.8em; }
+        .pf-hint { color: #8a8a80; font-size: 0.9em; margin: 4px 0 12px; }
     </style>
 </head>
 <body>
@@ -378,8 +400,19 @@
             <span id="msStatus" class="status-badge offline">mindserver offline</span>
         </div>
         <div class="title-spacer"></div>
+        <div class="tab-bar">
+            <button id="tabAgents" class="tab-btn active" onclick="showView('agents')">Agents</button>
+            <button id="tabSim" class="tab-btn" onclick="showView('sim')">Sim</button>
+        </div>
     </div>
     <div id="agents"></div>
+    <div id="sim" class="sim-root">
+        <div class="sim-toolbar">
+            <button id="tvModeBtn" class="neutral-btn" onclick="simSetTv(!simIsTv())">TV mode</button>
+            <div class="spacer"></div>
+        </div>
+        <div id="simBody"></div>
+    </div>
 
     <div class="page-footer">
         <div>
@@ -417,6 +450,21 @@
     </div>
 
     <!-- Agent Settings Modal -->
+    <div id="profileEditorModal" class="modal-backdrop">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="profileEditorTitle" style="margin:0;">Configure agent</h2>
+                <button class="neutral-btn" onclick="closeProfileEditor()">Close</button>
+            </div>
+            <p class="pf-hint">Personality, models, routing, and prompts. Saving restarts the agent.</p>
+            <div id="profileEditorForm"></div>
+            <div id="profileEditorError" style="color:#f44336;margin-top:10px;"></div>
+            <div class="modal-footer">
+                <button class="start-btn" onclick="saveProfileEditor()">Save &amp; Restart</button>
+            </div>
+        </div>
+    </div>
+
     <div id="agentSettingsModal" class="modal-backdrop">
         <div class="modal">
             <div class="modal-header">
@@ -439,8 +487,11 @@
         </div>
     </div>
 
+    <script src="sim.js"></script>
+    <script src="profile_editor.js"></script>
     <script>
         const socket = io({ path: window.location.pathname + 'socket.io' })
+        window.socket = socket; // shared with sim.js / profile_editor.js
         const agentsDiv = document.getElementById('agents');
         let settingsSpec = {};
         let profileData = null;
@@ -661,8 +712,24 @@
         });
 
         // Subscribe to aggregated state updates (re-sent on each connect)
+        function showView(which) {
+            const agents = document.getElementById('agents');
+            const sim = document.getElementById('sim');
+            const isSim = which === 'sim';
+            agents.style.display = isSim ? 'none' : '';
+            sim.classList.toggle('active', isSim);
+            document.getElementById('tabAgents').classList.toggle('active', !isSim);
+            document.getElementById('tabSim').classList.toggle('active', isSim);
+            if (isSim && window.simRender) window.simRender();
+        }
+
+        socket.on('agent-event', (ev) => {
+            if (window.simPushEvent) window.simPushEvent(ev);
+        });
+
         socket.on('state-update', (states) => {
             window.lastStates = states;
+            if (window.simRender) window.simRender();
             Object.keys(states || {}).forEach(name => {
                 const st = states[name];
                 const healthEl = document.getElementById(`health-${name}`);
@@ -923,6 +990,7 @@
                                 <span><span class="status-icon ${agent.in_game ? 'online' : 'offline'}">●</span>${agentName}${agent.socket_connected && !agent.in_game ? '<span style="margin-left:6px;color:#f0ad4e;">joining...</span>' : ''}
                                     <button class="gear-btn" title="Settings" onclick="openAgentSettings('${agentName}')">⚙</button>
                                     <button class="gear-btn" title="Inventory" onclick="toggleDetails('${agentName}')">Inventory</button>
+                                    <button class="gear-btn" title="Configure personality, models, prompts" onclick="openProfileEditor('${agentName}')">Configure</button>
                                 </span>
                             </div>
                             ${showViewer ? `<div class="cell" style="grid-row: span 3; padding:0;">${viewerHTML}</div>` : ''}

@@ -131,6 +131,19 @@ export function sendBotChatToServer(agentName, json) {
 }
 
 // for sending general output to server for display
+// Push a notable memory event to the dashboard feed. Fire-and-forget: the
+// feed is an observability nicety and must never affect agent behavior.
+export function sendEventToServer(agentName, event) {
+    try {
+        serverProxy.getSocket()?.emit('agent-event', {
+            agent: agentName,
+            ts: event.ts,
+            type: event.type,
+            content: event.content,
+        });
+    } catch { /* dashboard is optional */ }
+}
+
 export function sendOutputToServer(agentName, message) {
     serverProxy.getSocket().emit('bot-output', agentName, message);
 }
