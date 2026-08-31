@@ -76,3 +76,19 @@ autonomous goal pursuit, induced-failure replanning, `use_cognition:false` boot 
   watch for surprises.
 - gitleaks pre-commit hook false-positived on ROADMAP.md wording; line carries an
   inline `gitleaks:allow` marker.
+
+### Session 2 addendum — plan expansion (Tom)
+
+Tom added two directives, folded into the plan:
+- **UI parity (standing rule):** everything configurable must be configurable in the
+  :8080 app, including creating and fully configuring new agents in the browser.
+  Applies to every phase from now on; Phase 1's `drives`/`cognition` blocks get their
+  UI retrofit as a Phase 7 line item (profile editor backed by a profile schema spec).
+- **Phase 8 (new): Research lab.** Level up Tom's offline behavioral trace
+  (`~/Documents/mindcraft-analysis/trace.py`, imported to `tools/trace.py`) into
+  in-app live/historical reports: scoped by agent/time/world/run, named comparable
+  runs with JSONL export, multiple concurrent worlds under one mindserver, and a
+  believed-vs-observed view (memory self-account vs event history). Second standing
+  rule added: new behaviors emit typed events (Phase 2 stream), never just log lines —
+  Phase 2's event taxonomy is now explicitly required to cover trace.py's categories
+  plus goal/plan lifecycle. report.html (7.6MB generated artifact) was not committed.

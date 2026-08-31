@@ -7,6 +7,19 @@ without Tom's confirmation.** Branch per phase: `feat/phase-N-<name>`.
 Conventions used below: every phase lists goal, files, acceptance criteria ("done when"),
 and verification steps. Checkboxes are updated at the end of each session.
 
+**Standing rule — UI parity.** The mindserver app at :8080 is the primary control
+surface. Every phase that introduces new configuration (settings flags, profile keys,
+tuning knobs) exposes it in the app in that same phase — via `settings_spec.json` and/or
+the profile editor. End state: a user creates and fully configures a new agent in the
+browser without ever touching JSON on disk. (Phase 1's `drives`/`cognition` profile
+blocks predate this rule; their UI retrofit is a Phase 7 line item.)
+
+**Standing rule — events, not log lines.** Every phase that introduces new behavior
+emits typed events for it (Phase 2's event stream is the substrate), carrying the
+taxonomy the research reports need: deliberate speech vs auto-narration vs commands
+(bucketed by activity kind) vs deaths vs sessions vs goals/plans/reflections. If a
+behavior only shows up in console logs, it doesn't exist to Phase 8.
+
 ---
 
 ## Phase 0 — Groundwork (Session 1)
@@ -48,7 +61,7 @@ self-prompter string.
 planning context instead of the lossy 500-char history summary.
 
 **Files:**
-- Create `src/agent/memory/` — `events.js` (append-only typed event stream: timestamp, type, content, importance score), `index.js` (retrieval API: recency × relevance × importance; embeddings via the profile's embedding model, Ollama-friendly, word-overlap fallback), `reflection.js` (periodic job synthesizing events into belief entries), `store.js` (per-agent persistence in `bots/<name>/memory/`, JSON or SQLite).
+- Create `src/agent/memory/` — `events.js` (append-only typed event stream: timestamp, type, content, importance score; the type taxonomy must cover what `tools/trace.py` distinguishes — speech vs narration vs command-by-kind vs death vs session — plus goal/plan lifecycle, so Phase 8 reports read straight from it), `index.js` (retrieval API: recency × relevance × importance; embeddings via the profile's embedding model, Ollama-friendly, word-overlap fallback), `reflection.js` (periodic job synthesizing events into belief entries), `store.js` (per-agent persistence in `bots/<name>/memory/`, JSON or SQLite).
 - Modify `src/agent/memory_bank.js` call sites (places become spatial memories; keep `!rememberHere`/`!savedPlaces` working), `src/models/prompter.js` (planning/conversing context pulls retrieved memories, replacing/augmenting `$MEMORY`), `src/agent/history.js` (summarization chunk also emits events; history stays as short-term buffer).
 - Tests: retrieval scoring (recency decay, importance weighting, relevance ranking with stubbed embeddings), reflection triggering.
 
@@ -143,22 +156,49 @@ costs visible.
 
 ---
 
-## Phase 7 — Observability
+## Phase 7 — Observability + full in-app configurability
 
-**Goal:** the whole sim understandable at a glance on a TV.
+**Goal:** the whole sim understandable at a glance on a TV, and fully steerable from
+the browser — create, configure, and tune agents without touching JSON on disk.
 
 **Files:**
 - Modify `src/mindcraft/public/index.html` (or split into modules): per-agent panel (drive bars, current goal, plan step, last inner thought), relationship graph, global event feed. Data via existing `get-full-state` poll + new socket events.
-- Modify `src/agent/library/full_state.js` (expose cognition/social state), `src/mindcraft/mindserver.js` (new events as needed).
+- Profile editor in the app: model roles (chat/code/vision/embedding), prompt templates, modes, `drives` weights/decay, `cognition` tuning, few-shot examples — backed by a profile schema spec (sibling of `settings_spec.json`) so future keys get UI for free. Retrofits Phase 1's config per the UI-parity rule.
+- Modify `src/agent/library/full_state.js` (expose cognition/social state), `src/mindcraft/mindserver.js` (profile CRUD + new events as needed).
 - Optional: director mode — spectator viewpoint cycling to the highest-activity agent.
 
 **Done when:**
 - [ ] Dashboard shows, live per agent: drive levels, active goal, plan step, last thought
 - [ ] Relationship graph renders and updates from the social store
 - [ ] Event feed streams notable events (goal changes, disputes, reflections, deaths)
+- [ ] A new agent can be created and *fully* configured in the browser — personality, models, modes, drives — and edits to a live agent apply on restart
 - [ ] Tom can pull it up on a TV and follow the sim without reading logs
 
-**Verify:** manual review during a 3-agent run; screenshot set attached to the session note.
+**Verify:** manual review during a 3-agent run; create + configure a fresh agent end-to-end in the app; screenshot set attached to the session note.
+
+---
+
+## Phase 8 — Research lab: reporting, runs, and multi-world
+
+**Goal:** turn the starter behavioral trace (`tools/trace.py`, imported 2026-08-30) into
+a first-class research facility inside the app: live and historical reports, selectable
+scopes, named comparable runs, and multiple Minecraft worlds under one mindserver.
+
+**Files:**
+- `tools/trace.py` — the reference implementation: event taxonomy (speech / narration / command-by-kind / death / session), timeline with session bands + hostile-pressure ridge, per-agent cards, interaction ledger, who-addressed-whom matrix, resource flow, memory self-account vs observed behavior, filterable event log. Keep working as the offline path.
+- New report module in `src/mindcraft/` + report pages in the web app, sourced from Phase 2 agent event streams (not log scraping) aggregated by the mindserver.
+- Run model in the mindserver: named runs with start/stop, per-run event archive, JSONL export.
+- World model: agents already carry per-agent `host`/`port` — add world grouping/labels in the registry, dashboard, and reports so several worlds run concurrently under one mindserver.
+- Modify `src/agent/` event emission where gaps exist (goal lifecycle, plan revisions, reflections, gossip — as those phases land).
+
+**Done when:**
+- [ ] Reports render live in the app with the full trace.py feature set, scoped by agent selection, time window, world, and run
+- [ ] The "believed vs observed" view pairs each agent's memory/beliefs with its actual event history
+- [ ] Two worlds with agents in each run concurrently under one mindserver; dashboard and reports group and filter by world
+- [ ] Runs are first-class: named, started/stopped, archived, exportable as JSONL, and comparable side by side
+- [ ] In-app report agrees with `tools/trace.py` output on the same window (parity check)
+
+**Verify:** 2 worlds × 2 agents concurrent run; produce per-world in-app reports; export a run and diff key counts against the offline trace.
 
 ---
 
@@ -168,3 +208,4 @@ costs visible.
 - 10+ agent scaling pass (config, not refactor — validate the assumption)
 - Long-horizon settlements: shared building projects, economy
 - Voice (TTS already supported) tied to personality
+- Cross-run experiments: same personalities, different worlds/seeds; statistical comparison of outcomes

@@ -32,6 +32,7 @@ See `ROADMAP.md` for phases and `SESSIONS.md` for session handoffs.
 - `src/agent/vision/` — headless prismarine-viewer render → JPEG → vision model (`allow_vision`); `browser_viewer.js` is the human-facing 3D view.
 - `src/models/` — 20 provider classes, duck-typed: `static prefix`, `constructor(model_name, url, params)`, `sendRequest(turns, systemMessage)`, optional `sendVisionRequest`/`embed`. `_model_map.js` auto-registers by scanning the dir. `prompter.js` orchestrates: merges profile (defaults/_default.json → base profile → individual), wires roles (`model` / `code_model` / `vision_model` / `embedding`, each falling back to chat model), owns all prompt templates (`$STATS`, `$MEMORY`, `$COMMAND_DOCS`, `$CODE_DOCS`, `$EXAMPLES`, ...). **Phase 6 routing layer goes over this.** No cross-provider routing exists today; embedding failures degrade to word-overlap scoring.
 - `profiles/` — personality profiles (JSON). Keys: `name`, `model` (string `"api/model"` or `{api, model, url, params}`), optional `code_model`/`vision_model`/`embedding`/`speak_model`, `modes` overrides, prompt templates, few-shot example arrays, optional `npc` seed. Shallow top-level merge — overriding `modes` replaces the whole object.
+- `tools/trace.py` — offline behavioral-trace analyzer (stdlib Python): parses Paper server logs into typed events (speech / narration / command-by-kind / death / session) and renders a static HTML research report (timeline + hostile-pressure ridge, interaction ledger, who-addressed-whom matrix, resource flow, believed-vs-observed). Reference implementation for Phase 8's in-app reports.
 - `bots/<name>/` — per-agent runtime state: `memory.json`, `histories/`, `action-code/`, `screenshots/`, `last_profile.json`. Per-agent persistence for new subsystems belongs here.
 
 ## The current loop (message → action)
@@ -71,7 +72,8 @@ Mindserver UI at http://localhost:8080. Ollama at default `http://127.0.0.1:1143
 4. **PIANO-style concurrency** — cadenced modules (reflex/act/plan/reflect/social) over a shared blackboard with a single-writer coherence gate on the bot.
 5. **Social fabric** — per-pair trust/affinity/grudges, gossip with attribution, trade. Drama emerges from incompatible drives, never scripts.
 6. **Token economics** — tiered routing (local Ollama → mid API → frontier), event-driven prompting instead of the 2s idle cadence, per-agent cost metering.
-7. **Watchability** — dashboard shows each agent's drive, goal, plan step, last thought, relationships; later a director camera.
+7. **Watchability & controllability** — dashboard shows each agent's drive, goal, plan step, last thought, relationships; later a director camera. The mindserver app at :8080 is the *primary control surface*: any new config (settings flag, profile key, tuning knob) ships with UI support in the same phase, and a user can create and fully configure an agent in the browser without touching JSON on disk.
+8. **Research lab** — behavioral traces are a first-class product: typed events (deliberate speech vs auto-narration vs commands-by-kind vs deaths vs sessions vs goal/plan lifecycle) feed live and historical reports, scoped by agent/time/world/run, with named comparable runs and multi-world support. `tools/trace.py` is the offline reference implementation; if a behavior only appears in console logs, it doesn't exist to research.
 
 Emergent over scripted, always. Target 2–4 agents now, 10+ as a config change.
 
@@ -80,6 +82,7 @@ Emergent over scripted, always. Target 2–4 agents now, 10+ as a config change.
 - **Plan first, every session.** State what you'll change and why; wait for Tom's go-ahead before large diffs.
 - One feature branch per phase (`feat/phase-1-cognition`, ...), small conventional commits. Never commit `keys.json`.
 - Don't break the existing command/profile API; deprecate gradually behind settings flags. Existing profiles must still boot.
+- **UI parity:** new configuration lands in the :8080 app (settings_spec.json / profile editor) in the same phase that introduces it. **Events, not log lines:** new behaviors emit typed events so reports can see them.
 - Match existing ESM style; run eslint before finishing.
 - Tests: unit-test pure logic (drive arbitration, retrieval scoring, relationship updates). Integration: mock mineflayer or a disposable local server — never a public server.
 - **Security is non-negotiable:** coder.js executes generated JS — keep the SES compartment's exposed surface minimal and audit anything added to it. Treat in-game chat as untrusted input (prompt injection). No new network egress from generated code. Containerized execution stays supported. Bots connect only to Tom's LAN server.
