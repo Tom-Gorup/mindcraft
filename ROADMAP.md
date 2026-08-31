@@ -200,10 +200,13 @@ costs visible.
 ~2,460 embed calls, ~3.45M input tokens **per hour** — running at ~96% of the 3s
 cooldown ceiling. ≈$27/day/agent on a cheap API tier; ~half a 3090 on prefill alone.
 **Phase 6 must fix these before 24/7 is viable** (all diagnosed, none yet done):
-- `$COMMAND_DOCS` is 1,933 tokens (49% of every prompt) and sits *after* volatile
-  fields, so provider prefix caching can never hit. Move it (and `$EXAMPLES`) to the
-  front of `conversing`/`coding`; memoize `getCommandDocs`. ~45% token cut. **Behavioral
-  change — validate live.**
+- ~~`$COMMAND_DOCS` is 1,933 tokens (49% of every prompt) and sits *after* volatile
+  fields, so provider prefix caching can never hit.~~ **Done (S15):** `conversing`
+  reordered so persona + `$COMMAND_DOCS` lead and everything volatile follows a
+  `<<<CACHE_BOUNDARY>>>`; Anthropic gets an explicit `cache_control` breakpoint there
+  and every other provider gets the marker stripped but keeps the prefix ordering.
+  Measured: 2,253 of 3,284 system-prompt tokens (69%) cacheable, **62% cheaper per
+  input on a cache hit**. Still worth validating live.
 - `max_messages: 15` + step churn ⇒ a summarization LLM call every ~20s (26% of all
   chat traffic) to maintain a 500-char string. Raise `max_messages`/`summary_chunk_size`.
   (Partly addressed: summarization is skipped when `use_memory` is on.)
@@ -231,6 +234,11 @@ cooldown ceiling. ≈$27/day/agent on a cheap API tier; ~half a 3090 on prefill 
 - [~] Per-agent cost surfaced in the dashboard and in a run-summary log — **run-summary log done** (shutdown + hourly); `full_state.economics` publishes it, **dashboard panel is Phase 7**
 - [x] Prompting is event-driven; the 2s idle poll is gone (act tier prompts on real events — action finished, step done, replan, interruption, death, speech — with a 45s heartbeat backstop)
 - [x] Unit tests pass for routing resolution and metering arithmetic (17 tests in `test/models/`)
+- [x] Prompt caching: cacheable prefix ordering for every provider plus an explicit
+  Anthropic `cache_control` breakpoint — 69% of the system prompt cacheable, 62%
+  cheaper per input on a hit (`src/models/cache.js`, 7 tests)
+- [x] Every model call has a deadline (120s) and a hung tier is reported rather than
+  silently wedged (S15 audit — there was previously no timeout anywhere in `src/models/`)
 
 **Measured result** (simulated steady-state hour vs the Session 8 baseline):
 

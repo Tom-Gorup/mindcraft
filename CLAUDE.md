@@ -37,6 +37,15 @@ See `ROADMAP.md` for phases and `SESSIONS.md` for session handoffs.
 - `src/agent/tasks/` — MineCollab benchmark harness (`--task_path`/`--task_id`). Leave intact; useful for regression-testing cognition changes.
 - `src/agent/vision/` — headless prismarine-viewer render → JPEG → vision model (`allow_vision`); `browser_viewer.js` is the human-facing 3D view.
 - `src/models/` — 20 provider classes, duck-typed: `static prefix`, `constructor(model_name, url, params)`, `sendRequest(turns, systemMessage)`, optional `sendVisionRequest`/`embed`. `_model_map.js` auto-registers by scanning the dir (it dynamically imports every provider behind a top-level await — **don't import it from library code**, inject a factory instead). `prompter.js` orchestrates: merges profile (defaults/_default.json → base profile → individual), wires roles, owns all prompt templates (`$STATS`, `$MEMORY`, `$SOCIAL`, `$COMMAND_DOCS`, `$CODE_DOCS`, `$EXAMPLES`, ...). Embedding failures degrade to word-overlap scoring.
+- `src/models/cache.js` — **prompt caching.** Templates place static content (persona,
+  `$COMMAND_DOCS`) before a `<<<CACHE_BOUNDARY>>>` marker and everything volatile
+  (`$MEMORY`, `$SOCIAL`, `$STATS`, `$INVENTORY`, examples) after it. `router.prepareSystem`
+  passes the marker only to providers declaring `static supports_cache_boundary`
+  (currently `claude.js`, which emits a real `cache_control: {type:'ephemeral'}`
+  breakpoint); everyone else gets it stripped and still benefits from the ordering.
+  **If you add a placeholder to a prompt template, put it after the boundary unless it
+  is genuinely static** — a volatile field in the prefix silently costs money without
+  breaking anything. `test/models/cache.test.js` guards exactly that.
 - `src/models/router.js` + `metering.js` — **Phase 6 tiered routing.** Six tiers (`reflex`, `chat`, `plan`, `reflect`, `code`, `vision`); every prompt call site declares one via `router.run(tier, site, fn)`. A profile's optional `tiers` block maps tier → model spec; **with no `tiers` block every tier resolves to the model it used before**, so existing profiles are unaffected. One retry on a different model if a provider fails. `metering.js` tracks per-tier/per-site tokens and cost (estimates: the provider interface returns a bare string) and `localShare()`. Reference config: `profiles/homelab.json`. Run summary logs on shutdown and hourly; `log_routing` traces individual calls.
 - `profiles/` — personality profiles (JSON). Keys: `name`, `model` (string `"api/model"` or `{api, model, url, params}`), optional `code_model`/`vision_model`/`embedding`/`speak_model`, `modes` overrides, prompt templates, few-shot example arrays, optional `npc` seed. Shallow top-level merge — overriding `modes` replaces the whole object.
 - `src/mindcraft/report.js` + `runs.js` — **Phase 8 research lab.** `report.js` is pure aggregation over the agent event stream (per-agent counts, who-addressed-whom, resource flow, sessions, bucketed timeline, believed-vs-observed); no I/O, so it is unit-tested. `runs.js` is the run registry: named runs, start/stop, events appended to `runs/<id>/events.jsonl`, an index that survives restart so archives stay comparable. Socket API: `list-runs` / `start-run` / `stop-run` / `get-report`. `public/reports.js` renders the Reports tab. Worlds come from `AgentConnection.world` (explicit `world` setting, else host:port) and are **stamped server-side** onto every event.
@@ -53,11 +62,25 @@ See `ROADMAP.md` for phases and `SESSIONS.md` for session handoffs.
 
 ## Conventions
 
-- ESM (`"type": "module"`), no TypeScript, no test framework currently in the repo.
+- ESM (`"type": "module"`), no TypeScript. Tests are `node:test` (`npm test`, 185 tests in `test/`).
 - 4-space indent, single quotes, semicolons required. `snake_case` locals/settings, `camelCase` functions, `PascalCase` classes.
 - Module-level singletons imported directly (`settings`, `convoManager`, `serverProxy`).
 - Async/await throughout; mode `update()` must return in ~100ms — long work goes through `execute()`/action_manager.
-- Lint: `npx eslint <files>` (eslint.config.js: `require-await`, `no-floating-promise`, `no-undef` are errors).
+- Lint: `./node_modules/.bin/eslint <files>` (`npx` fails on a root-owned npm cache here).
+  The config is split: Node globals at ES2022 for `src/` and `test/`, browser globals for
+  `src/mindcraft/public/`. **Never run a bare `eslint --fix` on this repo** — it
+  auto-fixes `no-floating-promise` by inserting `await` into non-async functions, which
+  silently breaks several files. Scope it: `--rule '{"semi":["error","always"]}'`.
+  ~78 pre-existing upstream style errors remain (`require-await` on providers whose
+  `embed()` only throws, deliberate fire-and-forget promises); real errors are at zero,
+  so treat any *new* `no-undef` or parse error as a genuine bug.
+- **Reliability invariants** (added after the S15 audit — don't regress them): every
+  model call goes through `router.run`, which imposes a 120s deadline; anything fired
+  without `await` must contain its own rejection (`modes.js` `execute`/`say` do this)
+  because an unhandled rejection terminates the process on Node 18+; `init_agent.js`
+  has a last-resort `unhandledRejection`/`uncaughtException` net, which is a backstop,
+  not a licence to leak rejections; and every shutdown path funnels through
+  `agent.cleanKill`, which is re-entrant and flushes behind a 5s guard timer.
 - Known quirks (match, don't "fix" casually): `prompter.skill_libary` typo (used across files), `NPCContoller` class name, in-body docstrings with `**/` terminator, cwd-relative paths (always run from repo root).
 - Keys come from `keys.json` (gitignored) or env vars. **Never commit `keys.json`.**
 

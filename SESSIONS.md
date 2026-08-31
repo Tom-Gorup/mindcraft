@@ -715,3 +715,131 @@ report object with XSS payloads in belief content (escaped).
 **All eight phases are now code-complete.** The project has never talked to a real
 Minecraft server; that remains the single largest outstanding risk, and every unchecked
 acceptance box across all phases is waiting on the same homelab run.
+
+---
+
+## Session 15 — 2026-08-31 — Prompt caching + full pre-first-run audit
+
+Two things: prompt caching (Tom asked directly whether we had it — we did not), and
+the full bug/logic audit before the first real run. Branch
+`feat/phase-8-research-lab`, commits `1c38ca6`..`cf49bcb`. **185/185 tests.**
+
+### Prompt caching — added, it did not exist
+
+There was no caching anywhere, and the `conversing` template actively defeated the
+*automatic* prefix caching every provider does, because `$COMMAND_DOCS` — by far the
+largest and most static block — sat **after** the volatile fields. A prefix that
+changes every turn is a prefix that never hits.
+
+- **`src/models/cache.js`** — a `<<<CACHE_BOUNDARY>>>` marker plus
+  `splitCachePrefix`/`stripBoundary`, and a minimum-size check (Anthropic will not
+  cache a block under ~1024 tokens).
+- **`profiles/defaults/_default.json`** — `conversing` reordered so persona and
+  `$COMMAND_DOCS` come first and everything volatile (`$MEMORY`, `$SOCIAL`, `$STATS`,
+  `$INVENTORY`, examples) comes after the boundary.
+- **`src/models/claude.js`** — splits the system prompt into two blocks with an
+  explicit `cache_control: {type: 'ephemeral'}` breakpoint. Only providers that
+  declare `static supports_cache_boundary` ever see the marker; `router.prepareSystem`
+  strips it for everyone else, who still benefit from the reordering.
+
+**Measured on the real default profile:** 3,284-token system prompt, of which 2,253
+tokens (69%) are now cacheable — **62% cheaper per input on a cache hit** at Sonnet
+pricing. `test/models/cache.test.js` includes a guard that a volatile placeholder can
+never drift into the cached prefix, because that failure mode is silent: it costs
+money without breaking anything.
+
+### The audit
+
+Reviewers went at the tree from several angles; the findings below are the ones that
+would have bitten on the first run. Roughly in order of how badly.
+
+**Would have crashed or hung:**
+- **No model call had a timeout.** `src/models/` contained zero deadlines. A provider
+  that accepts the TCP connection and never answers left the tier `busy` forever with
+  `errors: 0` — the dashboard would have shown it *healthy* while the agent had
+  silently stopped thinking. 120s deadline on every routed call, counted as a tier
+  error so the existing fallback fires; plus a 180s scheduler stall warning so the
+  symptom is visible even when the cause is lower down.
+- **`cleanKill` threw before login and never exited.** It called `this.bot.chat(...)`
+  unconditionally, so any shutdown before mineflayer connects — the common first-run
+  case, a profile naming a provider with a missing key — died on a TypeError and hung.
+  It also awaited the history write *before* flushing, so a hung LLM call meant
+  nothing persisted. Now guarded, optional-called, and flushed behind a 5s timer.
+- **Unhandled rejections would have killed the agent.** Reflex-tier actions are fired
+  without await by design and pathfinder rejections are routine; since Node 15 that
+  terminates the process. Contained in `execute()`/`say()`, with a process-level net
+  in `init_agent.js` that logs and continues, giving up only above 20 faults/minute.
+- **Four live ReferenceErrors** — `assert` never imported in `action_manager`, a bare
+  `sendRequest` in novita's retry, an undeclared `res` in the NPC hunt goal (ESM is
+  strict mode), and `path`/`fs` unimported in `vllm.saveToFile`.
+
+**Would have run, but wrong:**
+- **The act tier could starve permanently.** The heartbeat was the *else*-branch of the
+  event check, so a latched resume action (a standing `!followPlayer`) kept `isIdle()`
+  false forever, the settle threshold was never reached, and a pending event wedged the
+  tier. The heartbeat is now an unconditional floor.
+- **Phase 8 reports were structurally empty.** `mindserver_proxy` dropped the event
+  `data` object entirely, so the interaction matrix and resource flow had nothing to
+  aggregate; and the memory stream's 0.5 importance cutoff discarded most of what a
+  report is *about*. Found independently by two reviewers.
+- **Failures never aged out.** `recent_outcomes` persisted across restarts with no TTL,
+  so a failure from days ago kept telling the goal prompt "you failed at this" and the
+  drive loop talked itself into pessimism it could not escape. Two-hour TTL.
+- **The conversation nudge loop was unbounded.** Against an in-game but silent partner
+  the interval doubled forever — an open-ended series of LLM calls into a conversation
+  that would never resume. Three strikes, and the counter no longer leaks into the
+  next conversation.
+- **Transient disconnects were classified fatal.** Bare `'client'` and `'version'`
+  keywords matched ordinary network text ("client timed out"), and `version_mismatch`
+  is tested before `network_error`, so a momentary drop was labelled a version
+  mismatch and the agent never reconnected.
+- **`main.js` discarded `createAgent`'s result** and never awaited it, so a bad profile
+  meant an agent silently never appeared.
+
+**Self-inflicted, caught in review:** my first archive-tail read used
+`Buffer.allocUnsafe` and ignored `readSync`'s return, which would have decoded
+uninitialized heap into a JSON-parsed, dashboard-rendered string. Fixed to `alloc` +
+`subarray(0, read)`. Worth remembering as the shape of mistake to watch for.
+
+### The linter was lying, and that is why bugs survived
+
+`eslint.config.js` declared **browser** globals for the whole repo at `ecmaVersion:
+2021`. On a clean tree that produced ~240 phantom errors — `process` and `Buffer`
+undefined everywhere, and a *parse failure* on every model provider, since they all
+declare `static prefix`. Nobody runs a linter that is permanently red, which is
+exactly how four ReferenceErrors sat in the tree. Split into Node and browser scopes
+at ES2022; the four crashers surfaced in the first run of the fixed config.
+
+**Caution learned the hard way:** `eslint --fix` also auto-fixes
+`no-floating-promise`, and it does so by inserting `await` into functions that are not
+async. That broke three files and 5 test suites. Reverted precisely by diffing each
+`+`/`-` pair against HEAD for the exact "same line plus `await `" signature, then
+re-verified: 37 floating-promise errors back, 183/183 tests green. **Never run a bare
+`--fix` on this repo — scope it to `semi`.**
+
+### State
+
+- **185 tests pass.** All 20 core modules import cleanly on Node.
+- Lint: 78 remaining errors, all pre-existing upstream style (45 `require-await` on
+  providers whose `embed()` just throws, 26 deliberate fire-and-forget
+  `no-floating-promise`, a handful of `no-empty`). Real errors are now at zero, so the
+  next genuine one will be visible.
+
+### What's next
+
+The project still has never talked to a real Minecraft server. Every unchecked
+acceptance box in ROADMAP.md is waiting on that one homelab run. Start with a single
+agent and `use_cognition` only, confirm it connects and pursues a goal, then layer on
+memory, skills, and the second agent.
+
+### Known issues
+
+- Two *real* concurrent Minecraft servers remain untested (the world model and
+  filtering are verified; the concurrency is not).
+- Reports re-aggregate the whole run per request — fine for hours, wants a time-window
+  default for multi-day runs.
+- The router's 120s timeout does not abort the in-flight HTTP request, and a fallback
+  retry can therefore reach 240s — longer than the scheduler's 180s stall warning, so
+  one genuinely slow chain will log a stall it recovers from.
+- `runs/` grows without bound on disk. Deliberate (it is the research corpus) but it
+  will need pruning.
