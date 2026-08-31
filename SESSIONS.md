@@ -556,3 +556,51 @@ inherited debt: profile-block editors for `drives`/`cognition`/`memory`/`skills`
 `social`/`tiers`, and dashboard rendering for cognition, memory, skills, social, and
 the new economics payload — all of which `full_state.js` and the blackboard already
 publish, with nothing yet reading them.
+
+---
+
+## Session 12 — 2026-08-31 — Phase 7: Observability + in-app configurability
+
+**What changed** (branch `feat/phase-7-observability`, commit `93027d3`). This phase
+existed to close the gap between "the agent publishes it" and "you can see it," plus
+the UI-parity debt from every prior phase.
+
+- **Sim view** (new tab beside Agents), `public/sim.js` + `sim.css`. Per agent: the
+  active goal and which drive produced it, the current step with a progress rail, the
+  last inner thought, and drive meters. Drive bars encode urgency by length in a
+  single hue — the *pursued* drive is marked with a rail rather than recolored, so
+  color follows the entity rather than its rank. Relationships use a diverging
+  blue↔red scale around a neutral midpoint, which is the honest encoding for a signed
+  disposition. Aggregate tiles cover agents, local-call share (status-colored against
+  the 70% bar from Phase 6), calls/hr, cost/hr and /day, memories and beliefs, skills.
+  TV mode scales everything up.
+- **Live event feed** — new `agent-event` socket channel. Agents stream memory events
+  above importance 0.5 to the mindserver, which relays to dashboard listeners. Event
+  kind is carried by an icon glyph *and* the type label, never color alone.
+- **Profile editor generated from a spec.** `public/profile_spec.json` describes every
+  profile key (type, section, range, description); the editor builds its whole form
+  from it and the mindserver filters incoming profiles against it. This is the
+  mechanism the roadmap asked for — a future profile key gets UI by adding one row,
+  not by writing form code. Covers drives, social, cognition, memory, skills, tiers,
+  modes, model roles, and prompt templates.
+
+**Verification:** 153/153 tests. The 7 new ones guard the spec mechanism itself,
+cross-checking the editor's drives/tiers/modes lists against `DEFAULT_DRIVES`, the
+router's `TIERS`, and `modes.js` — so adding a drive or tier can't silently leave it
+unconfigurable. Render output was verified by executing `sim.js` against a stubbed DOM
+with realistic state (bar widths, active/cooldown marking, diverging bars, progress
+rail, event classification, XSS escaping, offline agents). HTML tag balance checked.
+Palette validated with the dataviz validator: all six checks pass on the dark surface.
+
+**Notes / limitations:**
+- I could not screenshot the dashboard — the sandbox blocks binding a port, and there
+  is no browser tool here. Markup and logic are verified; **visual layout is not**.
+  Expect to nudge spacing on first view.
+- Director mode (spectator camera following the most active agent) was listed optional
+  and is deferred: tuning "most interesting" needs a live run to be worth anything.
+- The Sim view re-renders wholesale on each 1s poll. Fine for 2-10 agents; if the
+  feed or agent count grows, switch to targeted updates like the agent cards use.
+
+**Next:** Phase 8 (research lab) — the last phase. It has the most existing
+groundwork: `tools/trace.py` is the reference implementation, the memory event stream
+is the substrate, and the `agent-event` channel added here is the live half of it.

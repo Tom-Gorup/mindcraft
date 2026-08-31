@@ -31,7 +31,7 @@ behavior only shows up in console logs, it doesn't exist to Phase 8.
 | 4 Concurrency | done | 21 | yes (S7, S8) | **no** |
 | 5 Social | done | 43 | yes (S10) | **no** |
 | 6 Economics | done | 17 | — | **no** |
-| 7 Observability | not started | — | — | — |
+| 7 Observability | done | 7 | — | **no** |
 | 8 Research lab | not started | — | — | — |
 
 129 tests total (`npm test`). **Every phase 1-5 acceptance criterion that can be met
@@ -268,11 +268,16 @@ count/usage stats, which Phase 3 listed but deferred here; and the per-agent cos
 that Phase 6 metered but did not display.
 
 **Done when:**
-- [ ] Dashboard shows, live per agent: drive levels, active goal, plan step, last thought
-- [ ] Relationship graph renders and updates from the social store
-- [ ] Event feed streams notable events (goal changes, disputes, reflections, deaths)
-- [ ] A new agent can be created and *fully* configured in the browser — personality, models, modes, drives — and edits to a live agent apply on restart
-- [ ] Tom can pull it up on a TV and follow the sim without reading logs
+- [x] Dashboard shows, live per agent: drive levels, active goal, plan step, last thought (Sim tab; render-verified against realistic state)
+- [x] Relationship graph renders and updates from the social store (diverging polarity around a neutral midpoint, grudges called out)
+- [x] Event feed streams notable events (goal changes, disputes, reflections, deaths) — new `agent-event` socket channel, importance ≥ 0.5
+- [x] A new agent can be created and *fully* configured in the browser — personality, models, modes, drives — and edits to a live agent apply on restart (spec-driven editor covers drives/social/cognition/memory/skills/tiers/modes/models/prompts; save restarts the agent)
+- [ ] Tom can pull it up on a TV and follow the sim without reading logs *(TV mode built; only Tom can sign this one off)*
+- [x] Unit tests guard the spec-driven mechanism (7 tests: drives/tiers/modes lists checked against the engine, so new config can't silently lose its UI)
+
+**Deliberately deferred:** director mode (spectator viewpoint cycling to the most
+active agent) — it was listed optional, and it needs a live run to tune "most
+interesting" usefully.
 
 **Verify:** manual review during a 3-agent run; create + configure a fresh agent end-to-end in the app; screenshot set attached to the session note.
 
