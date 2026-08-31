@@ -12,7 +12,7 @@ import { readFileSync } from 'fs';
 import { getCommandDocs } from '../src/agent/commands/index.js';
 import { CACHE_BOUNDARY, minCacheableChars } from '../src/models/cache.js';
 
-const CHARS_PER_TOKEN = 4.6;   // must match src/models/cache.js or the two disagree
+const CHARS_PER_TOKEN = 5.3;   // must match src/models/cache.js or the two disagree
 const tok = (s) => Math.round(String(s).length / CHARS_PER_TOKEN);
 
 // Which commands the agent blocks is the single biggest lever on prompt size,
