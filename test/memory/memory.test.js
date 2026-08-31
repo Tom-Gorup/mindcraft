@@ -83,11 +83,14 @@ test('a failing reflection does not storm and does not lose the budget mechanism
     const memory = new AgentMemory(agent);
     for (let i = 0; i < 6; i++)
         memory.record('chat_received', `Steve said: thing ${i}`); // crosses threshold
+    memory.reflectTick();
     await memory._reflect_task;
     await settle();
-    // budget was consumed up front: no belief, no immediate re-fire per record
+    // budget was consumed up front: no belief, and the next tick can't re-fire
     assert.equal(memory.getBeliefs().length, 0);
     assert.ok(memory.importance_since_reflection < 3);
+    assert.equal(memory.reflecting, false);
+    memory.reflectTick(); // below threshold now — must be a no-op, not a storm
     assert.equal(memory.reflecting, false);
     memory.record('chat_received', 'Steve said: one more'); // must not throw
 });
@@ -112,6 +115,7 @@ test('reflection fires at the importance threshold and stores beliefs', async ()
     const memory = new AgentMemory(makeAgent(freshDir(), { reflection_threshold: 3 }));
     for (let i = 0; i < 6; i++)
         memory.record('chat_received', `Steve said: event number ${i} in the cave`); // 0.5 each
+    memory.reflectTick(); // the reflect tier drives triggering now
     await memory._reflect_task;
     await settle();
 
@@ -126,6 +130,7 @@ test('reflection accumulator resumes from disk after a belief', async () => {
     const first = new AgentMemory(makeAgent(dir, { reflection_threshold: 3 }));
     for (let i = 0; i < 6; i++)
         first.record('chat_received', `Steve said: thing ${i}`);
+    first.reflectTick();
     await first._reflect_task;
     await settle();
 

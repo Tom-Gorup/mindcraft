@@ -6,14 +6,21 @@ import { selectDrive } from './arbiter.js';
 import { ExecutionMonitor } from './monitor.js';
 import { Planner, formatPlan } from './planner.js';
 import { readSensors } from './sensors.js';
+import { Blackboard } from './blackboard.js';
 
 // The cognitive core: arbitrate drives -> generate a goal -> plan steps ->
 // drive the existing handleMessage/command machinery -> observe -> replan.
-// Runs off agent.update()'s 300ms tick; all LLM work is guarded by a busy
-// flag so the loop never overlaps itself. Dormant unless settings.use_cognition.
+// Split into two cadenced tiers over the shared blackboard (PIANO-style):
+//   planTick (slow) — drives, arbitration, goal generation, replanning,
+//     preemption, and timeouts. Runs even while the act tier is mid-LLM-call,
+//     so preemption/timeouts stay live during slow steps.
+//   actTick (fast) — step prompting through handleMessage.
+// Each tier has its own busy guard; they coordinate via pending_replan and
+// step_interrupt. Dormant unless settings.use_cognition.
 export class CognitionLoop {
     constructor(agent) {
         this.agent = agent;
+        this.blackboard = agent.blackboard || new Blackboard();
         const profile = agent.prompter.profile;
         const opts = profile.cognition || {};
 
@@ -36,7 +43,8 @@ export class CognitionLoop {
         this.active = null;
         this.pending_replan = null;
         this.last_failure = null;
-        this.busy = false;
+        this.plan_busy = false;
+        this.act_busy = false;
         this.step_interrupt = false;
         this.idle_ms = 0;
         this.no_command_count = 0;
@@ -50,7 +58,7 @@ export class CognitionLoop {
         this.sensor_levels = {};
         this.sensor_error_logged = false;
 
-        this.state_fp = `./bots/${agent.name}/cognition.json`;
+        this.state_fp = opts.state_fp ?? `./bots/${agent.name}/cognition.json`;
         this.load();
     }
 
@@ -64,19 +72,26 @@ export class CognitionLoop {
         return is_self_prompt && this.step_interrupt;
     }
 
-    // Main tick, called from agent.update(). Synchronous; async work is
-    // launched through _run() which sets the busy guard. Never throws —
-    // an escaped exception here would kill the agent's entire update pump.
+    // Compatibility entry point (pre-Phase-4 callers and tests): runs both
+    // tiers back to back.
     update(delta) {
+        this.planTick(delta);
+        this.actTick(delta);
+    }
+
+    // Slow tier: drives, arbitration, goal lifecycle decisions. Runs even
+    // while the act tier is busy — it coordinates via step_interrupt and
+    // pending_replan rather than mutating an in-flight step. Never throws.
+    planTick(delta) {
         if (!settings.use_cognition) return;
         try {
-            this._updateInner(delta);
+            this._planInner(delta);
         } catch (err) {
-            console.error('Cognition: update error:', err);
+            console.error('Cognition: plan tick error:', err);
         }
     }
 
-    _updateInner(delta) {
+    _planInner(delta) {
         this._tickDrives(delta);
         this.persist_accum += delta;
         if (this.persist_accum > 60000) {
@@ -87,45 +102,70 @@ export class CognitionLoop {
         const can_act = this._canAct();
 
         // Step budget counts only time the step could actually progress:
-        // while we're prompting (busy) or idle-and-eligible. Time spent in
+        // while a tier is working it or it's idle-and-eligible. Time in
         // conversations, user goals, or long-running actions doesn't count.
-        if (this.active && (this.busy || (can_act && this.agent.isIdle())))
+        if (this.active && (this.act_busy || this.plan_busy || (can_act && this.agent.isIdle())))
             this.monitor.noteActiveTime(delta);
 
-        if (this.busy) {
-            this.idle_ms = 0;
-            return;
-        }
-        if (this.step_interrupt)
-            this.step_interrupt = false; // loop it targeted has ended
+        this._syncBlackboard();
 
-        if (!can_act) {
-            this.idle_ms = 0;
-            return;
-        }
+        if (this.plan_busy || !can_act) return;
+
         if (this.pending_replan !== null) {
+            if (this.act_busy) {
+                this.step_interrupt = true; // break the act loop first
+                return;
+            }
             const reason = this.pending_replan;
             this.pending_replan = null;
-            this._run(() => this._replan(reason));
+            this._runPlan(() => this._replan(reason));
             return;
         }
         if (this.active) {
             if (this._maybePreempt(delta)) return;
             if (this.monitor.isStepTimedOut()) {
                 this._onFailure(`Step timed out: "${this._currentStep()}"`);
-                return;
-            }
-            if (this.agent.isIdle())
-                this.idle_ms += delta;
-            else
-                this.idle_ms = 0;
-            if (this.idle_ms >= this.step_cooldown_ms) {
-                this.idle_ms = 0;
-                this._run(() => this._promptStep());
             }
         }
-        else {
+        else if (!this.act_busy) {
             this._maybeStartGoal();
+        }
+    }
+
+    // Fast tier: prompts the model to work the current step. Never throws.
+    actTick(delta) {
+        if (!settings.use_cognition) return;
+        try {
+            this._actInner(delta);
+        } catch (err) {
+            console.error('Cognition: act tick error:', err);
+        }
+    }
+
+    _actInner(delta) {
+        if (this.act_busy || this.plan_busy || !this.active || this.pending_replan !== null) {
+            this.idle_ms = 0;
+            return;
+        }
+        if (this.step_interrupt)
+            this.step_interrupt = false; // the loop it targeted has ended
+        if (!this._canAct()) {
+            this.idle_ms = 0;
+            return;
+        }
+        if (this.agent.actions.isReflexActive?.()) {
+            // never fight a reflex for the action slot — wait it out; the
+            // interruption is on the blackboard for the next prompt
+            this.idle_ms = 0;
+            return;
+        }
+        if (this.agent.isIdle())
+            this.idle_ms += delta;
+        else
+            this.idle_ms = 0;
+        if (this.idle_ms >= this.step_cooldown_ms) {
+            this.idle_ms = 0;
+            this._runAct(() => this._promptStep());
         }
     }
 
@@ -137,7 +177,7 @@ export class CognitionLoop {
         const drive = selectDrive(this.drive_state.getUrgencies(now), null, this.arbiter_opts);
         if (drive === null) return; // content — nothing urgent enough
         this.last_goal_attempt = now;
-        this._run(() => this._startGoal(drive));
+        this._runPlan(() => this._startGoal(drive));
     }
 
     // Mid-goal arbitration: a drive that beats the current one by the
@@ -194,7 +234,14 @@ export class CognitionLoop {
         const active = this.active;
         if (!active) return;
         this.step_interrupt = false;
-        const msg = `You are autonomously pursuing this goal, motivated by your ${active.drive} drive: "${active.goal}"\n`
+        // a reflex broke our previous action — surface it so the model can
+        // re-assess instead of blindly continuing
+        let interruption_note = '';
+        const intr = this.blackboard.takeInterruption();
+        if (intr)
+            interruption_note = `NOTE: your previous action '${intr.interrupted.replace('action:', '')}' was interrupted by your ${intr.by} reflex. Re-assess your situation before continuing.\n`;
+        const msg = interruption_note
+            + `You are autonomously pursuing this goal, motivated by your ${active.drive} drive: "${active.goal}"\n`
             + `Your plan:\n${formatPlan(active.steps, active.step_index)}\n`
             + `Work ONLY on the CURRENT step. Your next response MUST contain a command with !commandName syntax. `
             + `When the current step is complete, use !stepDone. If the step is impossible or keeps failing, use !stepFailed("short reason"). Respond:`;
@@ -326,6 +373,18 @@ export class CognitionLoop {
         this._onFailure('You died and respawned');
     }
 
+    // Called from modes.js when a reflex seizes the action slot from a
+    // deliberate (act-tier) action. Recorded on the blackboard for the next
+    // step prompt and in memory for the research trace.
+    onModeInterruption(mode_name, interrupted_action) {
+        if (!settings.use_cognition || !this.isPursuing()) return;
+        if (!interrupted_action || !interrupted_action.startsWith('action:')) return;
+        this.blackboard.noteInterruption(mode_name, interrupted_action);
+        this._safeRecordMemory('interruption',
+            `Action '${interrupted_action.replace('action:', '')}' was interrupted by ${mode_name} reflex during goal: ${this.active.goal}`,
+            { mode: mode_name, action: interrupted_action });
+    }
+
     // ---- internals ----
 
     _onFailure(reason) {
@@ -417,11 +476,40 @@ export class CognitionLoop {
         }
     }
 
-    _run(fn) {
-        this.busy = true;
-        this._current_task = fn()
-            .catch(err => console.error('Cognition error:', err))
-            .finally(() => { this.busy = false; });
+    _runPlan(fn) {
+        this.plan_busy = true;
+        this._plan_task = fn()
+            .catch(err => console.error('Cognition plan error:', err))
+            .finally(() => { this.plan_busy = false; });
+    }
+
+    _runAct(fn) {
+        this.act_busy = true;
+        this._act_task = fn()
+            .catch(err => console.error('Cognition act error:', err))
+            .finally(() => { this.act_busy = false; });
+    }
+
+    // Keep the blackboard the authoritative shared view of cognitive state.
+    _syncBlackboard() {
+        const bb = this.blackboard;
+        bb.percepts = { ...this.sensor_levels };
+        bb.drives = this.drive_state.getUrgencies().map(u => ({
+            name: u.name,
+            urgency: Number(u.urgency.toFixed(2)),
+            level: Number(u.level.toFixed(2)),
+            on_cooldown: u.on_cooldown,
+        }));
+        bb.goal = this.active ? {
+            drive: this.active.drive,
+            goal: this.active.goal,
+            step_index: this.active.step_index + 1,
+            steps_total: this.active.steps.length,
+            step: this._currentStep(),
+        } : null;
+        bb.pending_replan = this.pending_replan;
+        bb.last_thought = this.last_thought;
+        bb.current_action = this.agent.actions?.currentActionLabel || '';
     }
 
     async _narrate(message) {

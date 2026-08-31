@@ -87,17 +87,10 @@ export class AgentMemory {
             if (shouldEmbed(event))
                 this._embedInBackground(event);
 
-            if (type === 'belief') {
+            if (type === 'belief')
                 this.belief_count++;
-            }
-            else {
+            else
                 this.importance_since_reflection += event.importance;
-                const now = Date.now();
-                if (this.importance_since_reflection >= this.reflection_threshold
-                    && !this.reflecting
-                    && now - this.last_reflection_ts >= this.reflection_min_interval_ms)
-                    this._reflectInBackground();
-            }
             return event;
         } catch (err) {
             console.error('Memory: record failed:', err.message || err);
@@ -247,6 +240,17 @@ export class AgentMemory {
     }
 
     // ---- reflection ----
+
+    // The reflect tier's entry point (scheduler-cadenced, ~10s): fires a
+    // reflection when enough importance has accumulated. record() only
+    // accumulates — triggering lives here so reflection cadence is owned by
+    // the tier scheduler, not by whoever happens to record an event.
+    reflectTick() {
+        if (!this.enabled() || this.reflecting) return;
+        if (this.importance_since_reflection >= this.reflection_threshold
+            && Date.now() - this.last_reflection_ts >= this.reflection_min_interval_ms)
+            this._reflectInBackground();
+    }
 
     _reflectInBackground() {
         this.reflecting = true;

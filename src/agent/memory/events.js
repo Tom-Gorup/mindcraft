@@ -12,6 +12,7 @@ export const EVENT_TYPES = {
     death:          { importance: 0.9,  embed: true },
     damage:         { importance: 0.4,  embed: false },
     session:        { importance: 0.3,  embed: false },  // spawned / disconnected
+    interruption:   { importance: 0.3,  embed: false }, // reflex seized the action slot
     goal_started:   { importance: 0.6,  embed: true },
     goal_completed: { importance: 0.7,  embed: true },
     goal_abandoned: { importance: 0.7,  embed: true },

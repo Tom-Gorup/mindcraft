@@ -11,6 +11,15 @@ export class ActionManager {
         this.recent_action_counter = 0;
     }
 
+    // Tier bookkeeping for the coherence gate: reflex-tier actions are
+    // 'mode:*' labels (from modes.js execute), deliberate-tier actions are
+    // 'action:*' (commands) and 'npc:*'. The act tier checks this before
+    // prompting so it never fights a reflex for the action slot.
+    isReflexActive() {
+        return this.executing && typeof this.currentActionLabel === 'string'
+            && this.currentActionLabel.startsWith('mode:');
+    }
+
     async resumeAction(actionFn, timeout) {
         return this._executeResume(actionFn, timeout);
     }

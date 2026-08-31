@@ -12,6 +12,8 @@ import { SelfPrompter } from './self_prompter.js';
 import { CognitionLoop } from './cognition/index.js';
 import { AgentMemory } from './memory/index.js';
 import { LearnedSkills } from './skills/library.js';
+import { Blackboard } from './cognition/blackboard.js';
+import { TierScheduler } from './cognition/scheduler.js';
 import convoManager from './conversation.js';
 import { handleTranslation, handleEnglishTranslation } from '../utils/translator.js';
 import { addBrowserViewer } from './vision/browser_viewer.js';
@@ -47,6 +49,7 @@ export class Agent {
         this.npc = new NPCContoller(this);
         this.memory_bank = new MemoryBank();
         this.self_prompter = new SelfPrompter(this);
+        this.blackboard = new Blackboard();
         this.cognition = new CognitionLoop(this);
         this.memory = new AgentMemory(this);
         this.memory_bank.attachMemory(this.memory); // durable places + place events
@@ -526,6 +529,25 @@ export class Agent {
         // Init NPC controller
         this.npc.init();
 
+        // PIANO-style tier scheduler over the shared blackboard. Registration
+        // order = execution order within a tick: reflexes always run first.
+        // Tiers are skipped (never queued) while their previous run is in
+        // flight, and their errors are isolated from the pump and each other.
+        const cog_opts = this.prompter.profile.cognition || {};
+        this.scheduler = new TierScheduler(this.blackboard);
+        this.scheduler.addTier('reflex', 0, async () => { await this.bot.modes.update(); });
+        this.scheduler.addTier('act', cog_opts.act_cadence_ms ?? 300, (elapsed) => this.cognition.actTick(elapsed));
+        this.scheduler.addTier('plan', cog_opts.plan_cadence_ms ?? 1000, (elapsed) => this.cognition.planTick(elapsed));
+        this.scheduler.addTier('reflect', 10000, () => this.memory.reflectTick());
+        this.scheduler.addTier('social', 2000, () => {
+            // Phase 5 grows this into the full social module; for now it keeps
+            // conversational context visible on the blackboard
+            this.blackboard.social = {
+                in_conversation: convoManager.inConversation(),
+                partner: convoManager.activeConversation?.name ?? null,
+            };
+        });
+
         // This update loop ensures that each update() is called one at a time, even if it takes longer than the interval
         const INTERVAL = 300;
         let last = Date.now();
@@ -551,9 +573,8 @@ export class Agent {
     }
 
     async update(delta) {
-        await this.bot.modes.update();
+        this.scheduler.tick(delta);
         this.self_prompter.update(delta);
-        this.cognition.update(delta);
         await this.checkTaskDone();
     }
 

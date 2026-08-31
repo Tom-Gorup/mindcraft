@@ -106,7 +106,8 @@ export function getFullState(agent) {
         },
         cognition: agent.cognition ? agent.cognition.getStatus() : null,
         memory: agent.memory ? agent.memory.getStatus() : null,
-        skills: agent.learned_skills ? agent.learned_skills.getStatus() : null
+        skills: agent.learned_skills ? agent.learned_skills.getStatus() : null,
+        blackboard: agent.blackboard ? agent.blackboard.snapshot() : null
     };
 
     return state;

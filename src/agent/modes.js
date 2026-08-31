@@ -307,6 +307,8 @@ async function execute(mode, agent, func, timeout=-1) {
     if (agent.self_prompter.isActive())
         agent.self_prompter.stopLoop();
     let interrupted_action = agent.actions.currentActionLabel;
+    if (interrupted_action)
+        agent.cognition?.onModeInterruption(mode.name, interrupted_action);
     mode.active = true;
     let code_return = await agent.actions.runAction(`mode:${mode.name}`, async () => {
         await func();
