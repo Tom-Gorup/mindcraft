@@ -94,11 +94,19 @@ export class Prompter {
                 embedding_model_profile = null;
             }
         }
-        if (embedding_model_profile) {
-            this.embedding_model = createModel(embedding_model_profile);
-        }
-        else {
-            this.embedding_model = createModel({api: chat_model_profile.api});
+        // createModel calls getKey(), which THROWS for a missing API key. An
+        // unguarded embedding model meant an Ollama-only or Groq-only setup
+        // could not boot at all, failing with a message naming a provider the
+        // user never configured. Retrieval degrades to word overlap instead.
+        try {
+            this.embedding_model = embedding_model_profile
+                ? createModel(embedding_model_profile)
+                : createModel({api: chat_model_profile.api});
+        } catch (err) {
+            this.embedding_model = null;
+            console.warn(`Embedding model unavailable (${err.message || err}). `
+                + 'Memory, skill, and example retrieval will fall back to word overlap. '
+                + 'Set "embedding" in the profile (e.g. "ollama") to fix.');
         }
 
         // Tiered routing over the roles above. With no "tiers" block in the

@@ -5,7 +5,10 @@ import { queryList } from './queries.js';
 let suppressNoDomainWarning = true;
 
 // Cap on any single command's returned text before it enters history.
-const MAX_COMMAND_OUTPUT = 1500;
+// Generous enough that a generated program plus its output, or a blueprint
+// placement list, survives intact; the cap exists for pathological cases like
+// !searchWiki returning a whole article.
+const MAX_COMMAND_OUTPUT = 6000;
 
 const commandList = queryList.concat(actionsList);
 const commandMap = {};
@@ -234,8 +237,14 @@ export async function executeCommand(agent, message) {
             // later prompt, gets embedded, and gets summarized — paying for it
             // many times over.
             if (typeof result === 'string' && result.length > MAX_COMMAND_OUTPUT) {
-                return result.substring(0, MAX_COMMAND_OUTPUT)
-                    + `\n...(output truncated at ${MAX_COMMAND_OUTPUT} characters)`;
+                // Keep BOTH ends. Truncating only the head threw away the
+                // tail, which for !newAction is the "Code Output:" section —
+                // the one part the model actually needs — and for blueprint
+                // queries is the placement list the build task depends on.
+                const half = Math.floor(MAX_COMMAND_OUTPUT / 2);
+                return result.substring(0, half)
+                    + `\n...(${result.length - MAX_COMMAND_OUTPUT} characters omitted)...\n`
+                    + result.substring(result.length - half);
             }
             return result;
         }

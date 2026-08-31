@@ -102,6 +102,10 @@ export class ActionManager {
             this.agent.clearBotLogs();
 
             this.executing = true;
+            // must reset per action: this latched true forever once any action
+            // timed out, after which every later action reported timedout and
+            // interrupted actions stopped being treated as interrupted
+            this.timedout = false;
             this.currentActionLabel = actionLabel;
             this.currentActionFn = actionFn;
 

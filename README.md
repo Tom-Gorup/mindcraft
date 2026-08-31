@@ -219,7 +219,7 @@ Voice synthesis models are used to narrate bot responses and specified with `spe
 
 ## Specifying Profiles via Command Line
 
-By default, the program will use the profiles specified in `settings.js`. You can specify one or more agent profiles using the `--profiles` argument: `node main.js --profiles ./profiles/andy.json ./profiles/jill.json`
+By default, the program will use the profiles specified in `settings.js`. You can specify one or more agent profiles using the `--profiles` argument: `node main.js --profiles ./andy.json ./profiles/gpt.json`
 
 
 # Contributing

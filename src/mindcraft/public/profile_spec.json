@@ -8,6 +8,7 @@
     "vision_model": { "type": "model", "section": "models", "description": "Model for image analysis. Defaults to the chat model." },
     "embedding": { "type": "model", "section": "models", "description": "Embedding model for memory/skill/example retrieval. Keep local if you can.", "default": "ollama" },
     "speak_model": { "type": "string", "section": "models", "description": "Text-to-speech as \"provider/model/voice\", or \"system\".", "default": "openai/tts-1/echo" },
+    "max_tokens": { "type": "number", "section": "models", "advanced": true, "description": "Legacy per-response token cap; prefer model.params." },
     "cooldown": { "type": "number", "section": "models", "description": "Minimum milliseconds between model calls.", "default": 3000, "advanced": true },
 
     "tiers": {

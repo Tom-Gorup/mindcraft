@@ -21,6 +21,9 @@ const settings = {
         // "./profiles/deepseek.json",
         // "./profiles/mercury.json",
         // "./profiles/andy-4.json", // Supports up to 75 messages!
+        // "./profiles/homelab.json", // local-first tier routing for 24/7 runs
+        // "./profiles/wilbur.json",  // explorer personality (drives + social)
+        // "./profiles/greta.json",   // hoarder personality; conflicts with Wilbur
 
         // using more than 1 profile requires you to /msg each bot indivually
         // individual profiles override values from the base profile

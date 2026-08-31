@@ -423,6 +423,10 @@ export class Agent {
 
                 console.log('Agent executed:', command_name, 'and got:', execute_res);
                 used_command = true;
+                // Queries never touch ActionManager, so they emit no 'idle'.
+                // Without this an info-gathering turn leaves the act tier with
+                // nothing to wake it until the heartbeat.
+                this.cognition?.notifyEvent(`ran ${command_name}`);
                 this.memory.record('command', `${command_name}: ${(execute_res || 'done').substring(0, 150)}`, { command: command_name });
 
                 if (execute_res)
@@ -669,7 +673,7 @@ export class Agent {
             .catch(() => {})
             .finally(() => {
                 try { this.history.save(); } catch (err) { console.error('Failed to save history on shutdown:', err); }
-                try { this.cognition?.persist(); } catch (err) { console.error('Failed to persist cognition state on shutdown:', err); }
+                try { if (settings.use_cognition) this.cognition?.persist(); } catch (err) { console.error('Failed to persist cognition state on shutdown:', err); }
                 try { this.learned_skills?.flush(); } catch (err) { console.error('Failed to flush skills on shutdown:', err); }
                 try { this.social?.flush(); } catch (err) { console.error('Failed to flush social state on shutdown:', err); }
                 try { this.logEconomics(); } catch (err) { console.error('Failed to log economics summary:', err); }

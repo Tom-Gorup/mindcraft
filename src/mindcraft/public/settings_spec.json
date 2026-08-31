@@ -28,7 +28,7 @@
     "base_profile": {
         "type": "string",
         "description": "Allowed values: survival, assistant, creative, god_mode. Each has fine tuned settings for different game modes.",
-        "default": "survival",
+        "default": "assistant",
         "options": ["survival", "assistant", "creative", "god_mode"]
     },
     "load_memory": {
@@ -149,8 +149,8 @@
     },
     "code_timeout_mins": {
         "type": "number",
-        "description": "Number of minutes to allow code execution. -1 for no timeout",
-        "default": -1
+        "description": "Number of minutes to allow code execution. -1 for no timeout (not advised for 24/7 runs).",
+        "default": 5
     },
     "task": {
         "type": "object",

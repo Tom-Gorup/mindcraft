@@ -34,8 +34,9 @@ export class CognitionLoop {
         // waits for the heartbeat instead of re-prompting every 2s, which was
         // the single largest source of call volume (~96% of the cooldown
         // ceiling, 24/7). Set heartbeat_ms very low to restore polling.
-        this.heartbeat_ms = opts.heartbeat_ms ?? 45000;
+        this.heartbeat_ms = opts.heartbeat_ms ?? 20000;
         this.pending_event = 'goal started';
+        this.since_prompt_ms = 0;
         this.goal_cooldown_ms = opts.goal_cooldown_ms ?? 15000;
         this.drive_cooldown_ms = opts.drive_cooldown_ms ?? 3 * 60000;
         this.success_cooldown_ms = opts.success_cooldown_ms ?? 60000;
@@ -160,6 +161,12 @@ export class CognitionLoop {
     }
 
     _actInner(delta) {
+        // Time since the last prompt. Accumulated BEFORE any guard and reset
+        // only when a prompt is actually issued — unlike idle_ms, which seven
+        // guard paths below zero, so ambient activity could otherwise starve
+        // the heartbeat indefinitely.
+        this.since_prompt_ms += delta;
+
         // the interrupt flag targets an in-flight act loop; once no loop is
         // running it has served its purpose — clear it BEFORE any guard so it
         // can never latch while active is null (that would suppress every
@@ -184,15 +191,15 @@ export class CognitionLoop {
             this.idle_ms += delta;
         else
             this.idle_ms = 0;
-        // prompt when something happened (after a short settle), or when the
-        // heartbeat expires so a stuck plan still gets re-examined
+        // Prompt when something happened (after a short settle), or when the
+        // heartbeat expires so a stuck plan still gets re-examined.
         const ready = this.pending_event
             ? this.idle_ms >= this.step_cooldown_ms
-            : this.idle_ms >= this.heartbeat_ms;
+            : this.since_prompt_ms >= this.heartbeat_ms;
         if (ready) {
             this.idle_ms = 0;
-            this.pending_event = null;
-            this._runAct(() => this._promptStep());
+            const reason = this.pending_event;
+            this._runAct(() => this._promptStep(reason));
         }
     }
 
@@ -266,10 +273,15 @@ export class CognitionLoop {
             await this._narrate(goal.reason);
     }
 
-    async _promptStep() {
+    async _promptStep(consumed_event = null) {
         const active = this.active;
-        if (!active) return;
+        if (!active) return; // pending_event deliberately NOT consumed here
         this.step_interrupt = false;
+        // only now is a prompt certain to be issued — clearing earlier burned
+        // the event on calls that returned without prompting at all
+        if (this.pending_event === consumed_event)
+            this.pending_event = null;
+        this.since_prompt_ms = 0;
         // a reflex broke our previous action — surface it so the model can
         // re-assess instead of blindly continuing
         let interruption_note = '';
@@ -291,6 +303,13 @@ export class CognitionLoop {
             if (this.no_command_count >= 3) {
                 this.no_command_count = 0;
                 this._onFailure('Did not act on the current step after 3 prompts');
+            }
+            else {
+                // A response with no command produces no world change and so
+                // no event. Without this the retry waits a full heartbeat,
+                // stretching "didn't act after 3 prompts" from seconds into
+                // minutes. Bounded by no_command_count.
+                this.notifyEvent('no command issued, retrying');
             }
         }
         else {
@@ -591,6 +610,7 @@ export class CognitionLoop {
                 name: u.name,
                 urgency: Number(u.urgency.toFixed(2)),
                 level: Number(u.level.toFixed(2)),
+                on_cooldown: u.on_cooldown,
             })),
             last_thought: this.last_thought,
         };

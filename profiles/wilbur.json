@@ -3,6 +3,8 @@
 
     "model": "gpt-5.4-mini",
 
+    "_embedding_note": "Set \"embedding\": \"ollama\" here to keep retrieval embeddings off a paid API — but only if Ollama is actually running with an embedding model pulled, or retrieval silently degrades to word overlap.",
+
     "_comment": "Example personality for the cognition loop (settings use_cognition: true). Wilbur is a restless explorer: curiosity outranks comfort, wealth barely registers. Drive weights/decay override src/agent/cognition/drives.js defaults; the cognition block tunes the loop itself.",
 
     "drives": {

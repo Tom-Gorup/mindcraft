@@ -52,10 +52,17 @@
         const label = `<label for="${id}">${esc(path.split('.').pop())}</label>`;
         let input;
         if (def.type === 'boolean') {
-            input = `<input type="checkbox" id="${id}" data-path="${esc(path)}" data-type="boolean" ${value ? 'checked' : ''}>`;
+            // Show the EFFECTIVE value: a key absent from the profile is
+            // inherited from the defaults, not off. Rendering it unchecked and
+            // then saving would write `false` and, because profile keys replace
+            // whole objects, silently disable every default-on reflex —
+            // including self_preservation.
+            const effective = (value === undefined) ? !!def.default : !!value;
+            const inherited = value === undefined ? ' data-inherited="1"' : '';
+            input = `<input type="checkbox" id="${id}" data-path="${esc(path)}" data-type="boolean"${inherited} ${effective ? 'checked' : ''}>`;
         } else if (def.type === 'number') {
-            const attrs = [def.min !== undefined ? `min="${def.min}"` : '', def.max !== undefined ? `max="${def.max}"` : '', def.step !== undefined ? `step="${def.step}"` : ''].join(' ');
-            input = `<input type="number" id="${id}" data-path="${esc(path)}" data-type="number" ${attrs} value="${value ?? ''}" placeholder="${def.default ?? ''}">`;
+            const attrs = [def.min !== undefined ? `min="${esc(def.min)}"` : '', def.max !== undefined ? `max="${esc(def.max)}"` : '', def.step !== undefined ? `step="${esc(def.step)}"` : ''].join(' ');
+            input = `<input type="number" id="${id}" data-path="${esc(path)}" data-type="number" ${attrs} value="${esc(value ?? '')}" placeholder="${esc(def.default ?? '')}">`;
         } else if (def.type === 'prompt') {
             input = `<textarea id="${id}" data-path="${esc(path)}" data-type="string" rows="4">${esc(value ?? '')}</textarea>`;
         } else if (def.type === 'model') {
@@ -102,7 +109,15 @@
             html += `<div class="pf-section"><h4>${esc(title)}</h4>`;
             for (const key of keys) {
                 const def = spec[key];
-                html += (def.type === 'object') ? objectBlock(key, def) : field(key, def, profile[key]);
+                if (def.type === 'object') html += objectBlock(key, def);
+                else if (def.advanced) {
+                    // collapse advanced scalars (notably the nine prompt
+                    // templates) or the form overflows the modal
+                    html += `<details class="pf-group"><summary>${esc(key)}`
+                        + (def.description ? ` <span class="pf-desc-inline">${esc(def.description)}</span>` : '')
+                        + `</summary>${field(key, def, profile[key])}</details>`;
+                }
+                else html += field(key, def, profile[key]);
             }
             html += '</div>';
         }
@@ -115,8 +130,16 @@
             const path = el.dataset.path;
             const type = el.dataset.type;
             let value;
-            if (type === 'boolean') value = el.checked;
-            else if (type === 'number') value = el.value === '' ? undefined : Number(el.value);
+            if (type === 'boolean') {
+                // don't materialize an inherited default the user never touched
+                if (el.dataset.inherited === '1' && el.checked === el.defaultChecked) continue;
+                value = el.checked;
+            }
+            else if (type === 'number') {
+                if (el.value === '') value = undefined;
+                else if (!el.checkValidity()) throw new Error(`${path}: ${el.validationMessage || 'out of range'}`);
+                else value = Number(el.value);
+            }
             else if (type === 'model') {
                 const raw = el.value.trim();
                 if (!raw) value = undefined;

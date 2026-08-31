@@ -65,6 +65,9 @@
     }
 
     function renderDrives(cog) {
+        // drive state exists even when the loop is off; showing it beside
+        // "cognition disabled" just confuses
+        if (!cog?.enabled) return '';
         const drives = cog?.urgencies || [];
         if (drives.length === 0) return '';
         const active = cog?.drive;
@@ -137,9 +140,12 @@
 
     function renderFeed() {
         if (feed.length === 0)
-            return '<div class="sim-event"><span class="when"></span><span class="who"></span><span class="what">waiting for events…</span></div>';
+            return '<div class="sim-event"><span class="when"></span><span class="who"></span>'
+                + '<span class="what">No events yet. The feed is fed by the memory system — enable use_memory to populate it.</span></div>';
         return feed.map(e => {
-            const kind = EVENT_KIND[e.type] || 'other';
+            // hasOwn: a type of 'constructor'/'toString' would otherwise return an
+            // inherited value and stringify into the class attribute
+            const kind = Object.hasOwn(EVENT_KIND, e.type) ? EVENT_KIND[e.type] : 'other';
             return `<div class="sim-event k-${kind}"><span class="when">${esc(clock(e.ts))}</span>`
                 + `<span class="who">${esc(e.agent)}</span>`
                 + `<span class="what">${esc(e.content)}</span></div>`;
@@ -157,6 +163,8 @@
             body.innerHTML = '<div class="sim-empty">No agents are reporting yet. Start an agent from the Agents tab.</div>';
             return;
         }
+        const feedEl = document.querySelector('#simBody .sim-feed');
+        const scroll = feedEl ? feedEl.scrollTop : 0;
         body.innerHTML = renderTiles(states)
             + '<div class="sim-agents">' + names.map(n => renderAgent(n, states[n])).join('') + '</div>'
             + '<div class="sim-section"><div class="heading">Event feed</div>'
@@ -167,6 +175,8 @@
             + '<span style="color:var(--critical)">✖ deaths</span>'
             + '</div>'
             + `<div class="sim-feed">${renderFeed()}</div></div>`;
+        const newFeed = document.querySelector('#simBody .sim-feed');
+        if (newFeed && scroll) newFeed.scrollTop = scroll; // don't yank the reader back to the top every second
     }
 
     window.simRender = render;

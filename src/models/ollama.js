@@ -32,16 +32,20 @@ export class Ollama {
                 if (apiResponse) {
                     res = apiResponse['message']['content'];
                 } else {
-                    res = 'No response data.';
+                    // Throw rather than returning a sentinel string: a caller
+                    // that gets prose back cannot tell a dead endpoint from a
+                    // real answer, so the router would meter an outage as a
+                    // successful free local call and never fall back.
+                    throw new Error(`No response from Ollama at ${this.url} (model '${model}' — is Ollama running and the model pulled?)`);
                 }
             } catch (err) {
                 if (err.message.toLowerCase().includes('context length') && turns.length > 1) {
                     console.log('Context length exceeded, trying again with shorter context.');
                     return await this.sendRequest(turns.slice(1), systemMessage);
-                } else {
-                    console.log(err);
-                    res = 'My brain disconnected, try again.';
                 }
+                // surface transport/model failures to the router so they are
+                // metered as errors and can fall back to another tier
+                throw err;
             }
 
             const hasOpenTag = res.includes("<think>");

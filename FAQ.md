@@ -17,7 +17,11 @@
     rm -rf node_modules package-lock.json
     npm install
     ```
-  - **Skip optional packages**: If you don't need the vision feature (disabled by default), you can skip the problematic `gl` package: `npm install --no-optional`
+  - **If the `gl` package fails to build**: vision is disabled by default and the agent no longer imports the
+    renderer unless `allow_vision` is on, so a failed `gl` build is survivable — the agent starts and logs
+    "Vision disabled: could not load the headless renderer". (Note `--no-optional` does NOT skip `gl`; it is a
+    regular dependency of `node-canvas-webgl`.) To actually use vision, install on Node v18/v20 with build
+    tools present.
 
 - `My brain disconnected, try again`: Something is wrong with the LLM api. You may have the wrong API key, exceeded your rate limits, or other. Check the program outputs for more details.
   

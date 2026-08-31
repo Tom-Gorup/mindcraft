@@ -192,9 +192,38 @@ export function createMindServer(host_public = false, port = 8080) {
             // the name is a filesystem path in the child process — never let
             // the editor change it out from under a running agent
             profile.name = agent.settings.profile.name;
-            for (const key in profile) {
-                if (!(key in profile_spec) && key !== 'conversation_examples' && key !== 'coding_examples' && key !== 'npc')
+            const passthrough = new Set(['conversation_examples', 'coding_examples', 'npc', 'max_tokens']);
+            for (const key of Object.keys(profile)) {
+                // hasOwn, not `in`: `in` walks the prototype chain, so keys
+                // like 'constructor' and '__proto__' would survive the filter
+                if (!Object.hasOwn(profile_spec, key) && !passthrough.has(key) && !key.startsWith('_'))
                     delete profile[key];
+            }
+            // Nested config blocks are passed through wholesale, and several of
+            // them carry filesystem paths (memory.dir, social.dir, skills.dir,
+            // cognition.state_fp). Those are internal test seams, not user
+            // config — strip them, or this handler is an arbitrary file write.
+            for (const [block, fields] of Object.entries(profile)) {
+                if (!fields || typeof fields !== 'object') continue;
+                for (const f of Object.keys(fields)) {
+                    if (f === 'dir' || f.endsWith('_fp') || f.endsWith('_path')) {
+                        console.warn(`set-profile: ignoring filesystem key ${block}.${f}`);
+                        delete fields[f];
+                    }
+                }
+            }
+            // clamp numbers to the spec's declared ranges
+            for (const [block, def] of Object.entries(profile_spec)) {
+                if (def?.type !== 'object' || !def.fields || !profile[block]) continue;
+                const clampInto = (obj) => {
+                    for (const [f, fd] of Object.entries(def.fields)) {
+                        if (fd.type !== 'number' || typeof obj[f] !== 'number' || !Number.isFinite(obj[f])) continue;
+                        if (fd.min !== undefined) obj[f] = Math.max(fd.min, obj[f]);
+                        if (fd.max !== undefined) obj[f] = Math.min(fd.max, obj[f]);
+                    }
+                };
+                if (def.keys) Object.values(profile[block]).forEach(v => v && typeof v === 'object' && clampInto(v));
+                else clampInto(profile[block]);
             }
             agent.setSettings({ ...agent.settings, profile });
             agent.socket?.emit('restart-agent');
@@ -334,6 +363,14 @@ export function createMindServer(host_public = false, port = 8080) {
         console.log('Public hosting not supported yet. Using localhost.');
     }
     const host = 'localhost';
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE')
+            console.error(`MindServer cannot start: port ${port} is already in use. `
+                + 'Change "mindserver_port" in settings.js, or stop whatever is using it.');
+        else
+            console.error('MindServer failed to start:', err.message || err);
+        process.exit(1);
+    });
     server.listen(port, host, () => {
         console.log(`MindServer running on port ${port} on host ${host}`);
     });

@@ -62,14 +62,26 @@ See `ROADMAP.md` for phases and `SESSIONS.md` for session handoffs.
 
 ## Running locally
 
+**Use Node v18 or v20.** v22+ breaks the native deps (`gl`, `canvas`); on v24 the
+failure surfaces as an uninterpretable `ERR_INTERNAL_ASSERTION` at module load.
+
 ```bash
-cp keys.example.json keys.json   # fill in, or rely on Ollama only
+cp keys.example.json keys.json   # fill in whichever providers your profile names
 # edit settings.js: host/port of the LAN Minecraft server, profiles list
-node main.js                     # or: node main.js --profiles ./profiles/llama.json
+node main.js                     # or: node main.js --profiles ./andy.json
 ```
-Mindserver UI at http://localhost:8080. Ollama at default `http://127.0.0.1:11434`
-(`"model": "ollama/<model>"`, `"embedding": "ollama"` → `embeddinggemma`). Docker:
-`docker-compose.yml` (host networking; use `host.docker.internal` on Mac/Windows).
+Mindserver UI at http://localhost:8080 (set `auto_open_ui: false` on a headless box).
+Ollama at default `http://127.0.0.1:11434` — set `"model": "ollama/<model>"` and
+`"embedding": "ollama"` (→ `embeddinggemma`, must be pulled) to run fully local; see
+`profiles/homelab.json`. A profile naming a provider whose key is missing fails at
+boot with that provider's name — **except** the embedding model, which degrades to
+word-overlap retrieval with a warning. Docker: `docker-compose.yml` (host networking;
+use `host.docker.internal` on Mac/Windows).
+
+**Phase flags** (all default off, see `settings.js`): `use_cognition`, `use_memory`,
+`use_skill_library` (needs `allow_insecure_coding`), `use_social`. Demo personalities:
+`profiles/wilbur.json` + `profiles/greta.json` (built to conflict), `profiles/homelab.json`
+(local-first tier routing).
 
 ## Design pillars (the mission)
 

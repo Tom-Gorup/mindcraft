@@ -1,19 +1,35 @@
 import { Vec3 } from 'vec3';
-import { Camera } from "./camera.js";
 import fs from 'fs';
 
+// NOTE: camera.js is imported LAZILY. It pulls in node-canvas-webgl -> the `gl`
+// native addon, which fails to build on many machines (and on Node > 20). A
+// static import here crashed the whole agent process at module load with an
+// uninterpretable ERR_INTERNAL_ASSERTION — even though vision is off by
+// default and the Camera was already constructed conditionally.
 export class VisionInterpreter {
     constructor(agent, allow_vision) {
         this.agent = agent;
         this.allow_vision = allow_vision;
         this.fp = './bots/'+agent.name+'/screenshots/';
-        if (allow_vision) {
-            this.camera = new Camera(agent.bot, this.fp);
+        this.camera = null;
+        if (allow_vision)
+            this._initCamera();
+    }
+
+    async _initCamera() {
+        try {
+            const { Camera } = await import('./camera.js');
+            this.camera = new Camera(this.agent.bot, this.fp);
+        } catch (err) {
+            this.allow_vision = false;
+            console.error('Vision disabled: could not load the headless renderer '
+                + '(the native `gl` module is often unbuildable — see FAQ.md). '
+                + (err.message || err));
         }
     }
 
     async lookAtPlayer(player_name, direction) {
-        if (!this.allow_vision || !this.agent.prompter.vision_model.sendVisionRequest) {
+        if (!this.allow_vision || !this.camera || !this.agent.prompter.vision_model?.sendVisionRequest) {
             return "Vision is disabled. Use other methods to describe the environment.";
         }
         let result = "";
@@ -39,7 +55,7 @@ export class VisionInterpreter {
     }
 
     async lookAtPosition(x, y, z) {
-        if (!this.allow_vision || !this.agent.prompter.vision_model.sendVisionRequest) {
+        if (!this.allow_vision || !this.camera || !this.agent.prompter.vision_model?.sendVisionRequest) {
             return "Vision is disabled. Use other methods to describe the environment.";
         }
         let result = "";

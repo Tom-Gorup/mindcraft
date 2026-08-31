@@ -50,7 +50,13 @@ export const log = (agentName, msg) => {
 export function parseKickReason(reason) {
     if (!reason) return { type: 'unknown', msg: 'Unknown reason (Empty)', isFatal: true };
     
-    const raw = (typeof reason === 'string' ? reason : JSON.stringify(reason)).toLowerCase();
+    // JSON.stringify(new Error(...)) is "{}" — which is exactly what mineflayer
+    // hands us for the most common first-run failure (server down / wrong port),
+    // so every keyword missed and the user saw "Disconnected: {}".
+    const raw = String(
+        typeof reason === 'string' ? reason
+            : (reason?.message || reason?.stack || JSON.stringify(reason) || reason)
+    ).toLowerCase();
 
     // Search for keywords in definitions
     for (const [type, def] of Object.entries(ERROR_DEFINITIONS)) {

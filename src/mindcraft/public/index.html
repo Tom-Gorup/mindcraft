@@ -456,9 +456,11 @@
                 <h2 id="profileEditorTitle" style="margin:0;">Configure agent</h2>
                 <button class="neutral-btn" onclick="closeProfileEditor()">Close</button>
             </div>
-            <p class="pf-hint">Personality, models, routing, and prompts. Saving restarts the agent.</p>
-            <div id="profileEditorForm"></div>
-            <div id="profileEditorError" style="color:#f44336;margin-top:10px;"></div>
+            <div class="modal-body">
+                <p class="pf-hint">Personality, models, routing, and prompts. Saving restarts the agent.</p>
+                <div id="profileEditorForm"></div>
+                <div id="profileEditorError" style="color:#f44336;margin-top:10px;"></div>
+            </div>
             <div class="modal-footer">
                 <button class="start-btn" onclick="saveProfileEditor()">Save &amp; Restart</button>
             </div>
@@ -490,7 +492,7 @@
     <script src="sim.js"></script>
     <script src="profile_editor.js"></script>
     <script>
-        const socket = io({ path: window.location.pathname + 'socket.io' })
+        const socket = io({ path: '/socket.io' })
         window.socket = socket; // shared with sim.js / profile_editor.js
         const agentsDiv = document.getElementById('agents');
         let settingsSpec = {};
@@ -729,7 +731,7 @@
 
         socket.on('state-update', (states) => {
             window.lastStates = states;
-            if (window.simRender) window.simRender();
+            try { if (window.simRender) window.simRender(); } catch (e) { console.error('sim render failed:', e); }
             Object.keys(states || {}).forEach(name => {
                 const st = states[name];
                 const healthEl = document.getElementById(`health-${name}`);
@@ -1051,7 +1053,7 @@
 
             // Update only changed agents
             changedAgents.forEach(agent => {
-                const el = document.getElementById(`agent-${agentName}`);
+                const el = document.getElementById(`agent-${agent.name}`);
                 if (el) {
                     // Update existing card
                     el.outerHTML = renderAgentCard(agent);
@@ -1109,7 +1111,7 @@
 
             // Update only changed agents
             changedAgents.forEach(agent => {
-                const el = document.getElementById(`agent-${agentName}`);
+                const el = document.getElementById(`agent-${agent.name}`);
                 if (el) {
                     // Update existing card
                     el.outerHTML = renderAgentCard(agent);
