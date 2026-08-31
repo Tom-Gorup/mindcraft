@@ -20,6 +20,56 @@ taxonomy the research reports need: deliberate speech vs auto-narration vs comma
 (bucketed by activity kind) vs deaths vs sessions vs goals/plans/reflections. If a
 behavior only shows up in console logs, it doesn't exist to Phase 8.
 
+## Status at a glance (audited 2026-08-31)
+
+| Phase | Code | Tests | Reviewed | Live-verified |
+|---|---|---|---|---|
+| 0 Groundwork | done | — | — | n/a |
+| 1 Cognition | done | 28 | yes (S4, S8) | **no** |
+| 2 Memory | done | 21 | yes (S4, S8) | **no** |
+| 3 Skills | done | 16 | yes (S7, S8) | **no** |
+| 4 Concurrency | done | 21 | yes (S7, S8) | **no** |
+| 5 Social | done | 43 | yes (S10) | **no** |
+| 6 Economics | not started | — | — | — |
+| 7 Observability | not started | — | — | — |
+| 8 Research lab | not started | — | — | — |
+
+129 tests total (`npm test`). **Every phase 1-5 acceptance criterion that can be met
+without a Minecraft server is met; every remaining unchecked box needs the homelab.**
+That single live run is the largest outstanding risk in the project.
+
+### Deviations from the original file plan (all deliberate, none silent gaps in function)
+
+- **`memory/reflection.js` was never created** — reflection lives in `memory/index.js`
+  (`reflectTick`/`_reflect`). Splitting it would separate the accumulator from its only
+  consumer. `memory/scoring.js` was added instead (pure retrieval math, unit-tested).
+- **`skills/store/` (directory) became `skills/store.js`** — module code lives in `src/`,
+  per-agent runtime data in `bots/<name>/skills/skills.json`. The original path mixed the two.
+- **`history.js` does NOT emit memory events.** Individual turns are already recorded as
+  `chat_received`/`speech`/`command` events; emitting again at summarization would
+  double-count in retrieval and reflection. Instead, summarization is now *skipped*
+  entirely when `use_memory` is on (the event stream is the better record).
+- **Profile-block defaults (`drives`, `cognition`, `memory`, `skills`, `social`) live in
+  code, not in `profiles/defaults/_default.json`** as Phase 1 originally specified. Two
+  sources of defaults would drift. Phase 7's profile schema spec (already planned, a
+  sibling of `settings_spec.json`) is the correct single home for enumerating them for
+  the editor.
+- **Additions not in the original plan:** `cognition/sensors.js` (bot state → drive
+  levels), `cognition/blackboard.js` + `scheduler.js` (Phase 4, planned there),
+  `social/index.js` (module binding the three pure social modules to the agent).
+
+### Standing-rule compliance
+
+- **UI parity — partial, with known debt.** All four feature flags (`use_cognition`,
+  `use_memory`, `use_skill_library`, `use_social`) are in `settings_spec.json`, so they
+  are configurable in the app today. The *profile blocks* are not editable in the app —
+  that debt now spans phases 1, 2, 3, and 5 and is discharged by Phase 7's profile editor.
+  Also outstanding: no dashboard rendering yet for cognition/memory/skill/social state,
+  though `full_state.js` and the blackboard already publish all of it (Phase 7).
+- **Events, not log lines — met.** Every phase emits typed events: goal lifecycle and
+  `plan_revised` (P1), the full base taxonomy (P2), `code` for learned/reused skills (P3),
+  `interruption` (P4), `social` and `gossip` (P5).
+
 ---
 
 ## Phase 0 — Groundwork (Session 1)
@@ -40,16 +90,17 @@ self-prompter string.
 **Files:**
 - Create `src/agent/cognition/` — `drives.js` (drive state: decay/satisfy over time, personality weights), `arbiter.js` (drive → goal selection), `planner.js` (goal → task tree via planning prompt; nodes map to commands/skills), `monitor.js` (execution observer; failure-triggered replanning), `index.js` (the loop: arbitrate → plan → execute → observe).
 - Modify `src/agent/agent.js` (instantiate cognition loop; feed events), `src/agent/self_prompter.js` usage (cognition drives it or supersedes it behind a flag).
-- Profile schema: optional `"drives"` block in profile JSON (weights + decay rates); defaults in `profiles/defaults/_default.json`.
+- Profile schema: optional `"drives"` block in profile JSON (weights + decay rates); defaults live in `drives.js` (see Deviations).
 - Settings flag: `use_cognition` (default off initially) — compatibility path so existing profiles boot unchanged.
 - Tests: `test/cognition/` — drive decay, satisfaction, arbitration ordering, replan triggering (pure logic, no mineflayer).
+- *Added beyond plan:* `sensors.js` (health/hunger/hostiles/inventory → sensor drive levels).
 
 **Done when:**
 - [ ] An agent with no user commands generates a goal from drive state and pursues it *(implemented, needs live verification)*
-- [ ] Inducing a failure (e.g. removing a needed item, blocking a path) visibly triggers replanning, not a retry loop *(implemented, needs live verification)*
-- [ ] Drive weights in a profile JSON change observed behavior priorities *(profiles/wilbur.json ready for testing)*
-- [ ] `use_cognition: false` reproduces today's behavior; existing profiles boot *(loop is fully dormant when flag off; needs boot check)*
-- [x] Unit tests pass for drive decay/satisfaction/arbitration (26 tests, `npm test`)
+- [ ] Inducing a failure (e.g. removing a needed item, blocking a path) visibly triggers replanning, not a retry loop *(implemented; retry→replan→abandon unit-tested, needs live verification)*
+- [ ] Drive weights in a profile JSON change observed behavior priorities *(profiles/wilbur.json vs greta.json ready; personality scaling unit-tested)*
+- [~] `use_cognition: false` reproduces today's behavior; existing profiles boot — **partially verified offline**: all 21 shipped profiles merge cleanly across all 4 base profiles and carry every required template; the loop is provably dormant when the flag is off (unit-tested, incl. no goal resurrection from disk). Still needs one real spawn.
+- [x] Unit tests pass for drive decay/satisfaction/arbitration (28 tests: drives, arbiter, monitor, planner)
 
 **Verify:** unit tests; 15-min observation run on the LAN server with one agent, log of drive levels + chosen goals; induced-failure scenario transcript.
 
@@ -61,16 +112,16 @@ self-prompter string.
 planning context instead of the lossy 500-char history summary.
 
 **Files:**
-- Create `src/agent/memory/` — `events.js` (append-only typed event stream: timestamp, type, content, importance score; the type taxonomy must cover what `tools/trace.py` distinguishes — speech vs narration vs command-by-kind vs death vs session — plus goal/plan lifecycle, so Phase 8 reports read straight from it), `index.js` (retrieval API: recency × relevance × importance; embeddings via the profile's embedding model, Ollama-friendly, word-overlap fallback), `reflection.js` (periodic job synthesizing events into belief entries), `store.js` (per-agent persistence in `bots/<name>/memory/`, JSON or SQLite).
-- Modify `src/agent/memory_bank.js` call sites (places become spatial memories; keep `!rememberHere`/`!savedPlaces` working), `src/models/prompter.js` (planning/conversing context pulls retrieved memories, replacing/augmenting `$MEMORY`), `src/agent/history.js` (summarization chunk also emits events; history stays as short-term buffer).
+- Create `src/agent/memory/` — `events.js` (append-only typed event stream: timestamp, type, content, importance score; the type taxonomy must cover what `tools/trace.py` distinguishes — speech vs narration vs command-by-kind vs death vs session — plus goal/plan lifecycle, so Phase 8 reports read straight from it), `index.js` (retrieval API + reflection; embeddings via the profile's embedding model, Ollama-friendly, word-overlap fallback), `scoring.js` (pure recency × relevance × importance math), `store.js` (per-agent JSONL persistence in `bots/<name>/memory/`). *(`reflection.js` folded into `index.js` — see Deviations.)*
+- Modify `src/agent/memory_bank.js` call sites (places become spatial memories; keep `!rememberHere`/`!savedPlaces` working), `src/models/prompter.js` (planning/conversing context pulls retrieved memories, replacing/augmenting `$MEMORY`), `src/agent/history.js` (stays the short-term buffer; summarization is *skipped* when `use_memory` is on rather than emitting duplicate events — see Deviations).
 - Tests: retrieval scoring (recency decay, importance weighting, relevance ranking with stubbed embeddings), reflection triggering.
 
 **Done when:**
-- [x] Events (chat, damage, deaths, goal outcomes, discoveries) are recorded with importance and persist across restarts (unit-verified round trip)
+- [x] Events (chat, damage, deaths, goal outcomes, discoveries) are recorded with importance and persist across restarts (unit-verified round trip; crash-tolerant JSONL)
 - [ ] An agent recalls a relevant event from a *prior session* and it demonstrably alters a plan (e.g. returns to a known resource location) *(implemented — retrieval feeds goal gen, planning, and conversing; needs live verification)*
-- [x] Reflection produces belief entries from accumulated events (unit-tested with stubbed LLM)
-- [ ] Runs fully local with Ollama embeddings *(Ollama embed endpoint fixed to /api/embed; needs check against homelab Ollama)*
-- [x] Unit tests pass for retrieval scoring (18 new tests; 44 total)
+- [x] Reflection produces belief entries from accumulated events (unit-tested with stubbed LLM, incl. storm-resistance and accumulator resume across restart)
+- [ ] Runs fully local with Ollama embeddings *(fixed a latent bug: embeddings never worked with Ollama — wrong endpoint + wrong response field. Needs a check against the homelab Ollama.)*
+- [x] Unit tests pass for retrieval scoring (21 tests in `test/memory/`)
 
 **Verify:** unit tests; two-session experiment (session A: discover something; restart; session B: task whose plan should use it), memory files inspected in `bots/<name>/memory/`.
 
@@ -82,15 +133,16 @@ planning context instead of the lossy 500-char history summary.
 retrieved by similarity, and composed, instead of regenerated.
 
 **Files:**
-- Create `src/agent/skills/` — `store/` (persisted skills: code + auto-generated docstring + embedding + usage stats), `library.js` (save on success, retrieve by task similarity, compose).
-- Modify `src/agent/coder.js` (on successful execution: persist skill; before generation: retrieve candidate skills into `$CODE_DOCS` context or execute directly), `src/agent/library/skill_library.js` (unify retrieval so built-in docs and learned skills rank together), mindserver state (`full_state.js` + dashboard: skill count, recent usage).
+- Create `src/agent/skills/` — `store.js` (persistence: code + auto-generated docstring + embedding + usage stats, atomic writes; runtime data in `bots/<name>/skills/`), `library.js` (save on success, retrieve by task similarity, compose).
+- Modify `src/agent/coder.js` (on successful execution: persist skill; before generation: retrieve candidate skills into `$CODE_DOCS` context or execute directly), `src/agent/library/skill_library.js` (unify retrieval so built-in docs and learned skills rank together), mindserver state (`full_state.js` publishes skill count/usage — **dashboard rendering deferred to Phase 7**).
 - Tests: skill save/retrieve round-trip, similarity ranking with stubbed embeddings.
 
 **Done when:**
 - [ ] A task solved via `!newAction` on day 1 is solved on day 2 by retrieval, not regeneration (observable in logs: no coding prompt issued) *(implemented — "Coder: executing learned skill" log line; needs live verification)*
-- [ ] Learned skills survive restart and appear in dashboard stats *(persistence unit-verified; stats exposed via full_state; dashboard panel renders in Phase 7)*
-- [ ] A composed skill (calling a stored skill) executes successfully *(composition namespace smoke-verified under real SES; cycle/depth guards unit-tested; needs live verification)*
-- [x] Retrieved skill code still runs inside the SES compartment with the same exposed surface — improved: found and fixed that SES lockdown had *never actually executed* (recursive guard bug); hardening is now real
+- [~] Learned skills survive restart and appear in dashboard stats — **persistence done** (unit-verified round trip incl. stats, atomic writes, schema validation on load); **dashboard half not done**, `full_state` publishes it and Phase 7 renders it.
+- [ ] A composed skill (calling a stored skill) executes successfully *(composition namespace smoke-verified under real SES; cycle/depth guards unit-tested; the lint template blocked this entirely until S7 — needs live verification)*
+- [x] Retrieved skill code still runs inside the SES compartment with the same exposed surface — improved: found and fixed that SES lockdown had *never actually executed* (recursive guard bug); hardening is now real and fails closed
+- [x] Unit tests pass for save/retrieve/compose (16 tests in `test/skills/`)
 
 **Verify:** unit tests; repeat-task experiment across a restart with prompt logs compared; skill store files inspected.
 
@@ -111,6 +163,7 @@ coherence gate so tiers never fight over the bot.
 - [x] After the interruption the plan resumes, or revises with the interruption recorded as an event (unit-verified: consume-once blackboard note in the next step prompt + `interruption` memory event; mid-step replan handoff tested)
 - [x] Tiers run at their own cadences; slow planning never blocks reflexes (unit-verified: busy tiers are skipped not queued; error isolation per tier; smoke: 5 tiers, 0 errors over simulated run)
 - [ ] No action-slot deadlocks or infinite interrupt loops in a 1-hour run *(needs live homelab soak)*
+- [x] Unit tests pass for cadence, busy-skip, error isolation, and interrupt handoff (21 tests: blackboard, scheduler, tiers, interrupts)
 
 **Verify:** unit tests; scripted scenario (spawn a mob mid-task) showing interrupt + clean resume in logs; 1-hour soak run.
 
@@ -122,15 +175,16 @@ coherence gate so tiers never fight over the bot.
 not scripts.
 
 **Files:**
-- Create `src/agent/social/` — `relationships.js` (per-pair trust/affinity/grudge, updated from interaction events, persisted), `gossip.js` (relaying memories secondhand with attribution, feeding the hearer's memory stream), `trade.js` (simple negotiation over conversation + `giveToPlayer`).
-- Modify `src/agent/conversation.js` (interaction events → relationship updates; relationship state → conversation context), cognition social tier (Phase 4), profile schema (personality modulates trust gain/loss, generosity, gossip propensity).
-- Tests: relationship update rules, gossip attribution/decay.
+- Create `src/agent/social/` — `relationships.js` (pure per-pair trust/affinity/grudge), `gossip.js` (pure selection + trust-weighted credibility + attribution), `trade.js` (offer bookkeeping, fairness, wire format), plus `index.js` (`SocialModule`: persistence, hooks, `$SOCIAL` context — added beyond plan to keep the other three pure and testable).
+- Modify `src/agent/conversation.js` (gossip absorption + inbound trade offers), `src/agent/agent.js` (interaction hooks: chat, damage, gifts, deaths), `src/models/prompter.js` (relationship state → `$SOCIAL` conversation context), cognition social tier (Phase 4), profile schema (personality modulates trust gain/loss, generosity, gossip propensity).
+- Tests: relationship update rules, gossip attribution/decay, trade lifecycle.
 
 **Done when:**
 - [x] Relationship scores change from interactions (help, gift, attack, insult) and persist (unit + restart tests; hooks on chat, `!givePlayer`, `!attackPlayer`, death-message killer parsing)
 - [ ] Two agents with conflicting drives produce an unscripted dispute (observable transcript) *(profiles/wilbur.json vs profiles/greta.json built for this; needs the live run)*
 - [x] A third agent hears about the dispute via gossip, with attribution, and its relationship scores shift accordingly (integration-tested: attributed note + `gossip` memory event + trust-weighted disposition shift; hearsay provably weaker than firsthand)
-- [x] A trade completes via negotiation between two agents (`!offerTrade`/`!acceptTrade`/`!declineTrade`, full cycle integration-tested; the *negotiation* itself is left to the agents' own conversation)
+- [x] A trade completes via negotiation between two agents (`!offerTrade`/`!acceptTrade`/`!declineTrade`; offer travels in a canonical wire format, trust is earned only on confirmed delivery, reneging is penalized; full cycle integration-tested. The *negotiation* itself is left to the agents' own conversation. **Limitation: bot↔bot only** — a human has no way to register acceptance, so an offer to a human simply expires.)
+- [x] Unit tests pass for relationship rules, gossip, and trade (43 tests in `test/social/`)
 
 **Verify:** unit tests; 3-agent run designed with conflicting drive profiles; transcripts + relationship store diffs.
 
@@ -159,6 +213,11 @@ cooldown ceiling. ≈$27/day/agent on a cheap API tier; ~half a 3090 on prefill 
 - `code_timeout_mins: -1` means generated code has no timeout at all by default.
 - Unbounded query results (`!searchWiki` returns whole articles) enter history, then get
   embedded and summarized. Cap `perform()` returns in `executeCommand`.
+- Phase 5 added ~10-16% on top of this baseline: the three trade commands ride *every*
+  prompt inside `$COMMAND_DOCS` (+153 tok), and `$SOCIAL` adds ~271 tok typical.
+- Already landed early (cheap, no behavior change): an LRU cache for query embeddings,
+  `!nearbyBlocks` scanning 200 blocks instead of 10,000 per `$STATS`, and skipping
+  history summarization when `use_memory` owns the durable record.
 
 **Files:**
 - Create `src/models/router.js` (tier registry: reflex/chatter → local Ollama, planning → mid API, reflection/pivotal → frontier; per-call-site tier tags; fallback on provider failure), `src/models/metering.js` (per-agent token/cost counters). <!-- gitleaks:allow -->
@@ -185,6 +244,12 @@ the browser — create, configure, and tune agents without touching JSON on disk
 - Profile editor in the app: model roles (chat/code/vision/embedding), prompt templates, modes, `drives` weights/decay, `cognition` tuning, few-shot examples — backed by a profile schema spec (sibling of `settings_spec.json`) so future keys get UI for free. Retrofits Phase 1's config per the UI-parity rule.
 - Modify `src/agent/library/full_state.js` (expose cognition/social state), `src/mindcraft/mindserver.js` (profile CRUD + new events as needed).
 - Optional: director mode — spectator viewpoint cycling to the highest-activity agent.
+
+**Inherited debt this phase must clear** (from the UI-parity standing rule): profile-block
+editors for `drives`, `cognition`, `memory`, `skills`, and `social`; dashboard rendering
+for cognition/memory/skill/social state (all already published by `full_state.js` and the
+blackboard — the data is there, nothing renders it); and skill count/usage stats, which
+Phase 3 listed but deferred here.
 
 **Done when:**
 - [ ] Dashboard shows, live per agent: drive levels, active goal, plan step, last thought
