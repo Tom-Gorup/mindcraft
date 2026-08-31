@@ -1,9 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { strictFormat } from '../utils/text.js';
 import { getKey } from '../utils/keys.js';
+import { splitCachePrefix, stripBoundary } from './cache.js';
 
 export class Claude {
     static prefix = 'anthropic';
+    static supports_cache_boundary = true;
     constructor(model_name, url, params) {
         this.model_name = model_name;
         this.params = params || {};
@@ -30,9 +32,22 @@ export class Claude {
                     this.params.max_tokens = 4096;
                 }
             }
+            // Prompt caching: split the system prompt at the cache boundary and
+            // mark the stable prefix (persona + command docs) as ephemeral, so
+            // repeat calls within the cache window only pay for the volatile
+            // tail. Below the provider minimum a breakpoint is pointless, so
+            // fall back to a plain string.
+            const { prefix, rest, cacheable } = splitCachePrefix(systemMessage);
+            const system = cacheable
+                ? [
+                    { type: 'text', text: prefix, cache_control: { type: 'ephemeral' } },
+                    { type: 'text', text: rest },
+                ]
+                : stripBoundary(systemMessage);
+
             const resp = await this.anthropic.messages.create({
                 model: this.model_name || "claude-sonnet-4-6",
-                system: systemMessage,
+                system: system,
                 messages: messages,
                 ...(this.params || {})
             });

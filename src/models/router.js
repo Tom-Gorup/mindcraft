@@ -1,4 +1,5 @@
 import { Meter, estimateTokens } from './metering.js';
+import { stripBoundary } from './cache.js';
 import settings from '../agent/settings.js';
 
 // NOTE: this module deliberately does NOT import ./_model_map.js. That module
@@ -91,12 +92,25 @@ export class ModelRouter {
     // The single funnel every chat-style call goes through.
     // fn(model) performs the actual request so callers keep full control of
     // provider-specific arguments.
+    // Prepare a system prompt for a specific provider: only those that
+    // implement an explicit cache breakpoint see the marker; everyone else
+    // gets it stripped (they still benefit from the prefix ordering via
+    // automatic caching).
+    prepareSystem(entry, system) {
+        if (typeof system !== 'string') return system;
+        return entry?.model?.constructor?.supports_cache_boundary
+            ? system
+            : stripBoundary(system);
+    }
+
+    // fn(model, system) — system is the cache-prepared prompt when opts.system
+    // is given, otherwise undefined and the caller uses its own closure value.
     async run(tier, site, fn, opts = {}) {
         const entry = opts._entry || this.models.get(tier) || this._defaultFor('chat');
         const started = Date.now();
         let result;
         try {
-            result = await fn(entry.model);
+            result = await fn(entry.model, this.prepareSystem(entry, opts.system));
         } catch (err) {
             this.meter.record({ tier, site, model: entry.name, local: isLocalApi(entry.api), in_text: opts.in_text, out_text: '', now: started, error: true });
             // one retry on a genuinely different model, if there is one

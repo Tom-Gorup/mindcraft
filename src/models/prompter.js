@@ -10,6 +10,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { selectAPI, createModel } from './_model_map.js';
 import { ModelRouter } from './router.js';
+import { CACHE_BOUNDARY, stripBoundary } from './cache.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -316,7 +317,8 @@ export class Prompter {
                 // and silently kill the calling loop
                 prompt = await this.replaceStrings(prompt, messages, this.convo_examples);
                 generation = await this.router.run('chat', 'conversing',
-                    (model) => model.sendRequest(messages, prompt), { in_text: prompt });
+                    (model, system) => model.sendRequest(messages, system),
+                    { in_text: prompt, system: prompt });
                 if (typeof generation !== 'string') {
                     console.error('Error: Generated response is not a string', generation);
                     throw new Error('Generated response is not a string');
@@ -367,7 +369,8 @@ export class Prompter {
             prompt = await this.replaceStrings(prompt, messages, this.coding_examples);
 
             let resp = await this.router.run('code', 'coding',
-                (model) => model.sendRequest(messages, prompt), { in_text: prompt });
+                (model, system) => model.sendRequest(messages, system),
+                { in_text: prompt, system: prompt });
             await this._saveLog(prompt, messages, resp, 'coding');
             return resp;
         } finally {
@@ -382,7 +385,7 @@ export class Prompter {
         let prompt = this.profile.saving_memory;
         prompt = await this.replaceStrings(prompt, null, null, to_summarize);
         let resp = await this.router.run('reflex', 'memSaving',
-            (model) => model.sendRequest([], prompt), { in_text: prompt });
+            (model) => model.sendRequest([], stripBoundary(prompt)), { in_text: prompt });
         await this._saveLog(prompt, to_summarize, resp, 'memSaving');
         if (resp?.includes('</think>')) {
             const [_, afterThink] = resp.split('</think>')
@@ -398,7 +401,7 @@ export class Prompter {
         messages.push({role: 'user', content: new_message});
         prompt = await this.replaceStrings(prompt, null, null, messages);
         let res = await this.router.run('reflex', 'botResponder',
-            (model) => model.sendRequest([], prompt), { in_text: prompt });
+            (model) => model.sendRequest([], stripBoundary(prompt)), { in_text: prompt });
         return res.trim().toLowerCase() === 'respond';
     }
 
@@ -419,7 +422,7 @@ export class Prompter {
         prompt = prompt.replaceAll('$DRIVE_STATE', () => drive_state_text);
         prompt = prompt.replaceAll('$DRIVE', () => drive_name);
         let res = await this.router.run('plan', 'goalGeneration',
-            (model) => model.sendRequest([], prompt), { in_text: prompt });
+            (model) => model.sendRequest([], stripBoundary(prompt)), { in_text: prompt });
         await this._saveLog(prompt, [], res, 'goalGeneration');
         return res;
     }
@@ -432,7 +435,7 @@ export class Prompter {
         prompt = prompt.replaceAll('$GOAL', () => goal_text);
         prompt = prompt.replaceAll('$FAILURE_CONTEXT', () => failure_context);
         let res = await this.router.run('plan', 'taskPlanning',
-            (model) => model.sendRequest([], prompt), { in_text: prompt });
+            (model) => model.sendRequest([], stripBoundary(prompt)), { in_text: prompt });
         await this._saveLog(prompt, [], res, 'taskPlanning');
         return res;
     }
@@ -445,7 +448,7 @@ export class Prompter {
         prompt = prompt.replaceAll('$CODE', () => code.substring(0, 2000));
         prompt = prompt.replaceAll('$OUTPUT', () => (output || '').substring(0, 500));
         let res = await this.router.run('reflex', 'skillDocstring',
-            (model) => model.sendRequest([], prompt), { in_text: prompt });
+            (model) => model.sendRequest([], stripBoundary(prompt)), { in_text: prompt });
         await this._saveLog(prompt, [], res, 'skillDocstring');
         if (res?.includes('</think>'))
             res = res.split('</think>').pop();
@@ -458,7 +461,7 @@ export class Prompter {
         prompt = await this.replaceStrings(prompt, null);
         prompt = prompt.replaceAll('$EVENTS', () => events_text);
         let res = await this.router.run('reflect', 'reflection',
-            (model) => model.sendRequest([], prompt), { in_text: prompt });
+            (model) => model.sendRequest([], stripBoundary(prompt)), { in_text: prompt });
         await this._saveLog(prompt, [], res, 'reflection');
         return res;
     }
