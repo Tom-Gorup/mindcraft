@@ -1,6 +1,6 @@
 export class MemoryBank {
 	constructor() {
-		this.memory = {};
+		this.memory = Object.create(null); // keys come from !rememberHere (untrusted)
 		this.agent_memory = null;
 	}
 

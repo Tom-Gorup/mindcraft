@@ -1,4 +1,4 @@
-import { writeFileSync, readFileSync, appendFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, appendFileSync, renameSync, mkdirSync, existsSync } from 'fs';
 import { NPCData } from './npc/data.js';
 import settings from './settings.js';
 
@@ -106,7 +106,10 @@ export class History {
                 taskStart: this.agent.task.taskStartTime,
                 last_sender: this.agent.last_sender
             };
-            writeFileSync(this.memory_fp, JSON.stringify(data, null, 2));
+            // atomic: a torn write here used to brick the agent on next boot
+            const tmp = this.memory_fp + '.tmp';
+            writeFileSync(tmp, JSON.stringify(data, null, 2));
+            renameSync(tmp, this.memory_fp);
             console.log('Saved memory to:', this.memory_fp);
         } catch (error) {
             console.error('Failed to save history:', error);
@@ -126,8 +129,11 @@ export class History {
             console.log('Loaded memory:', this.memory);
             return data;
         } catch (error) {
-            console.error('Failed to load history:', error);
-            throw error;
+            // degrade like every other store rather than killing the agent:
+            // throwing here exits before the 10s mark, so agent_process
+            // refuses to restart and the bot stays dead until a human intervenes
+            console.error('Failed to load history, starting fresh:', error.message || error);
+            return null;
         }
     }
 

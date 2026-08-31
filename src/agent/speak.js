@@ -96,7 +96,8 @@ async function processQueue() {
             proc = spawn('powershell', ['-NoProfile', '-Command', script, '-args', txt], { stdio: 'ignore', windowsHide: true });
         }
         else {
-            proc = spawn(isMac ? 'say' : 'espeak', [txt], { stdio: 'ignore' });
+            // '--' so text beginning with '-' is not parsed as a flag
+            proc = spawn(isMac ? 'say' : 'espeak', ['--', txt], { stdio: 'ignore' });
         }
         const finish = () => {
             isSpeaking = false;

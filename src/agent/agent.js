@@ -103,9 +103,11 @@ export class Agent {
 
             // Log and Analyze
             // handleDisconnection handles logging to console and server
-            const { type } = handleDisconnection(this.name, reason);
-     
-            process.exit(1);
+            const { msg } = handleDisconnection(this.name, reason);
+            // Route through cleanKill so state is flushed. Exiting directly
+            // here also made the cleanKill handlers registered later in
+            // _setupEventHandlers unreachable dead code.
+            this.cleanKill(msg, 1);
         };
         
         // Bind events
@@ -206,7 +208,7 @@ export class Agent {
                 console.log(this.name, 'received message from', username, ':', message);
 
                 if (convoManager.isOtherAgent(username)) {
-                    console.warn('received whisper from other bot??')
+                    console.warn('received whisper from other bot??');
                 }
                 else {
                     let translation = await handleEnglishTranslation(message);
@@ -215,7 +217,7 @@ export class Agent {
             } catch (error) {
                 console.error('Error handling message:', error);
             }
-        }
+        };
 
 		this.respondFunc = respondFunc;
 
@@ -382,7 +384,7 @@ export class Agent {
             console.log(`${this.name} full response to ${source}: ""${res}""`);
 
             if (res.trim().length === 0) {
-                console.warn('no response')
+                console.warn('no response');
                 break; // empty response ends loop
             }
 
@@ -394,7 +396,7 @@ export class Agent {
                 
                 if (!commandExists(command_name)) {
                     this.history.add('system', `Command ${command_name} does not exist.`);
-                    console.warn('Agent hallucinated command:', command_name)
+                    console.warn('Agent hallucinated command:', command_name);
                     continue;
                 }
 
@@ -488,6 +490,10 @@ export class Agent {
         message = (await handleTranslation(to_translate)).trim() + " " + remaining;
         // newlines are interpreted as separate chats, which triggers spam filters. replace them with spaces
         message = message.replaceAll('\n', ' ');
+        // A leading '/' makes the server execute this as a command AS THE BOT.
+        // Chat is attacker-influenced ("repeat exactly: /kill @a"), so never
+        // let generated text start one.
+        if (message.startsWith('/')) message = ' ' + message;
 
         if (settings.only_chat_with.length > 0) {
             for (let username of settings.only_chat_with) {
@@ -665,21 +671,35 @@ export class Agent {
     
 
     cleanKill(msg='Killing agent process...', code=1) {
-        this.bot.chat(code > 1 ? 'Restarting.': 'Exiting.');
-        // flush every store before exiting: history.add is queued (a pending
-        // eviction would otherwise be lost), skills throttle their writes,
-        // and cognition persists on a 60s timer
-        this.history.add('system', msg)
+        if (this._killing) return;   // every shutdown path funnels here
+        this._killing = true;
+        // bot.chat does not exist until mineflayer finishes login, and this is
+        // reachable before that (mindserver disconnect, spawn timeout) — an
+        // unguarded call threw and the process then never exited at all.
+        try { this.bot?.chat?.(code > 1 ? 'Restarting.' : 'Exiting.'); } catch { /* not logged in yet */ }
+
+        const flush = () => {
+            try { this.history.save(); } catch (err) { console.error('Failed to save history on shutdown:', err); }
+            try { if (settings.use_cognition) this.cognition?.persist(); } catch (err) { console.error('Failed to persist cognition state on shutdown:', err); }
+            try { this.learned_skills?.flush(); } catch (err) { console.error('Failed to flush skills on shutdown:', err); }
+            try { this.social?.flush(); } catch (err) { console.error('Failed to flush social state on shutdown:', err); }
+            try { this.logEconomics(); } catch (err) { console.error('Failed to log economics summary:', err); }
+            process.exit(code);
+        };
+        // history.add can trigger an LLM summarization with no timeout; never
+        // let a hung provider prevent the flush from running at all.
+        let flushed = false;
+        const once = () => { if (!flushed) { flushed = true; flush(); } };
+        const guard = setTimeout(once, 5000);
+        guard.unref?.();
+        Promise.resolve(this.history.add('system', msg))
             .catch(() => {})
             .finally(() => {
-                try { this.history.save(); } catch (err) { console.error('Failed to save history on shutdown:', err); }
-                try { if (settings.use_cognition) this.cognition?.persist(); } catch (err) { console.error('Failed to persist cognition state on shutdown:', err); }
-                try { this.learned_skills?.flush(); } catch (err) { console.error('Failed to flush skills on shutdown:', err); }
-                try { this.social?.flush(); } catch (err) { console.error('Failed to flush social state on shutdown:', err); }
-                try { this.logEconomics(); } catch (err) { console.error('Failed to log economics summary:', err); }
-                process.exit(code);
+                clearTimeout(guard);
+                once();
             });
     }
+
     async checkTaskDone() {
         if (this.task.data) {
             let res = this.task.isDone();

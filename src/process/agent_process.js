@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import settings from '../../settings.js';
 import { fileURLToPath } from 'url';
 import { logoutAgent } from '../mindcraft/mindserver.js';
 
@@ -34,7 +35,10 @@ export class AgentProcess {
             this.running = false;
             logoutAgent(this.name);
             
-            if (code > 1) {
+            // Only a benchmark task signals fleet shutdown this way. A crash
+            // exits 255 under SES lockdown, which used to satisfy this test
+            // and kill the mindserver plus every other agent.
+            if (code > 1 && code < 100 && settings.task) {
                 console.log(`Ending task`);
                 process.exit(code);
             }

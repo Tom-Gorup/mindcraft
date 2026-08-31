@@ -54,8 +54,16 @@ export class MemoryStore {
 
     _readJsonl(fp) {
         if (!existsSync(fp)) return [];
+        let raw;
+        try {
+            raw = readFileSync(fp, 'utf8');
+        } catch (err) {
+            // an unreadable or over-large store must degrade, not kill the agent
+            console.error(`MemoryStore: could not read ${fp}, continuing without it:`, err.message || err);
+            return [];
+        }
         const out = [];
-        for (const line of readFileSync(fp, 'utf8').split('\n')) {
+        for (const line of raw.split('\n')) {
             if (!line.trim()) continue;
             try {
                 out.push(JSON.parse(line));
