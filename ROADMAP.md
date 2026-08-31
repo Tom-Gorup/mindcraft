@@ -32,11 +32,11 @@ self-prompter string.
 - Tests: `test/cognition/` — drive decay, satisfaction, arbitration ordering, replan triggering (pure logic, no mineflayer).
 
 **Done when:**
-- [ ] An agent with no user commands generates a goal from drive state and pursues it
-- [ ] Inducing a failure (e.g. removing a needed item, blocking a path) visibly triggers replanning, not a retry loop
-- [ ] Drive weights in a profile JSON change observed behavior priorities
-- [ ] `use_cognition: false` reproduces today's behavior; existing profiles boot
-- [ ] Unit tests pass for drive decay/satisfaction/arbitration
+- [ ] An agent with no user commands generates a goal from drive state and pursues it *(implemented, needs live verification)*
+- [ ] Inducing a failure (e.g. removing a needed item, blocking a path) visibly triggers replanning, not a retry loop *(implemented, needs live verification)*
+- [ ] Drive weights in a profile JSON change observed behavior priorities *(profiles/wilbur.json ready for testing)*
+- [ ] `use_cognition: false` reproduces today's behavior; existing profiles boot *(loop is fully dormant when flag off; needs boot check)*
+- [x] Unit tests pass for drive decay/satisfaction/arbitration (26 tests, `npm test`)
 
 **Verify:** unit tests; 15-min observation run on the LAN server with one agent, log of drive levels + chosen goals; induced-failure scenario transcript.
 
