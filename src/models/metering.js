@@ -10,6 +10,10 @@
 
 export const CHARS_PER_TOKEN = 4.21;
 
+// Anthropic prompt-cache pricing, relative to the normal input rate.
+export const CACHE_WRITE_MULTIPLIER = 1.25;
+export const CACHE_READ_MULTIPLIER = 0.1;
+
 // USD per 1M tokens {in, out}. Local models are free; unknown models are
 // counted as free but still tallied so they show up in the distribution.
 export const PRICES = {
@@ -46,20 +50,31 @@ export class Meter {
         this.started_at = opts.now ?? 0;
         this.calls = [];         // rolling window for rate calculations
         this.window_ms = opts.window_ms ?? 3600000;
-        this.totals = { calls: 0, in_tokens: 0, out_tokens: 0, cost: 0, errors: 0 };
+        this.totals = { calls: 0, in_tokens: 0, out_tokens: 0, cost: 0, errors: 0, cache_read_tokens: 0, cache_write_tokens: 0 };
         this.by_tier = {};
         this.by_site = {};
     }
 
     // site: the call site ('conversing', 'goalGeneration', ...). local: was it
     // served by a local provider (ollama/lmstudio/vllm)?
-    record({ tier, site, model, local, in_text, out_text, in_tokens, out_tokens, now = 0, error = false }) {
+    record({ tier, site, model, local, in_text, out_text, in_tokens, out_tokens,
+        cache_read_tokens, cache_write_tokens, uncached_in_tokens, now = 0, error = false }) {
         const it = in_tokens ?? estimateTokens(in_text);
         const ot = out_tokens ?? estimateTokens(out_text);
-        const cost = local ? 0 : costOf(model, it, ot);
+        // Cached input is billed differently: a cache write costs 1.25x normal
+        // input, a cache read 0.1x. Without this the "cost" of a cache hit is
+        // overstated by ~10x and the saving the cache exists for is invisible.
+        const cr = cache_read_tokens ?? 0;
+        const cw = cache_write_tokens ?? 0;
+        const plain = uncached_in_tokens ?? Math.max(0, it - cr - cw);
+        const cost = local ? 0 : costOf(model, plain, ot)
+            + (cr / 1e6) * priceFor(model).in * CACHE_READ_MULTIPLIER
+            + (cw / 1e6) * priceFor(model).in * CACHE_WRITE_MULTIPLIER;
 
         this.totals.calls++;
         this.totals.in_tokens += it;
+        this.totals.cache_read_tokens += cr;
+        this.totals.cache_write_tokens += cw;
         this.totals.out_tokens += ot;
         this.totals.cost += cost;
         if (error) this.totals.errors++;
@@ -112,6 +127,10 @@ export class Meter {
                 cost: Number(this.totals.cost.toFixed(4)),
             },
             local_share: Number(this.localShare(now).toFixed(3)),
+            // share of input tokens served from cache — 0 means caching is not
+            // engaging, whatever the config says
+            cache_hit_rate: this.totals.in_tokens
+                ? Number((this.totals.cache_read_tokens / this.totals.in_tokens).toFixed(3)) : 0,
             per_hour: this.ratePerHour(now),
             by_tier: Object.fromEntries(Object.entries(this.by_tier).map(([k, v]) => [k, {
                 ...v, cost: Number(v.cost.toFixed(4)),

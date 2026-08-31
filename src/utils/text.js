@@ -41,13 +41,23 @@ export function wordOverlapScore(text1, text2) {
 // - system messages are treated as user messages and prefixed with SYSTEM:
 // - combines repeated messages from users
 // - separates repeat assistant messages with filler user messages
+// Normalize a turn list into the shape strict providers demand: alternating
+// roles, a leading user message, and — critically for Anthropic, which returns
+// a 400 rather than ignoring them — no empty text blocks anywhere.
 export function strictFormat(turns) {
     let prev_role = null;
     let messages = [];
-    let filler = {role: 'user', content: '_'};
+    // NOTE: a fresh object each time. Pushing one shared filler at several
+    // indices would let a later append mutate all of them at once.
+    const filler = () => ({ role: 'user', content: '_' });
     for (let msg of turns) {
         if (typeof msg.content === 'string')  {
             msg.content = msg.content.trim();
+            // The default persona tells the bot to answer with a bare tab when
+            // it has nothing to say, and command results can come back blank.
+            // Either one becomes an empty text block, which Anthropic rejects
+            // outright — drop the turn instead of failing the whole request.
+            if (msg.content.length === 0) continue;
         }
         if (msg.role === 'system') {
             msg.role = 'user';
@@ -55,7 +65,7 @@ export function strictFormat(turns) {
         }
         if (msg.role === prev_role && msg.role === 'assistant') {
             // insert empty user message to separate assistant messages
-            messages.push(filler);
+            messages.push(filler());
             messages.push(msg);
         }
         else if (msg.role === prev_role) {
@@ -69,10 +79,10 @@ export function strictFormat(turns) {
         
     }
     if (messages.length > 0 && messages[0].role !== 'user') {
-        messages.unshift(filler); // anthropic requires user message to start
+        messages.unshift(filler()); // anthropic requires a user message to start
     }
     if (messages.length === 0) {
-        messages.push(filler);
+        messages.push(filler());
     }
     return messages;
 }

@@ -52,6 +52,7 @@
         const agents = Object.values(states).filter(s => s && !s.error);
         if (agents.length === 0) return '';
         let calls = 0, cost = 0, local_num = 0, local_den = 0, events = 0, beliefs = 0, skills = 0, pursuing = 0;
+        let cache_read = 0, in_tokens = 0, api_calls = 0;
         for (const s of agents) {
             const e = s.economics;
             if (e) {
@@ -59,6 +60,9 @@
                 cost += e.per_hour?.cost || 0;
                 local_num += (e.local_share || 0) * (e.totals?.calls || 0);
                 local_den += e.totals?.calls || 0;
+                cache_read += e.totals?.cache_read_tokens || 0;
+                in_tokens += e.totals?.in_tokens || 0;
+                api_calls += (e.totals?.calls || 0) - Math.round((e.local_share || 0) * (e.totals?.calls || 0));
             }
             events += s.memory?.events || 0;
             beliefs += s.memory?.beliefs || 0;
@@ -78,7 +82,21 @@
             + tile('Cost / hr', '$' + cost.toFixed(2), '$' + (cost * 24).toFixed(2) + ' per day at this rate')
             + tile('Memories', compact(events), `${compact(beliefs)} beliefs formed`)
             + tile('Skills learned', compact(skills), 'reusable programs')
+            + cacheTile(cache_read, in_tokens, api_calls)
             + '</div>';
+    }
+
+    // Only meaningful for providers that report real usage (Anthropic does).
+    // A 0% reading on a paid model is the signal that the cache breakpoint is
+    // not engaging — which is invisible otherwise, because nothing breaks.
+    function cacheTile(cache_read, in_tokens, api_calls) {
+        if (!api_calls) return '';
+        const rate = in_tokens ? cache_read / in_tokens : 0;
+        const cls = rate >= 0.5 ? 'good' : rate > 0 ? 'warning' : 'critical';
+        return tile('Prompt cache', Math.round(rate * 100) + '%',
+            rate > 0 ? 'of input served from cache' : 'not engaging — see measure_prompt.mjs',
+            cls,
+            `${Math.round(rate * 100)}%\tof input tokens read from cache`);
     }
 
     function renderDrives(cog) {

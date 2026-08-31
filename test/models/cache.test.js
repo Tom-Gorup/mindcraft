@@ -17,8 +17,25 @@ test('splitting separates the stable prefix from the volatile tail', () => {
 
 test('a prefix below the provider minimum is not marked cacheable', () => {
     assert.equal(splitCachePrefix('short' + CACHE_BOUNDARY + 'tail').cacheable, false);
-    const big = 'x'.repeat(Math.ceil(MIN_CACHEABLE_CHARS) + 1);
-    assert.equal(splitCachePrefix(big + CACHE_BOUNDARY + 'tail').cacheable, true);
+    const big = 'x'.repeat(Math.ceil(MIN_CACHEABLE_CHARS) * 2 + 1);
+    assert.equal(splitCachePrefix(big + CACHE_BOUNDARY + 'tail', 'claude-sonnet-5').cacheable, true);
+});
+
+// Anthropic's minimum is 1024 tokens on Sonnet/Opus but 2048 on Haiku. Below
+// the bar the breakpoint is silently ignored — no error, no hit, and the
+// cache-write premium is charged anyway — so a prefix that is cacheable on
+// Sonnet must NOT be marked cacheable on Haiku.
+test('the cacheable threshold follows the model', () => {
+    const between = 'x'.repeat(Math.ceil(MIN_CACHEABLE_CHARS) + 100);   // >1024 tok, <2048 tok
+    const prompt = between + CACHE_BOUNDARY + 'volatile tail';
+    assert.equal(splitCachePrefix(prompt, 'claude-sonnet-5').cacheable, true);
+    assert.equal(splitCachePrefix(prompt, 'claude-haiku-4-5-20251001').cacheable, false);
+    // an unknown or absent model gets the conservative bar
+    assert.equal(splitCachePrefix(prompt).cacheable, false);
+    assert.equal(splitCachePrefix(prompt, 'some-future-model').cacheable, true);
+
+    const big = 'x'.repeat(Math.ceil(MIN_CACHEABLE_CHARS) * 2 + 100);
+    assert.equal(splitCachePrefix(big + CACHE_BOUNDARY + 'tail', 'claude-haiku-4-5-20251001').cacheable, true);
 });
 
 test('no boundary means no prefix and no crash', () => {

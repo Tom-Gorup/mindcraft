@@ -379,7 +379,29 @@ export class Agent {
         for (let i=0; i<max_responses; i++) {
             if (checkInterrupt()) break;
             let history = this.history.getHistory();
-            let res = await this.prompter.promptConvo(history);
+            let res;
+            try {
+                res = await this.prompter.promptConvo(history);
+            } catch (err) {
+                // Providers throw on real failures (bad key, 404 model, rate
+                // limit) rather than returning prose — otherwise an outage is
+                // indistinguishable from an answer. Surface it in-band: most
+                // callers here are fire-and-forget, so rethrowing would only
+                // produce an unhandled rejection and a silently dropped turn.
+                const msg = err?.message || String(err);
+                console.error(`${this.name}: model call failed —`, msg);
+                this._model_failures = (this._model_failures || 0) + 1;
+                // say it out loud once, so the failure is visible in-game and
+                // not only in the terminal
+                if (this._model_failures === 1) {
+                    try { this.openChat(`I can't reach my model right now: ${msg.substring(0, 180)}`); }
+                    catch { /* not logged in yet */ }
+                }
+                await this.history.add('system', `Model call failed: ${msg}`);
+                this.memory?.record('interruption', `Model call failed: ${msg}`);
+                break;
+            }
+            this._model_failures = 0;
 
             console.log(`${this.name} full response to ${source}: ""${res}""`);
 
@@ -723,10 +745,17 @@ export class Agent {
             .sort((a, b) => b[1].calls - a[1].calls)
             .map(([t, v]) => `${t}=${v.calls}(${Math.round(v.local_share * 100)}% local)`)
             .join(' ');
+        // cache_hit_rate is only non-zero when a provider reports real usage
+        // (Anthropic does). 0% while using a cache-capable model means the
+        // breakpoint is not engaging — see tools/measure_prompt.mjs.
+        const cache = s.totals.cache_read_tokens
+            ? ` | cache ${Math.round(s.cache_hit_rate * 100)}% of input `
+              + `(${Math.round(s.totals.cache_read_tokens / 1000)}k read, ${Math.round(s.totals.cache_write_tokens / 1000)}k written)`
+            : '';
         console.log(`[economics] ${this.name}: ${s.totals.calls} calls, `
             + `${Math.round((s.totals.in_tokens + s.totals.out_tokens) / 1000)}k tokens, `
             + `$${s.totals.cost.toFixed(4)}, ${Math.round(s.local_share * 100)}% local | `
-            + `~${s.per_hour.calls} calls/hr, ~$${s.per_hour.cost}/hr | ${tiers}`);
+            + `~${s.per_hour.calls} calls/hr, ~$${s.per_hour.cost}/hr | ${tiers}${cache}`);
     }
 
     killAll() {

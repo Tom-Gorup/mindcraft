@@ -18,8 +18,37 @@ export function parseJsonResponse(res) {
     try {
         return JSON.parse(text.substring(start, end + 1));
     } catch {
-        return null;
+        // first..last braces over-reaches when the model appends prose that
+        // happens to contain a brace, or emits a second object. Smaller models
+        // do both often enough to matter, so fall back to the first balanced
+        // object instead of giving up.
+        const balanced = firstBalancedObject(text, start);
+        if (balanced === null) return null;
+        try {
+            return JSON.parse(balanced);
+        } catch {
+            return null;
+        }
     }
+}
+
+// Scan from `start` tracking brace depth, ignoring braces inside strings, and
+// return the first complete {...} span.
+function firstBalancedObject(text, start) {
+    let depth = 0, in_string = false, escaped = false;
+    for (let i = start; i < text.length; i++) {
+        const c = text[i];
+        if (in_string) {
+            if (escaped) escaped = false;
+            else if (c === '\\') escaped = true;
+            else if (c === '"') in_string = false;
+            continue;
+        }
+        if (c === '"') in_string = true;
+        else if (c === '{') depth++;
+        else if (c === '}' && --depth === 0) return text.substring(start, i + 1);
+    }
+    return null;
 }
 
 export function parseGoalResponse(res) {

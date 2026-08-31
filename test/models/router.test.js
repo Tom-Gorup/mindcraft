@@ -117,3 +117,28 @@ test('a fast call is unaffected by the timeout', async () => {
     const router = new ModelRouter({}, roles(), { call_timeout_ms: 5000 });
     assert.equal(await router.run('chat', 'test_site', (m) => m.sendRequest()), 'ok from chat-model');
 });
+
+test('real provider usage is metered instead of the character estimate', async () => {
+    const r = roles();
+    // a provider that reports usage the way claude.js does
+    r.chat.last_usage = null;
+    r.chat.sendRequest = () => {
+        r.chat.last_usage = { in_tokens: 2000, out_tokens: 40, cache_read_tokens: 1800, uncached_in_tokens: 200 };
+        return Promise.resolve('ok');
+    };
+    const router = new ModelRouter({}, r);
+    await router.run('chat', 'conversing', (m) => m.sendRequest(), { in_text: 'tiny' });
+
+    // the estimate from 'tiny' would be ~1 token; the real count is 2000
+    assert.equal(router.meter.totals.in_tokens, 2000);
+    assert.equal(router.meter.totals.out_tokens, 40);
+    assert.equal(router.meter.totals.cache_read_tokens, 1800);
+    assert.equal(router.meter.summary(Date.now()).cache_hit_rate, 0.9);
+});
+
+test('a provider that reports no usage still falls back to estimating', async () => {
+    const router = new ModelRouter({}, roles());
+    await router.run('chat', 'conversing', (m) => m.sendRequest(), { in_text: 'x'.repeat(4210) });
+    assert.ok(router.meter.totals.in_tokens > 900, 'estimate path should still run');
+    assert.equal(router.meter.totals.cache_read_tokens, 0);
+});

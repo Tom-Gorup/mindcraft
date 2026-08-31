@@ -67,3 +67,47 @@ test('summary is JSON-safe and reports rounded values', () => {
     assert.equal(s.per_hour.calls, 2); // 1 call in 30 min -> 2/hr
     assert.equal(s.by_tier.chat.local_share, 0);
 });
+
+test('a cache hit is priced as a cache read, not as fresh input', () => {
+    const m = new Meter();
+    // 2000 input tokens of which 1800 came from cache, 200 fresh
+    m.record({
+        tier: 'chat', site: 'conversing', model: 'claude-haiku-4-5',
+        in_tokens: 2000, out_tokens: 100,
+        cache_read_tokens: 1800, uncached_in_tokens: 200,
+    });
+    const cached = m.totals.cost;
+
+    const m2 = new Meter();
+    m2.record({
+        tier: 'chat', site: 'conversing', model: 'claude-haiku-4-5',
+        in_tokens: 2000, out_tokens: 100,
+    });
+    const uncached = m2.totals.cost;
+
+    assert.ok(cached < uncached, `a cache hit should cost less (${cached} vs ${uncached})`);
+    // 1800 tok at 0.1x + 200 at 1x = the input cost of 380 tokens, not 2000
+    assert.ok(cached < uncached * 0.6, 'a mostly-cached call should be far cheaper');
+    assert.equal(m.summary(0).cache_hit_rate, 0.9);
+});
+
+test('a cache write costs more than plain input, and is reported', () => {
+    const m = new Meter();
+    m.record({
+        tier: 'chat', site: 'conversing', model: 'claude-haiku-4-5',
+        in_tokens: 2000, out_tokens: 100,
+        cache_write_tokens: 1800, uncached_in_tokens: 200,
+    });
+    const m2 = new Meter();
+    m2.record({ tier: 'chat', site: 'conversing', model: 'claude-haiku-4-5', in_tokens: 2000, out_tokens: 100 });
+    assert.ok(m.totals.cost > m2.totals.cost, 'the first call pays a premium to populate the cache');
+    assert.equal(m.totals.cache_write_tokens, 1800);
+    assert.equal(m.summary(0).cache_hit_rate, 0);
+});
+
+test('with no usage reported the estimate path is unchanged', () => {
+    const m = new Meter();
+    m.record({ tier: 'chat', site: 'conversing', model: 'claude-haiku-4-5', in_text: 'x'.repeat(4210), out_text: 'y' });
+    assert.equal(m.totals.in_tokens, 1000);
+    assert.equal(m.summary(0).cache_hit_rate, 0);
+});

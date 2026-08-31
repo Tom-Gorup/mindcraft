@@ -341,6 +341,13 @@ export class CognitionLoop {
         // the dominant cause of spurious goal abandonment.
         if (this.step_interrupt || this.agent.shut_up)
             return;
+        if (this.agent._model_failures > 0) {
+            // The model is unreachable. Counting that as "the model produced no
+            // command" would retry, replan and eventually abandon a goal that
+            // was never actually attempted.
+            this.last_thought = 'Waiting — I cannot reach my model right now.';
+            return;
+        }
         if (!used_command) {
             this.no_command_count++;
             if (this.no_command_count >= 3) {

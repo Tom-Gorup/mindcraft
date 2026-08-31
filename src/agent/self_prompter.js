@@ -66,6 +66,19 @@ export class SelfPrompter {
             const msg = `You are self-prompting with the goal: '${this.prompt}'. Your next response MUST contain a command with this syntax: !commandName. Respond:`;
             
             let used_command = await this.agent.handleMessage('system', msg, -1);
+            if (this.agent._model_failures > 0) {
+                // the model is unreachable, not uncooperative: back off instead
+                // of burning the three-strikes budget on an outage
+                await new Promise(r => setTimeout(r, Math.min(60000, this.cooldown * 4 * this.agent._model_failures)));
+                if (this.agent._model_failures >= 5) {
+                    const out = 'Stopping auto-prompting: the model has been unreachable for several attempts.';
+                    this.agent.openChat(out);
+                    console.warn(out);
+                    this.state = STOPPED;
+                    break;
+                }
+                continue;
+            }
             if (!used_command) {
                 no_command_count++;
                 if (no_command_count >= MAX_NO_COMMAND) {

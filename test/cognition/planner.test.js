@@ -37,3 +37,33 @@ test('formatPlan marks progress', () => {
     assert.ok(text.includes('2. [CURRENT] make planks'));
     assert.ok(text.includes('3. [ ] build hut'));
 });
+
+// Smaller models (Haiku and below) wrap JSON in prose far more often than
+// larger ones. first-brace..last-brace over-reaches on all of these.
+test('goal parsing survives the shapes small models actually emit', () => {
+    const good = '{"goal":"mine iron","reason":"wealth"}';
+    const cases = {
+        'trailing prose containing a brace': good + '\nHope that helps! :} ',
+        'a second object': good + '\n{"goal":"something else"}',
+        'a preamble': 'Sure, here is the goal:\n' + good,
+        'a fenced block': '```json\n' + good + '\n```',
+        'a think block': '<think>weighing options</think>' + good,
+        'a brace inside a string': '{"goal":"mine iron }","reason":"wealth"} trailing }',
+    };
+    for (const [name, text] of Object.entries(cases)) {
+        const parsed = parseGoalResponse(text);
+        assert.ok(parsed, `failed to parse when there was ${name}`);
+        assert.match(parsed.goal, /^mine iron/, `wrong goal when there was ${name}`);
+    }
+});
+
+test('plan parsing survives trailing prose', () => {
+    const steps = parsePlanResponse('{"steps":["find a vein","mine it"]}\nLet me know if that works }');
+    assert.deepEqual(steps, ['find a vein', 'mine it']);
+});
+
+test('genuinely unparseable output still returns null rather than throwing', () => {
+    assert.equal(parseGoalResponse('I would rather not.'), null);
+    assert.equal(parseGoalResponse('{"goal":'), null);
+    assert.equal(parsePlanResponse('{"steps":"not an array"}'), null);
+});

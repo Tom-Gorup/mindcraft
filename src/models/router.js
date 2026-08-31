@@ -126,12 +126,23 @@ export class ModelRouter {
             }
             throw err;
         }
+        // Providers that can report real usage stash it on themselves after a
+        // call (the interface returns a bare string, so there is nowhere else
+        // to put it without changing all 20 classes). Real numbers beat the
+        // character-count estimate, and they are the only way to see whether
+        // prompt caching is actually hitting.
+        const usage = entry.model?.last_usage || null;
         this.meter.record({
             tier, site,
             model: entry.name,
             local: isLocalApi(entry.api),
             in_text: opts.in_text,
             out_text: typeof result === 'string' ? result : '',
+            in_tokens: usage?.in_tokens,
+            out_tokens: usage?.out_tokens,
+            cache_read_tokens: usage?.cache_read_tokens,
+            cache_write_tokens: usage?.cache_write_tokens,
+            uncached_in_tokens: usage?.uncached_in_tokens,
             now: started,
         });
         if (settings.log_routing)
