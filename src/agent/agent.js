@@ -9,6 +9,7 @@ import { ActionManager } from './action_manager.js';
 import { NPCContoller } from './npc/controller.js';
 import { MemoryBank } from './memory_bank.js';
 import { SelfPrompter } from './self_prompter.js';
+import { CognitionLoop } from './cognition/index.js';
 import convoManager from './conversation.js';
 import { handleTranslation, handleEnglishTranslation } from '../utils/translator.js';
 import { addBrowserViewer } from './vision/browser_viewer.js';
@@ -44,6 +45,7 @@ export class Agent {
         this.npc = new NPCContoller(this);
         this.memory_bank = new MemoryBank();
         this.self_prompter = new SelfPrompter(this);
+        this.cognition = new CognitionLoop(this);
         convoManager.initAgent(this);
         await this.prompter.initExamples();
 
@@ -60,6 +62,10 @@ export class Agent {
         }
         this.task = new Task(this, settings.task, taskStart);
         this.blocked_actions = settings.blocked_actions.concat(this.task.blocked_actions || []);
+        if (!settings.use_cognition) {
+            // step commands only exist for the autonomous cognition loop
+            this.blocked_actions = this.blocked_actions.concat(['!stepDone', '!stepFailed']);
+        }
         blacklistCommands(this.blocked_actions);
 
         console.log(this.name, 'logging into minecraft...');
@@ -292,6 +298,9 @@ export class Agent {
         if (from_other_bot)
             this.last_sender = source;
 
+        if (!self_prompt)
+            this.cognition.onInteraction();
+
         // Now translate the message
         message = await handleEnglishTranslation(message);
         console.log('received message from', source, ':', message);
@@ -312,8 +321,8 @@ export class Agent {
         await this.history.add(source, message);
         this.history.save();
 
-        if (!self_prompt && this.self_prompter.isActive()) // message is from user during self-prompting
-            max_responses = 1; // force only respond to this message, then let self-prompting take over
+        if (!self_prompt && (this.self_prompter.isActive() || this.cognition.isPursuing())) // message is from user during autonomous behavior
+            max_responses = 1; // force only respond to this message, then let self-prompting/cognition take over
         for (let i=0; i<max_responses; i++) {
             if (checkInterrupt()) break;
             let history = this.history.getHistory();
@@ -482,6 +491,7 @@ export class Agent {
                     death_pos_text = `x: ${death_pos.x.toFixed(2)}, y: ${death_pos.y.toFixed(2)}, z: ${death_pos.z.toFixed(2)}`;
                 }
                 let dimention = this.bot.game.dimension;
+                this.cognition.onDeath();
                 this.handleMessage('system', `You died at position ${death_pos_text || "unknown"} in the ${dimention} dimension with the final message: '${message}'. Your place of death is saved as 'last_death_position' if you want to return. Previous actions were stopped and you have respawned.`);
             }
         });
@@ -520,6 +530,7 @@ export class Agent {
     async update(delta) {
         await this.bot.modes.update();
         this.self_prompter.update(delta);
+        this.cognition.update(delta);
         await this.checkTaskDone();
     }
 

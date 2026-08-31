@@ -36,6 +36,11 @@
         "description": "Whether to load bot's previous memory",
         "default": false
     },
+    "use_cognition": {
+        "type": "boolean",
+        "description": "Whether to enable the autonomous drive-based cognition loop (drives -> goals -> plans). Experimental.",
+        "default": false
+    },
     "init_message": {
         "type": "string",
         "description": "The initial message to send to the bot",

@@ -172,7 +172,11 @@ export class Prompter {
             prompt = prompt.replaceAll('$CONVO', 'Recent conversation:\n' + stringifyTurns(messages));
         if (prompt.includes('$SELF_PROMPT')) {
             // if active or paused, show the current goal
-            let self_prompt = !this.agent.self_prompter.isStopped() ? `YOUR CURRENT ASSIGNED GOAL: "${this.agent.self_prompter.prompt}"\n` : '';
+            let self_prompt = '';
+            if (!this.agent.self_prompter.isStopped())
+                self_prompt = `YOUR CURRENT ASSIGNED GOAL: "${this.agent.self_prompter.prompt}"\n`;
+            else if (this.agent.cognition?.isPursuing())
+                self_prompt = this.agent.cognition.getGoalContext();
             prompt = prompt.replaceAll('$SELF_PROMPT', self_prompt);
         }
         if (prompt.includes('$LAST_GOALS')) {
@@ -305,6 +309,28 @@ export class Prompter {
         let prompt = this.profile.image_analysis;
         prompt = await this.replaceStrings(prompt, messages, null, null, null);
         return await this.vision_model.sendVisionRequest(messages, prompt, imageBuffer);
+    }
+
+    async promptGoalGeneration(drive_name, drive_state_text) {
+        await this.checkCooldown();
+        let prompt = this.profile.goal_generation;
+        prompt = prompt.replaceAll('$DRIVE', drive_name);
+        prompt = prompt.replaceAll('$DRIVE_STATE', drive_state_text);
+        prompt = await this.replaceStrings(prompt, []);
+        let res = await this.chat_model.sendRequest([], prompt);
+        await this._saveLog(prompt, [], res, 'goalGeneration');
+        return res;
+    }
+
+    async promptTaskPlanning(goal_text, failure_context='') {
+        await this.checkCooldown();
+        let prompt = this.profile.task_planning;
+        prompt = prompt.replaceAll('$GOAL', goal_text);
+        prompt = prompt.replaceAll('$FAILURE_CONTEXT', failure_context);
+        prompt = await this.replaceStrings(prompt, []);
+        let res = await this.chat_model.sendRequest([], prompt);
+        await this._saveLog(prompt, [], res, 'taskPlanning');
+        return res;
     }
 
     async promptGoalSetting(messages, last_goals) {

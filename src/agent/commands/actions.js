@@ -380,7 +380,25 @@ export const actionsList = [
         description: 'Call when you have accomplished your goal. It will stop self-prompting and the current action. ',
         perform: async function (agent) {
             agent.self_prompter.stop();
+            agent.cognition?.abandonGoal('Goal ended by request');
             return 'Self-prompting stopped.';
+        }
+    },
+    {
+        name: '!stepDone',
+        description: 'Mark the CURRENT step of your autonomous plan as complete. Only use when the current step is truly done.',
+        perform: function (agent) {
+            return agent.cognition?.onStepDone() ?? 'No active autonomous plan.';
+        }
+    },
+    {
+        name: '!stepFailed',
+        description: 'Report that the CURRENT step of your autonomous plan is impossible or keeps failing, so the plan can be revised.',
+        params: {
+            'reason': { type: 'string', description: 'Short reason the step failed.' }
+        },
+        perform: function (agent, reason) {
+            return agent.cognition?.onStepFailed(reason) ?? 'No active autonomous plan.';
         }
     },
     {

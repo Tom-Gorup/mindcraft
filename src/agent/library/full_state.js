@@ -48,6 +48,8 @@ export function getFullState(agent) {
     } else if (convoManager.inConversation()) {
         const who = convoManager.activeConversation?.name;
         activity = { current: who ? `Chatting with ${who}` : 'Chatting', kind: 'chatting' };
+    } else if (agent.cognition?.isPursuing()) {
+        activity = { current: `Goal: ${agent.cognition.active.goal}`.substring(0, 80), kind: 'thinking' };
     } else if (agent.self_prompter.isStopped()) {
         activity = { current: 'Stopped', kind: 'stopped' };   // self-prompter OFF: won't act on its own
     } else if (agent.self_prompter.isPaused()) {
@@ -101,7 +103,8 @@ export function getFullState(agent) {
         },
         modes: {
             summary: bot.modes.getMiniDocs()
-        }
+        },
+        cognition: agent.cognition ? agent.cognition.getStatus() : null
     };
 
     return state;
