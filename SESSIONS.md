@@ -268,3 +268,53 @@ lint errors. **Pending live:** the 1-hour no-deadlock soak (needs homelab).
 **Next:** Phase 5 (social layer) on Tom's go-ahead — the social tier slot, blackboard
 social context, and conversation.js hooks are ready for it. Live verification of
 Phases 1-4 on the homelab remains the standing ask.
+
+---
+
+## Session 7 — 2026-08-30 — Hardening review of Phases 3-4 (pre-Phase-5 gate)
+
+Tom requested a bug/logic review of the last two phases. Two adversarial reviewers
+(skills/coder lens; tier-concurrency lens) + manual pass. ~30 findings; all blockers
+and majors fixed in `0b8a426`, 81/81 tests (7 new regressions).
+
+**The three blockers:**
+- **Skill composition was dead on arrival**: lintTemplate.js never declared `learned`,
+  so ESLint's no-undef rejected every composing program — 5 wasted codegen round-trips
+  per attempt, and the entire Proxy/cycle-guard machinery was unreachable from codegen.
+  Fixed + verified against the real lint pipeline; coding prompt now teaches `learned`.
+- **Interrupted programs were learned as successful skills**: the injected interrupt
+  checks make truncated code return normally, so a program stopped two statements in
+  by a reflex became a trusted skill with an empty-output docstring. Save now gated on
+  !interrupt_code everywhere.
+- **step_interrupt permanent latch**: abandoning a goal armed the interrupt flag with
+  no act loop left to clear it — every subsequent system prompt (death messages, mode
+  reprompts, user !goal self-prompting) silently returned without calling the model,
+  in the worst case as a permanent deadlock. Flag now raised only when an act loop is
+  in flight and cleared before any guard.
+
+**Notable majors:** save/query embedding asymmetry (task+docstring vs task) that would
+have kept the 0.92 direct-execution threshold from ever firing with real embedding
+models; cosine and word-overlap scores compared in the same max(); digit-blind overlap
+('mine 5 diamonds' ≡ 'mine 50 diamonds' at score 1.0); self-referential skill refresh
+that permanently bricked composed skills; a doc/score desync race throwing TypeErrors
+into the prompt path; non-atomic full-file skills.json writes on every stat update
+(crash = library wiped, event-loop stalls at scale); task-context regex silently
+falling back to an older unrelated task; reflex interruptions misattributed to the
+plan when a user-conversation action was interrupted. lockdown() now runs at agent
+boot (deterministic failure) instead of lazily at the first !newAction.
+
+**Honest posture correction (from review):** with `evalTaming: 'unsafeEval'` and host
+functions endowed into the compartment, generated code can still reach the primal
+realm via constructor chains (e.g. `skills.log.constructor('return globalThis')()`).
+The SES fix restores intended intrinsic-freezing, but the compartment is a namespace
+boundary, not a security boundary — `allow_insecure_coding` remains exactly as
+dangerous as its name says. Container isolation (docker) is the real boundary.
+
+**Deferred (documented):** learned Proxy identity quirks (fresh closure per access,
+no toString); compiled-compartment cache never evicted; max_skills is a hard stop
+with no LRU; message embedded twice per !newAction (built-ins + learned pools);
+scheduler tier telemetry reflects dispatch only (cognition_busy on the blackboard
+carries the real in-flight state).
+
+**Next:** Phase 5 on Tom's go-ahead. Live verification of Phases 1-4 (all flags on)
+remains the standing homelab ask.
