@@ -87,10 +87,10 @@ retrieved by similarity, and composed, instead of regenerated.
 - Tests: skill save/retrieve round-trip, similarity ranking with stubbed embeddings.
 
 **Done when:**
-- [ ] A task solved via `!newAction` on day 1 is solved on day 2 by retrieval, not regeneration (observable in logs: no coding prompt issued)
-- [ ] Learned skills survive restart and appear in dashboard stats
-- [ ] A composed skill (calling a stored skill) executes successfully
-- [ ] Retrieved skill code still runs inside the SES compartment with the same exposed surface (no security regression)
+- [ ] A task solved via `!newAction` on day 1 is solved on day 2 by retrieval, not regeneration (observable in logs: no coding prompt issued) *(implemented — "Coder: executing learned skill" log line; needs live verification)*
+- [ ] Learned skills survive restart and appear in dashboard stats *(persistence unit-verified; stats exposed via full_state; dashboard panel renders in Phase 7)*
+- [ ] A composed skill (calling a stored skill) executes successfully *(composition namespace smoke-verified under real SES; cycle/depth guards unit-tested; needs live verification)*
+- [x] Retrieved skill code still runs inside the SES compartment with the same exposed surface — improved: found and fixed that SES lockdown had *never actually executed* (recursive guard bug); hardening is now real
 
 **Verify:** unit tests; repeat-task experiment across a restart with prompt logs compared; skill store files inspected.
 

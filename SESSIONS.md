@@ -187,3 +187,50 @@ pass. ~30 findings; all blockers and majors fixed in commit `15bfb2a`, 48/48 tes
 
 **Next:** Phase 3 (skill library) on Tom's go-ahead. Live verification of 1+2 on the
 homelab still pending (unchanged).
+
+---
+
+## Session 5 — 2026-08-30 — Phase 3: Skill library (implementation)
+
+**What changed** (branch `feat/phase-3-skills`, commit `5b807b7`):
+- New `src/agent/skills/`: `SkillStore` (per-agent JSON, corruption-tolerant) and
+  `LearnedSkills` — on every successful `!newAction`, the code is saved with an
+  LLM-generated docstring (fallback: task text) and an embedding; near-duplicate
+  tasks refresh the existing skill instead of duplicating. Retrieval: embedding
+  cosine (task-vs-task overlap fallback). Direct execution when similarity ≥ 0.92
+  cosine / 0.6 overlap and the skill's failures ≤ successes; falls back to normal
+  codegen on failure, recording the failure.
+- Composition: generated code sees `learned.<name>(bot)` via a lazy Proxy endowment
+  (skills learned mid-session immediately callable); learned code compiles through
+  the identical sanitize/interrupt/template/compartment pipeline; cycle and depth
+  (3) guards; per-call success/failure stats. Lint validates `learned.*` names.
+- Unified retrieval: learned docs rank in the same `$CODE_DOCS` pool as built-in
+  library docs. Fixed a pre-existing bug where the word-overlap fallback compared
+  the query against embedding *vectors* (crash on partial init, empty docs
+  otherwise).
+- **SECURITY FIND: SES lockdown never actually ran.** `lockdown.js`'s wrapper
+  function called `lockdown({...})` which resolved to *itself*, hit the guard,
+  and returned — the "sandbox" was compartment namespace isolation only, with
+  mutable shared intrinsics, for the repo's entire history. Now calls
+  `globalThis.lockdown` (overrideTaming: severe, try/catch with loud failure).
+  Verified under real hardening: compartment eval, Proxy endowment, execTemplate,
+  minecraft-data loaded before AND after lockdown. **Top live-run watch item:**
+  the full mineflayer protocol stack has never run hardened — if a lib mutates
+  intrinsics lazily, expect throws at first `!newAction`; report, don't panic.
+- `use_skill_library` flag (settings + spec, default off), skill stats in
+  full_state, `skill_docstring` template + prompter method.
+- 13 new unit tests (61 total, all passing); composition + lockdown smoke tests.
+
+**Next:** Live verification of Phases 1-3 together on the homelab (flags:
+use_cognition, use_memory, use_skill_library + allow_insecure_coding). Watch for:
+"Coder: executing learned skill" on repeat tasks, skills.json growth, and any SES
+taming errors. Then Phase 4 (concurrency/blackboard) on Tom's go-ahead.
+
+**Known issues / notes:**
+- Skill store is per-agent by design (mission: "each agent has a growing skill
+  library"); ROADMAP's original `src/agent/skills/store/` path was reinterpreted —
+  that's module code; runtime data lives in `bots/<name>/skills/`.
+- Direct-execution cosine threshold (0.92) is embedding-model-dependent; tune per
+  model on the homelab (profile `skills.direct_execute_cosine`).
+- `skills` profile block awaits the Phase 7 profile editor (same as drives/
+  cognition/memory).
