@@ -314,10 +314,11 @@ async function execute(mode, agent, func, timeout=-1) {
     mode.active = false;
     console.log(`Mode ${mode.name} finished executing, code_return: ${code_return.message}`);
 
-    let should_reprompt = 
+    let should_reprompt =
         interrupted_action && // it interrupted a previous action
         !agent.actions.resume_func && // there is no resume function
         !agent.self_prompter.isActive() && // self prompting is not on
+        !agent.cognition?.isPursuing() && // cognition runs its own prompt loop and will resume the plan itself
         !code_return.interrupted; // this mode action was not interrupted by something else
 
     if (should_reprompt) {

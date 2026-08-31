@@ -21,18 +21,24 @@ export function scoreEvent(recency, relevance, importance, weights = DEFAULT_WEI
 
 // events: memory events. relevanceFn(event) -> [0,1].
 // Returns top-k [{event, score}] sorted descending.
+// min_relevance floors the relevance component: recency/importance alone must
+// not surface unrelated memories (a fresh death should not answer an iron query).
 export function rankEvents(events, relevanceFn, now, opts = {}) {
     const {
         k = 5,
         half_life_hours = 24,
         weights = DEFAULT_WEIGHTS,
         min_score = 0,
+        min_relevance = 0,
     } = opts;
     const scored = [];
     for (const event of events) {
+        const relevance = relevanceFn(event);
+        if (!(relevance >= min_relevance)) // also drops NaN from bad vectors
+            continue;
         const score = scoreEvent(
             recencyScore(event.ts, now, half_life_hours),
-            relevanceFn(event),
+            relevance,
             event.importance,
             weights,
         );

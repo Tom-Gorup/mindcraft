@@ -3,11 +3,20 @@ import assert from 'node:assert/strict';
 import { DriveState, DEFAULT_DRIVES } from '../../src/agent/cognition/drives.js';
 
 test('decay drives decay over time, sensor drives do not', () => {
-    const ds = new DriveState();
-    assert.equal(ds.drives.curiosity.level, 1.0);
+    const ds = new DriveState({ boredom: { type: 'decay', decay_per_min: 0.06, initial_level: 1.0 } });
+    assert.equal(ds.drives.boredom.level, 1.0);
     ds.update(60000, {}); // one minute
-    assert.ok(Math.abs(ds.drives.curiosity.level - (1.0 - DEFAULT_DRIVES.curiosity.decay_per_min)) < 1e-9);
+    assert.ok(Math.abs(ds.drives.boredom.level - 0.94) < 1e-9);
     assert.equal(ds.drives.safety.level, 1.0); // sensor drive untouched without a reading
+});
+
+test('default initial levels: agents spawn curious, not sated', () => {
+    const ds = new DriveState();
+    assert.equal(ds.drives.curiosity.level, DEFAULT_DRIVES.curiosity.initial_level);
+    assert.equal(ds.drives.social.level, DEFAULT_DRIVES.social.initial_level);
+    assert.equal(ds.drives.safety.level, 1.0);
+    // curiosity is immediately eligible at default min_urgency 0.25
+    assert.ok(ds.urgency('curiosity') >= 0.25);
 });
 
 test('sensor levels override directly and are clamped', () => {
@@ -65,14 +74,14 @@ test('getUrgencies sorts descending and flags cooldowns', () => {
 test('getJson/loadJson round-trips levels and cooldowns', () => {
     const ds = new DriveState();
     ds.update(0, { safety: 0.3 }); // zero elapsed time: sensor applies, no decay
-    ds.deplete('curiosity', 0.4);
+    ds.deplete('curiosity', 0.4); // from initial 0.5 -> 0.1
     ds.setCooldown('wealth', 12345);
     const json = ds.getJson();
 
     const ds2 = new DriveState();
     ds2.loadJson(json);
     assert.equal(ds2.drives.safety.level, 0.3);
-    assert.ok(Math.abs(ds2.drives.curiosity.level - 0.6) < 1e-9);
+    assert.ok(Math.abs(ds2.drives.curiosity.level - 0.1) < 1e-9);
     assert.equal(ds2.drives.wealth.cooldown_until, 12345);
     ds2.loadJson(null); // no throw
     ds2.loadJson({ unknown_drive: { level: 0.5 } }); // ignored, no throw

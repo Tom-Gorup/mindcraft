@@ -380,7 +380,11 @@ export const actionsList = [
         description: 'Call when you have accomplished your goal. It will stop self-prompting and the current action. ',
         perform: async function (agent) {
             agent.self_prompter.stop();
-            agent.cognition?.abandonGoal('Goal ended by request');
+            if (agent.cognition?.isPursuing()) {
+                // per this command's description, reaching it means the goal
+                // was accomplished — record success, not abandonment
+                return agent.cognition.completeGoalByRequest();
+            }
             return 'Self-prompting stopped.';
         }
     },

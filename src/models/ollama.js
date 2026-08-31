@@ -72,8 +72,13 @@ export class Ollama {
         let model = this.model_name || 'embeddinggemma';
         let body = { model: model, input: text };
         let res = await this.send(this.embedding_endpoint, body);
+        if (!res)
+            throw new Error('No response from Ollama embedding endpoint.');
         // /api/embed returns {embeddings: [[...]]}; legacy /api/embeddings returned {embedding: [...]}
-        return res['embeddings']?.[0] ?? res['embedding'];
+        const vec = res['embeddings']?.[0] ?? res['embedding'];
+        if (!Array.isArray(vec))
+            throw new Error(`Ollama embedding response contained no vector (model '${model}' — is it pulled?).`);
+        return vec;
     }
 
     async send(endpoint, body) {

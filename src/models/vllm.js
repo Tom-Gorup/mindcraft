@@ -59,6 +59,10 @@ export class VLLM {
         return res;
     }
 
+    async embed(text) {
+        throw new Error('Embeddings are not supported by vllm.');
+    }
+
     async saveToFile(logFile, logEntry) {
         let task_id = this.agent.task.task_id;
         console.log(task_id)

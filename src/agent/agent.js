@@ -309,7 +309,7 @@ export class Agent {
         message = await handleEnglishTranslation(message);
         console.log('received message from', source, ':', message);
 
-        const checkInterrupt = () => this.self_prompter.shouldInterrupt(self_prompt) || this.shut_up || convoManager.responseScheduledFor(source);
+        const checkInterrupt = () => this.self_prompter.shouldInterrupt(self_prompt) || this.cognition.shouldInterrupt(self_prompt) || this.shut_up || convoManager.responseScheduledFor(source);
         
         let behavior_log = this.bot.modes.flushBehaviorLog().trim();
         if (behavior_log.length > 0) {
@@ -400,7 +400,10 @@ export class Agent {
 
     async routeResponse(to_player, message) {
         if (this.shut_up) return;
-        this.memory.record('speech', message, { to: to_player });
+        // command echoes ('*Tom used stats*') and error notices are not
+        // deliberate speech — keep them out of the trace taxonomy
+        if (!message.startsWith('*') && !message.startsWith("Command '"))
+            this.memory.record('speech', message, { to: to_player });
         let self_prompt = to_player === 'system' || to_player === this.name;
         if (self_prompt && this.last_sender) {
             // this is for when the agent is prompted by system while still in conversation
@@ -527,7 +530,13 @@ export class Agent {
         setTimeout(async () => {
             while (true) {
                 let start = Date.now();
-                await this.update(start - last);
+                try {
+                    await this.update(start - last);
+                } catch (err) {
+                    // an escaped exception here would silently kill modes,
+                    // self-prompting, and cognition for the rest of the run
+                    console.error('Agent update loop error:', err);
+                }
                 let remaining = INTERVAL - (Date.now() - start);
                 if (remaining > 0) {
                     await new Promise((resolve) => setTimeout(resolve, remaining));
@@ -555,6 +564,11 @@ export class Agent {
         this.history.add('system', msg);
         this.bot.chat(code > 1 ? 'Restarting.': 'Exiting.');
         this.history.save();
+        try {
+            this.cognition?.persist();
+        } catch (err) {
+            console.error('Failed to persist cognition state on shutdown:', err);
+        }
         process.exit(code);
     }
     async checkTaskDone() {

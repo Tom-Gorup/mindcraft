@@ -13,6 +13,11 @@ import { selectAPI, createModel } from './_model_map.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Placeholders that specialized prompt methods substitute AFTER replaceStrings
+// (so untrusted/dynamic content is never re-expanded); replaceStrings must not
+// warn about them.
+const DEFERRED_PLACEHOLDERS = new Set(['$DRIVE', '$DRIVE_STATE', '$RELEVANT_MEMORIES', '$GOAL', '$FAILURE_CONTEXT', '$EVENTS']);
+
 export class Prompter {
     constructor(agent, profile) {
         this.agent = agent;
@@ -164,18 +169,9 @@ export class Prompter {
         }
         if (prompt.includes('$EXAMPLES') && examples !== null)
             prompt = prompt.replaceAll('$EXAMPLES', await examples.createExampleMessage(messages));
-        if (prompt.includes('$MEMORY')) {
-            let memory_text = this.agent.history.memory;
-            // augment the lossy summary with retrieved long-term memories,
-            // queried by the most recent message (skipped when summarizing)
-            if (this.agent.memory?.enabled() && messages && messages.length > 0) {
-                const last_content = messages[messages.length - 1]?.content || '';
-                const retrieved = await this.agent.memory.retrieveText(last_content);
-                if (retrieved)
-                    memory_text += '\n' + retrieved;
-            }
-            prompt = prompt.replaceAll('$MEMORY', memory_text);
-        }
+        // NOTE: $MEMORY is handled at the END of this function — memory
+        // content includes recorded chat (untrusted) and must not be
+        // re-expanded by the placeholder substitutions below.
         if (prompt.includes('$TO_SUMMARIZE'))
             prompt = prompt.replaceAll('$TO_SUMMARIZE', stringifyTurns(to_summarize));
         if (prompt.includes('$CONVO'))
@@ -209,10 +205,27 @@ export class Prompter {
             }
         }
 
+        if (prompt.includes('$MEMORY')) {
+            let memory_text = this.agent.history.memory;
+            // augment the lossy summary with retrieved long-term memories,
+            // queried by recent conversation (skipped when summarizing).
+            // Function replacer: memory content is untrusted (recorded chat)
+            // and must not be interpreted as a $-replacement pattern.
+            if (this.agent.memory?.enabled() && messages && messages.length > 0) {
+                const query = messages.slice(-2).map(m => m?.content || '').join('\n').substring(0, 400);
+                const retrieved = await this.agent.memory.retrieveText(query);
+                if (retrieved)
+                    memory_text += '\n' + retrieved;
+            }
+            prompt = prompt.replaceAll('$MEMORY', () => memory_text);
+        }
+
         // check if there are any remaining placeholders with syntax $<word>
         let remaining = prompt.match(/\$[A-Z_]+/g);
         if (remaining !== null) {
-            console.warn('Unknown prompt placeholders:', remaining.join(', '));
+            remaining = remaining.filter(p => !DEFERRED_PLACEHOLDERS.has(p));
+            if (remaining.length > 0)
+                console.warn('Unknown prompt placeholders:', remaining.join(', '));
         }
         return prompt;
     }
@@ -324,10 +337,11 @@ export class Prompter {
     async promptGoalGeneration(drive_name, drive_state_text) {
         await this.checkCooldown();
         let prompt = this.profile.goal_generation;
-        prompt = prompt.replaceAll('$DRIVE', drive_name);
-        prompt = prompt.replaceAll('$DRIVE_STATE', drive_state_text);
-        prompt = await this._replaceRelevantMemories(prompt, drive_name + ' ' + drive_state_text);
         prompt = await this.replaceStrings(prompt, []);
+        prompt = await this._replaceRelevantMemories(prompt, drive_name + ' ' + drive_state_text);
+        // $DRIVE_STATE must go first: $DRIVE is its prefix and would clobber it
+        prompt = prompt.replaceAll('$DRIVE_STATE', () => drive_state_text);
+        prompt = prompt.replaceAll('$DRIVE', () => drive_name);
         let res = await this.chat_model.sendRequest([], prompt);
         await this._saveLog(prompt, [], res, 'goalGeneration');
         return res;
@@ -336,10 +350,10 @@ export class Prompter {
     async promptTaskPlanning(goal_text, failure_context='') {
         await this.checkCooldown();
         let prompt = this.profile.task_planning;
-        prompt = prompt.replaceAll('$GOAL', goal_text);
-        prompt = prompt.replaceAll('$FAILURE_CONTEXT', failure_context);
-        prompt = await this._replaceRelevantMemories(prompt, goal_text);
         prompt = await this.replaceStrings(prompt, []);
+        prompt = await this._replaceRelevantMemories(prompt, goal_text);
+        prompt = prompt.replaceAll('$GOAL', () => goal_text);
+        prompt = prompt.replaceAll('$FAILURE_CONTEXT', () => failure_context);
         let res = await this.chat_model.sendRequest([], prompt);
         await this._saveLog(prompt, [], res, 'taskPlanning');
         return res;
@@ -348,8 +362,8 @@ export class Prompter {
     async promptReflection(events_text) {
         await this.checkCooldown();
         let prompt = this.profile.reflecting;
-        prompt = prompt.replaceAll('$EVENTS', events_text);
         prompt = await this.replaceStrings(prompt, null);
+        prompt = prompt.replaceAll('$EVENTS', () => events_text);
         let res = await this.chat_model.sendRequest([], prompt);
         await this._saveLog(prompt, [], res, 'reflection');
         return res;
@@ -361,7 +375,8 @@ export class Prompter {
         let retrieved = '';
         if (this.agent.memory?.enabled())
             retrieved = await this.agent.memory.retrieveText(query.substring(0, 400));
-        return prompt.replaceAll('$RELEVANT_MEMORIES', retrieved);
+        // function replacer: memory content is untrusted, no $-pattern expansion
+        return prompt.replaceAll('$RELEVANT_MEMORIES', () => retrieved);
     }
 
     async promptGoalSetting(messages, last_goals) {

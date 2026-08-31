@@ -1,5 +1,9 @@
 // Pure execution monitoring: tracks failures on the current plan step and
 // decides between retrying the step, replanning the goal, or abandoning it.
+// Step timeouts count *active* time only — the loop feeds in time via
+// noteActiveTime() exclusively while the agent could actually work the step
+// (prompting, or idle and eligible), so conversations, user goals, and
+// legitimately long Minecraft actions don't burn the budget.
 // No agent references — unit-testable.
 
 export class ExecutionMonitor {
@@ -14,12 +18,16 @@ export class ExecutionMonitor {
     reset() {
         this.step_failures = 0;
         this.replans = 0;
-        this.step_started_at = null;
+        this.step_active_ms = 0;
     }
 
-    startStep(now = Date.now()) {
+    startStep() {
         this.step_failures = 0;
-        this.step_started_at = now;
+        this.step_active_ms = 0;
+    }
+
+    noteActiveTime(delta_ms) {
+        this.step_active_ms += delta_ms;
     }
 
     // A step failed (self-reported, repeated non-response, or timeout).
@@ -36,7 +44,7 @@ export class ExecutionMonitor {
         return 'abandon';
     }
 
-    isStepTimedOut(now = Date.now()) {
-        return this.step_started_at !== null && (now - this.step_started_at) > this.step_timeout_ms;
+    isStepTimedOut() {
+        return this.step_active_ms > this.step_timeout_ms;
     }
 }

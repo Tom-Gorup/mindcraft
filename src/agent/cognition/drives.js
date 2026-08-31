@@ -19,12 +19,14 @@ export const DEFAULT_DRIVES = {
         weight: 0.6,
         type: 'decay',
         decay_per_min: 0.015,
+        initial_level: 0.5, // agents spawn curious, not sated
         description: 'Explore new places, discover resources, try new things.',
     },
     social: {
         weight: 0.5,
         type: 'decay',
         decay_per_min: 0.01,
+        initial_level: 0.85,
         description: 'Interact with players and other bots.',
     },
     wealth: {
@@ -53,7 +55,7 @@ export class DriveState {
                 type: cfg.type ?? def.type ?? 'decay',
                 decay_per_min: cfg.decay_per_min ?? def.decay_per_min ?? 0.01,
                 description: cfg.description ?? def.description ?? '',
-                level: clamp01(cfg.initial_level ?? 1.0),
+                level: clamp01(cfg.initial_level ?? def.initial_level ?? 1.0),
                 cooldown_until: 0,
             };
         }

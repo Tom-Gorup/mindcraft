@@ -20,7 +20,7 @@ function makeAgent(dir, opts = {}) {
     return {
         name: 'testbot',
         prompter: {
-            profile: { memory: { dir, ...opts } },
+            profile: { memory: { dir, exclude_recent_ms: 0, ...opts } },
             embedding_model: { embed: opts.broken_embed
                 ? () => Promise.reject(new Error('no embeddings here'))
                 : stubEmbed },
@@ -50,15 +50,46 @@ test('retrieval ranks by embedding relevance', async () => {
     assert.equal(ranked[0].event.content, 'Found an iron ore vein in the cave');
 });
 
-test('falls back to word overlap when embeddings break', async () => {
+test('falls back to word overlap when embeddings break, with timed backoff', async () => {
     const memory = new AgentMemory(makeAgent(freshDir(), { reflection_threshold: 999, broken_embed: true }));
     memory.record('speech', 'I built a cozy house by the river');
     memory.record('speech', 'The desert temple had a hidden chest');
-    await settle(); // the failed embed marks the model broken
+    await settle(); // the failed embed starts the backoff window
 
     const ranked = await memory.retrieve('tell me about the desert temple chest', 1);
-    assert.equal(memory.embedding_broken, true);
+    assert.ok(memory.embed_backoff_until > Date.now(), 'backoff window should be active');
+    assert.equal(memory._embeddingAvailable(), false);
     assert.equal(ranked[0].event.content, 'The desert temple had a hidden chest');
+});
+
+test('backfill embeds events recorded during an outage', async () => {
+    const dir = freshDir();
+    const broken = new AgentMemory(makeAgent(dir, { reflection_threshold: 999, broken_embed: true }));
+    broken.record('speech', 'Found diamonds in the deep cave');
+    broken.record('speech', 'Traded with a villager friend');
+    await settle();
+    assert.equal(broken.embeddings.size, 0); // nothing embedded during outage
+
+    // new session, embeddings healthy again -> backfill on load
+    const healed = new AgentMemory(makeAgent(dir, { reflection_threshold: 999 }));
+    await healed._backfill_task;
+    assert.equal(healed.embeddings.size, 2);
+});
+
+test('a failing reflection does not storm and does not lose the budget mechanism', async () => {
+    const dir = freshDir();
+    const agent = makeAgent(dir, { reflection_threshold: 3, reflection_min_interval_ms: 0 });
+    agent.prompter.promptReflection = () => Promise.reject(new Error('model down'));
+    const memory = new AgentMemory(agent);
+    for (let i = 0; i < 6; i++)
+        memory.record('chat_received', `Steve said: thing ${i}`); // crosses threshold
+    await memory._reflect_task;
+    await settle();
+    // budget was consumed up front: no belief, no immediate re-fire per record
+    assert.equal(memory.getBeliefs().length, 0);
+    assert.ok(memory.importance_since_reflection < 3);
+    assert.equal(memory.reflecting, false);
+    memory.record('chat_received', 'Steve said: one more'); // must not throw
 });
 
 test('events persist across instances; places hydrate', () => {
