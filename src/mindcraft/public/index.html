@@ -403,6 +403,7 @@
         <div class="tab-bar">
             <button id="tabAgents" class="tab-btn active" onclick="showView('agents')">Agents</button>
             <button id="tabSim" class="tab-btn" onclick="showView('sim')">Sim</button>
+            <button id="tabReports" class="tab-btn" onclick="showView('reports')">Reports</button>
         </div>
     </div>
     <div id="agents"></div>
@@ -412,6 +413,9 @@
             <div class="spacer"></div>
         </div>
         <div id="simBody"></div>
+    </div>
+    <div id="reports" class="sim-root">
+        <div id="reportsBody"></div>
     </div>
 
     <div class="page-footer">
@@ -491,6 +495,7 @@
 
     <script src="sim.js"></script>
     <script src="profile_editor.js"></script>
+    <script src="reports.js"></script>
     <script>
         const socket = io({ path: '/socket.io' })
         window.socket = socket; // shared with sim.js / profile_editor.js
@@ -715,14 +720,15 @@
 
         // Subscribe to aggregated state updates (re-sent on each connect)
         function showView(which) {
-            const agents = document.getElementById('agents');
-            const sim = document.getElementById('sim');
-            const isSim = which === 'sim';
-            agents.style.display = isSim ? 'none' : '';
-            sim.classList.toggle('active', isSim);
-            document.getElementById('tabAgents').classList.toggle('active', !isSim);
-            document.getElementById('tabSim').classList.toggle('active', isSim);
-            if (isSim && window.simRender) window.simRender();
+            const views = { agents: 'tabAgents', sim: 'tabSim', reports: 'tabReports' };
+            document.getElementById('agents').style.display = which === 'agents' ? '' : 'none';
+            for (const [view, tab] of Object.entries(views)) {
+                const active = view === which;
+                if (view !== 'agents') document.getElementById(view).classList.toggle('active', active);
+                document.getElementById(tab).classList.toggle('active', active);
+            }
+            if (which === 'sim' && window.simRender) window.simRender();
+            if (which === 'reports' && window.reportsOnShow) window.reportsOnShow();
         }
 
         socket.on('agent-event', (ev) => {

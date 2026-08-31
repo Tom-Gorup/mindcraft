@@ -19,6 +19,11 @@
         "description": "The minecraft server port to connect to. -1 for auto-detect.",
         "default": 55916
     },
+    "world": {
+        "type": "string",
+        "description": "Label for the Minecraft world this agent plays in. Groups agents in the dashboard and in reports; defaults to host:port. Several worlds can run under one mindserver.",
+        "default": ""
+    },
     "auth": {
         "type": "string",
         "description": "The authentication method to use",

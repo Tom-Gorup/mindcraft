@@ -208,6 +208,64 @@ def parse_mc_log(path, log_date):
     return events, unmatched
 
 
+def parse_events_jsonl(path):
+    """Read a native mindcraft event stream (runs/<id>/events.jsonl).
+
+    This is the same file the in-app report reads, so the two analyzers agree
+    on the same window by construction rather than by coincidence. It also
+    carries what a Paper log physically cannot: goals, plans, beliefs, and
+    social state.
+    """
+    # native event type -> this script's event kinds
+    KIND = {
+        "speech": "speech", "chat_received": "speech",
+        "narration": "narration",
+        "command": "command", "code": "command",
+        "death": "death", "damage": "combat", "session": "session",
+        "goal_started": "goal", "goal_completed": "goal",
+        "goal_abandoned": "goal", "plan_revised": "goal",
+        "belief": "belief", "social": "social", "gossip": "social",
+        "interruption": "interruption",
+        "place": "discovery", "discovery": "discovery",
+    }
+    events, unmatched = [], []
+    with opener(path) as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                unmatched.append(line[:200])
+                continue
+            if not isinstance(rec, dict) or "ts" not in rec or "agent" not in rec:
+                unmatched.append(line[:200])
+                continue
+            data = rec.get("data") or {}
+            cmd = data.get("command")
+            kind = KIND.get(rec.get("type"), "other")
+            if kind == "command" and cmd:
+                kind = CMD_KIND.get(cmd.lstrip("!"), "other")
+            ev = dict(
+                ts=datetime.fromtimestamp(rec["ts"] / 1000.0),
+                agent=rec["agent"],
+                kind=kind,
+                action=cmd or rec.get("type", "other"),
+                text=rec.get("content", ""),
+            )
+            for src, dst in (("to", "target"), ("peer", "target"), ("teller", "target")):
+                if data.get(src):
+                    ev["target"] = data[src]
+                    break
+            if data.get("item"):
+                ev["item"], ev["qty"] = data["item"], data.get("qty")
+            if rec.get("world"):
+                ev["world"] = rec["world"]
+            events.append(ev)
+    return events, unmatched
+
+
 def load_memories(bots_dir):
     out = {}
     if not bots_dir or not os.path.isdir(bots_dir):
@@ -599,8 +657,12 @@ function f(){{const s=q.value.toLowerCase(),a=ka.value,k=kk.value,h=hn.checked;
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--mc-log", nargs="+", required=True,
+    p.add_argument("--mc-log", nargs="+",
                    help="Paper server log(s); .gz and glob patterns accepted")
+    p.add_argument("--events", nargs="+",
+                   help="native mindcraft event stream(s): runs/<id>/events.jsonl. "
+                        "Richer than the server log (goals, beliefs, social) and the "
+                        "same source the in-app report uses.")
     p.add_argument("--bots-dir", help="mindcraft/bots directory, for memory.json")
     p.add_argument("--date", help="date override for logs with no date in the filename")
     p.add_argument("--since", help="drop events before HH:MM or YYYY-MM-DDTHH:MM")
@@ -609,6 +671,29 @@ def main():
     p.add_argument("--jsonl")
     p.add_argument("--html")
     a = p.parse_args()
+
+    if not a.mc_log and not a.events:
+        sys.exit("give --mc-log (Paper server logs) or --events (runs/<id>/events.jsonl)")
+
+    if a.events:
+        paths = []
+        for pat in a.events:
+            hits = sorted(globmod.glob(pat)) or ([pat] if os.path.exists(pat) else [])
+            if not hits:
+                print(f"warning: no file matched {pat}", file=sys.stderr)
+            paths += hits
+        if not paths:
+            sys.exit("no input files")
+        events, unmatched = [], []
+        for pth in paths:
+            ev, un = parse_events_jsonl(pth)
+            events += ev
+            unmatched += un
+        events.sort(key=lambda e: e["ts"])
+        if not events:
+            sys.exit("parsed 0 events")
+        _finish(a, events, unmatched, paths)
+        return
 
     paths = []
     for pat in a.mc_log:
@@ -635,6 +720,12 @@ def main():
                                      datetime.strptime(s, "%H:%M").time()))
         events = [e for e in events if e["ts"] >= cut]
 
+    memories = load_memories(a.bots_dir)
+    _finish(a, events, unmatched, paths)
+
+
+def _finish(a, events, unmatched, paths):
+    """Shared output stage for both input sources (--mc-log and --events)."""
     memories = load_memories(a.bots_dir)
 
     if a.inspect:

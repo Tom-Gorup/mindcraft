@@ -5,6 +5,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import * as mindcraft from './mindcraft.js';
 import { readFileSync } from 'fs';
+import { RunRegistry } from './runs.js';
+import { buildReport } from './report.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Mindserver is:
@@ -20,6 +22,9 @@ const agent_listeners = [];
 const settings_spec = JSON.parse(readFileSync(path.join(__dirname, 'public/settings_spec.json'), 'utf8'));
 const profile_spec = JSON.parse(readFileSync(path.join(__dirname, 'public/profile_spec.json'), 'utf8'));
 
+// Research runs capture the agent event stream so experiments are comparable.
+const runs = new RunRegistry();
+
 class AgentConnection {
     constructor(settings, viewer_port) {
         this.socket = null;
@@ -30,6 +35,13 @@ class AgentConnection {
     }
     setSettings(settings) {
         this.settings = settings;
+    }
+    // Which Minecraft world this agent plays in. Agents already carry their
+    // own host/port, so several worlds can run under one mindserver; this is
+    // the grouping key for the dashboard and for reports.
+    get world() {
+        const s = this.settings || {};
+        return s.world || `${s.host || 'localhost'}:${s.port ?? ''}`;
     }
 }
 
@@ -344,10 +356,47 @@ export function createMindServer(host_public = false, port = 8080) {
 			}
 		});
 
-        // relay an agent's notable memory events to dashboard listeners
+        // relay an agent's notable memory events to dashboard listeners, and
+        // capture them into the active research run
         socket.on('agent-event', (event) => {
+            if (!event || typeof event !== 'object') return;
+            // stamp the world server-side: the agent doesn't know its label,
+            // and a client-supplied one could not be trusted anyway
+            const conn = agent_connections[event.agent];
+            if (conn) event.world = conn.world;
+            runs.record(event);
             for (let listener of agent_listeners)
                 listener.emit('agent-event', event);
+        });
+
+        // ---- research runs ----
+        socket.on('list-runs', (callback) => {
+            if (typeof callback === 'function')
+                callback({ runs: runs.list(), active: runs.active });
+        });
+
+        socket.on('start-run', (name, callback) => {
+            const run = runs.start(typeof name === 'string' ? name : 'run');
+            if (typeof callback === 'function')
+                callback(run ? { success: true, run } : { success: false, error: 'Could not start run' });
+        });
+
+        socket.on('stop-run', (callback) => {
+            const run = runs.stop();
+            if (typeof callback === 'function')
+                callback({ success: !!run, run });
+        });
+
+        socket.on('get-report', (scope, callback) => {
+            if (typeof callback !== 'function') return;
+            try {
+                const s = (scope && typeof scope === 'object') ? scope : {};
+                const events = s.run ? runs.events(s.run) : runs.events(runs.active);
+                callback({ success: true, report: buildReport(events, s), export_path: s.run ? runs.exportPath(s.run) : null });
+            } catch (err) {
+                console.error('Report generation failed:', err);
+                callback({ success: false, error: String(err.message || err) });
+            }
         });
 
         socket.on('bot-output', (agentName, message) => {
@@ -386,10 +435,11 @@ function agentsStatusUpdate(socket) {
     for (let agentName in agent_connections) {
         const conn = agent_connections[agentName];
         agents.push({
-            name: agentName, 
+            name: agentName,
             in_game: conn.in_game,
             viewerPort: conn.viewer_port,
-            socket_connected: !!conn.socket
+            socket_connected: !!conn.socket,
+            world: conn.world
         });
     };
     socket.emit('agents-status', agents);

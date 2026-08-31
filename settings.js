@@ -3,6 +3,7 @@ const settings = {
     "host": "127.0.0.1", // or "localhost", "your.ip.address.here"
     "port": 55916, // set to -1 to automatically scan for open ports
     "auth": "offline", // or "microsoft"
+    "world": "", // optional label for this Minecraft world; groups agents in the dashboard and reports. Defaults to host:port
 
     // the mindserver manages all agents and hosts the UI
     "mindserver_port": 8080,

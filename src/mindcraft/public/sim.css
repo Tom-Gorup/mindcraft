@@ -284,3 +284,60 @@
     margin-bottom: 12px;
 }
 .sim-toolbar .spacer { flex: 1; }
+
+/* ---- Reports tab ---- */
+.rp-controls {
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+}
+.rp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0; }
+.rp-row > label {
+    font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--text-muted);
+}
+.rp-row select {
+    background: var(--surface-3); color: var(--text-primary);
+    border: 1px solid var(--hairline); border-radius: 4px; padding: 4px 8px; font: inherit;
+}
+.rp-checks { display: flex; gap: 12px; flex-wrap: wrap; }
+.rp-check { color: var(--text-secondary); font-size: 13px; }
+.rp-dim { color: var(--text-muted); }
+.rp-note { color: var(--text-secondary); font-size: 12px; margin: 4px 0 10px; max-width: 80ch; }
+.rp-note code { background: var(--surface-3); padding: 1px 5px; border-radius: 3px; }
+
+.rp-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.rp-table th {
+    text-align: left; font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--text-muted); font-weight: 600; padding: 6px 8px;
+    border-bottom: 1px solid var(--hairline);
+}
+.rp-table td { padding: 5px 8px; border-bottom: 1px solid #20201f; vertical-align: top; }
+.rp-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Timeline: one column per bucket, height = activity, stacked by category.
+   2px gaps between columns and between stacked segments, per the mark spec. */
+.rp-timeline {
+    display: flex; align-items: flex-end; gap: 2px;
+    height: 120px; padding: 8px;
+    background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 6px;
+}
+.rp-col { flex: 1; display: flex; flex-direction: column-reverse; gap: 2px; min-height: 2px; border-radius: 2px; overflow: hidden; }
+.rp-seg { display: block; width: 100%; min-height: 2px; }
+.rp-goal { background: var(--series-1); }
+.rp-command { background: var(--series-2); }
+.rp-social { background: var(--series-3); }
+.rp-speech { background: var(--seq-400); }
+.rp-death { background: var(--critical); }
+.rp-combat { background: var(--serious); }
+.rp-belief { background: var(--warning); }
+.rp-narration, .rp-session, .rp-other, .rp-interruption, .rp-discovery { background: var(--surface-3); }
+.rp-axis {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--text-muted); margin-top: 4px;
+}
+
+.rp-belief { margin-bottom: 10px; }
+.rp-belief-head { color: var(--text-primary); font-weight: 600; margin-bottom: 2px; }
+.rp-belief ul { margin: 2px 0 0; padding-left: 20px; color: var(--text-secondary); font-size: 13px; }
