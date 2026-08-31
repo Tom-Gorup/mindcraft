@@ -318,3 +318,75 @@ carries the real in-flight state).
 
 **Next:** Phase 5 on Tom's go-ahead. Live verification of Phases 1-4 (all flags on)
 remains the standing homelab ask.
+
+---
+
+## Session 8 — 2026-08-31 — Holistic review of Phases 1-4 (security + integration + economics)
+
+Tom asked for a whole-system pass before the final phases. Three reviewers with
+cross-cutting lenses (adversarial security; cross-subsystem interactions with all
+flags on; end-to-end flow + resource economics) plus a manual pass. This found
+substantially more than the per-phase gates did, because the earlier gates reviewed
+subsystems in isolation. All blockers, criticals, and highs fixed in `0bdab8d`;
+86/86 tests (5 new); full four-subsystem integration smoke verified.
+
+**One critical, pre-existing, upstream:** `speak.js` built a shell command string
+from LLM chat text and ran it through `exec()`. Only quotes were escaped, so `$(...)`
+and backticks survived: a player who convinced the model to echo a payload got host
+RCE — no sandbox, no `allow_insecure_coding` required. Only gated by `settings.speak`
+(default off, but toggleable from the dashboard). Now `spawn()` with argv arrays.
+
+**One HIGH chain, ours + upstream:** the dashboard rendered bot chat and agent names
+into `innerHTML` unescaped, and re-rendered the cached last message on every status
+change → stored XSS from Minecraft chat → the page holds an unauthenticated socket.io
+connection → `create-agent` with `allow_insecure_coding: true` → host RCE. Fixed at
+two points: `escapeHtml()` everywhere in the dashboard, and an Origin check on the
+socket.io handshake (also closes DNS-rebinding).
+
+**Other security fixes:** `profile.name` reached `mkdir`/`writeFile` *before*
+validation (path traversal; and no validation at all in the mindserver path);
+player-seeded `!newAction` text became a permanent learned-skill docstring shown to
+the coding model, with the fallback path preserving newlines so chat could forge
+extra `$CODE_DOCS` entries; `skills.json` (executable, direct-executed without lint)
+had two-field validation; SES lockdown failure was swallowed and code ran anyway
+(now fails closed); `profile.skin` injected Minecraft commands via `bot.chat`'s
+newline splitting; `set-agent-settings` bypassed the settings-spec filter.
+
+**Cross-subsystem blockers (only visible with all flags on):**
+- Reflexes couldn't interrupt the cognition act loop — only the legacy self-prompter
+  had that wiring — so the loop's next command re-stopped the reflex. A bot could
+  keep executing its plan while burning or drowning.
+- `step_interrupt` was global, so a death message or mode reprompt running
+  concurrently with the act loop was silently swallowed. Now scoped to the act
+  tier's own `handleMessage`.
+- `promptCoding`'s `awaiting_coding` flag had no `try/finally`: a single provider
+  error latched it forever, after which every `!newAction` returned a stub that was
+  compiled, "succeeded", and **persisted as a no-op learned skill** — permanent,
+  silent, self-reinforcing corruption of a durable store.
+- Concurrent `handleMessage` loops interleaved into one shared history, corrupting
+  both transcripts. User messages now interrupt the autonomous loop.
+
+**Durability:** history writes were O(n²) read-modify-write (~39GB/day and an
+eventually pump-blocking parse) → JSONL; concurrent evictions silently lost a
+summary chunk → serialized queue; `embeddings.jsonl` grew unbounded and was fully
+parsed at boot → compacted on load; `cleanKill` now flushes queued history,
+cognition, and throttled skill stats; `cognition.json` no longer loads when the flag
+is off; benchmark runs no longer see `!stepDone`/`!stepFailed`.
+
+**Economics (measured, NOT yet fixed — this is Phase 6's brief):** one agent at
+steady state = ~1,160 chat calls, ~2,460 embed calls, ~3.45M input tokens/hour,
+running at ~96% of its own cooldown ceiling. ≈$27/day/agent on a cheap API tier;
+~half a 3090 on prefill alone, so 4 agents oversubscribe the box ~2×. Diagnosed
+hotspots are itemized in ROADMAP Phase 6. Two cheap wins landed now (query-embedding
+LRU; `!nearbyBlocks` scanning 200 blocks instead of 10,000 per prompt); the big one
+(`$COMMAND_DOCS` prompt reordering for prefix caching, ~45% token cut) is a
+behavioral change and belongs in Phase 6 with live validation.
+
+**Accepted risks, now documented in CLAUDE.md:** the compartment is a namespace
+boundary not a security boundary; any player can invoke any non-blocked command;
+the mindserver is unauthenticated to local processes; a custom provider `url`
+exfiltrates the API key.
+
+**Next:** Phase 5 (social layer) on Tom's go-ahead. The standing homelab ask is
+unchanged and now higher-value than ever: one run with all flags on validates four
+phases at once.

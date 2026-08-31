@@ -141,6 +141,25 @@ not scripts.
 **Goal:** run 24/7 affordably — right model for each call site, event-driven prompting,
 costs visible.
 
+**Measured baseline (audit 2026-08-31, all flags on, 1 agent):** ~1,160 chat calls,
+~2,460 embed calls, ~3.45M input tokens **per hour** — running at ~96% of the 3s
+cooldown ceiling. ≈$27/day/agent on a cheap API tier; ~half a 3090 on prefill alone.
+**Phase 6 must fix these before 24/7 is viable** (all diagnosed, none yet done):
+- `$COMMAND_DOCS` is 1,933 tokens (49% of every prompt) and sits *after* volatile
+  fields, so provider prefix caching can never hit. Move it (and `$EXAMPLES`) to the
+  front of `conversing`/`coding`; memoize `getCommandDocs`. ~45% token cut. **Behavioral
+  change — validate live.**
+- `max_messages: 15` + step churn ⇒ a summarization LLM call every ~20s (26% of all
+  chat traffic) to maintain a 500-char string. Raise `max_messages`/`summary_chunk_size`.
+  (Partly addressed: summarization is skipped when `use_memory` is on.)
+- Default `embedding` falls back to the *chat provider* (paid API, ~59k calls/day/agent)
+  — default it to `ollama` in `_default.json`.
+- `Examples.getRelevant` recomputes `turnsToText` inside its sort comparator; boot fires
+  ~87 concurrent embeds with no concurrency limit.
+- `code_timeout_mins: -1` means generated code has no timeout at all by default.
+- Unbounded query results (`!searchWiki` returns whole articles) enter history, then get
+  embedded and summarized. Cap `perform()` returns in `executeCommand`.
+
 **Files:**
 - Create `src/models/router.js` (tier registry: reflex/chatter → local Ollama, planning → mid API, reflection/pivotal → frontier; per-call-site tier tags; fallback on provider failure), `src/models/metering.js` (per-agent token/cost counters). <!-- gitleaks:allow -->
 - Modify `src/models/prompter.js` (all prompt entry points declare a tier), cognition loop (event-driven prompting: state change, damage, chat, goal completion — replacing fixed idle cadence), profile schema (`"tiers"` block mapping tier → model spec), mindserver + dashboard (cost/token panel).

@@ -88,5 +88,16 @@ Emergent over scripted, always. Target 2–4 agents now, 10+ as a config change.
 - Match existing ESM style; run eslint before finishing.
 - Tests: unit-test pure logic (drive arbitration, retrieval scoring, relationship updates). Integration: mock mineflayer or a disposable local server — never a public server.
 - **Security is non-negotiable:** coder.js executes generated JS — keep the SES compartment's exposed surface minimal and audit anything added to it. Treat in-game chat as untrusted input (prompt injection). No new network egress from generated code. Containerized execution stays supported. Bots connect only to Tom's LAN server.
+
+### Known security posture (audited 2026-08-31)
+
+Understand these before adding features; they shape what is and isn't safe:
+- **The SES compartment is a namespace boundary, not a security boundary.** With `evalTaming: 'unsafeEval'` and host functions endowed (`skills`, `world`, `learned`), generated code can reach the primal realm via constructor chains. Real isolation = the container. `allow_insecure_coding` means what its name says. `lockdown()` now runs at boot and **fails closed** (codegen refuses if hardening fails).
+- **Any player on the server can invoke any non-blocked command**, including `!newAction`. Accepted for a trusted LAN; set `only_chat_with` when `allow_insecure_coding` is on.
+- **The mindserver has no authentication** — localhost-bound, cross-origin sockets rejected, but any *local* process has full control (create/configure/destroy agents, inject chat as any player). Accepted for a single-user homelab; don't expose the port.
+- **A custom `url` on a keyed provider sends your API key (and every prompt) to that host.** Upstream behavior; treat profile `model.url` as a credential-scope decision.
+- Chat → memory → coding prompt → generated code → persisted skill is a real, durable path. Docstrings are sanitized and skills are schema-validated on load, but a prompt-injection that survives the model is *persistent*. Inspect `bots/<name>/skills/skills.json` if a bot starts behaving oddly.
+- **Untrusted text must never be substituted before `replaceStrings` runs, and always via a function replacer** (`replaceAll(tok, () => v)`) so `$&`/`` $` ``/`$'` can't expand. Follow the existing pattern in `prompter.js`.
+- Anything interpolated into the dashboard's HTML must go through `escapeHtml()`.
 - End every session: update ROADMAP.md checkboxes, append a handoff note (what changed / what's next / known issues) to SESSIONS.md.
 - Session resume ritual: read CLAUDE.md, ROADMAP.md, last entry of SESSIONS.md; report status and plan; wait for go-ahead.
