@@ -164,8 +164,18 @@ export class Prompter {
         }
         if (prompt.includes('$EXAMPLES') && examples !== null)
             prompt = prompt.replaceAll('$EXAMPLES', await examples.createExampleMessage(messages));
-        if (prompt.includes('$MEMORY'))
-            prompt = prompt.replaceAll('$MEMORY', this.agent.history.memory);
+        if (prompt.includes('$MEMORY')) {
+            let memory_text = this.agent.history.memory;
+            // augment the lossy summary with retrieved long-term memories,
+            // queried by the most recent message (skipped when summarizing)
+            if (this.agent.memory?.enabled() && messages && messages.length > 0) {
+                const last_content = messages[messages.length - 1]?.content || '';
+                const retrieved = await this.agent.memory.retrieveText(last_content);
+                if (retrieved)
+                    memory_text += '\n' + retrieved;
+            }
+            prompt = prompt.replaceAll('$MEMORY', memory_text);
+        }
         if (prompt.includes('$TO_SUMMARIZE'))
             prompt = prompt.replaceAll('$TO_SUMMARIZE', stringifyTurns(to_summarize));
         if (prompt.includes('$CONVO'))
@@ -316,6 +326,7 @@ export class Prompter {
         let prompt = this.profile.goal_generation;
         prompt = prompt.replaceAll('$DRIVE', drive_name);
         prompt = prompt.replaceAll('$DRIVE_STATE', drive_state_text);
+        prompt = await this._replaceRelevantMemories(prompt, drive_name + ' ' + drive_state_text);
         prompt = await this.replaceStrings(prompt, []);
         let res = await this.chat_model.sendRequest([], prompt);
         await this._saveLog(prompt, [], res, 'goalGeneration');
@@ -327,10 +338,30 @@ export class Prompter {
         let prompt = this.profile.task_planning;
         prompt = prompt.replaceAll('$GOAL', goal_text);
         prompt = prompt.replaceAll('$FAILURE_CONTEXT', failure_context);
+        prompt = await this._replaceRelevantMemories(prompt, goal_text);
         prompt = await this.replaceStrings(prompt, []);
         let res = await this.chat_model.sendRequest([], prompt);
         await this._saveLog(prompt, [], res, 'taskPlanning');
         return res;
+    }
+
+    async promptReflection(events_text) {
+        await this.checkCooldown();
+        let prompt = this.profile.reflecting;
+        prompt = prompt.replaceAll('$EVENTS', events_text);
+        prompt = await this.replaceStrings(prompt, null);
+        let res = await this.chat_model.sendRequest([], prompt);
+        await this._saveLog(prompt, [], res, 'reflection');
+        return res;
+    }
+
+    async _replaceRelevantMemories(prompt, query) {
+        if (!prompt.includes('$RELEVANT_MEMORIES'))
+            return prompt;
+        let retrieved = '';
+        if (this.agent.memory?.enabled())
+            retrieved = await this.agent.memory.retrieveText(query.substring(0, 400));
+        return prompt.replaceAll('$RELEVANT_MEMORIES', retrieved);
     }
 
     async promptGoalSetting(messages, last_goals) {

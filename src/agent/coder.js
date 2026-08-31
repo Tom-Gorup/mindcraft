@@ -90,6 +90,7 @@ export class Coder {
 
                 const code_output = this.agent.actions.getBotOutputSummary();
                 const summary = "Agent wrote this code: \n```" + this._sanitizeCode(code) + "```\nCode Output:\n" + code_output;
+                this.agent.memory?.record('code', `Wrote working code for the current task. Output: ${code_output.substring(0, 300)}`);
                 return summary;
             } catch (e) {
                 if (this.agent.bot.interrupt_code)

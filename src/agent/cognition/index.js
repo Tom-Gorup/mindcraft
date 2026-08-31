@@ -116,6 +116,7 @@ export class CognitionLoop {
         this.monitor.reset();
         this.monitor.startStep();
         this.last_thought = goal.reason || `Pursuing: ${goal.goal}`;
+        this.agent.memory?.record('goal_started', `Started goal (${drive}): ${goal.goal}. Plan: ${steps.join('; ')}`, { drive, goal: goal.goal, steps });
         console.log(`Cognition: new goal (${drive}): ${goal.goal}\nPlan:\n${formatPlan(steps, 0)}`);
         this.persist();
         if (goal.reason)
@@ -159,6 +160,7 @@ export class CognitionLoop {
         active.steps = steps;
         active.step_index = 0;
         this.monitor.startStep();
+        this.agent.memory?.record('plan_revised', `Replanned goal "${active.goal}" after failure: ${reason}. New plan: ${steps.join('; ')}`, { goal: active.goal, reason });
         console.log(`Cognition: replanned goal "${active.goal}"\nPlan:\n${formatPlan(steps, 0)}`);
         this.persist();
         await this._narrate('New plan, trying a different approach.');
@@ -168,6 +170,7 @@ export class CognitionLoop {
         const active = this.active;
         this.drive_state.satisfy(active.drive, 0.8);
         this._recordOutcome(active, true, null);
+        this.agent.memory?.record('goal_completed', `Completed goal (${active.drive}): ${active.goal}`, { drive: active.drive, goal: active.goal });
         this.last_thought = `Completed: ${active.goal}`;
         console.log(`Cognition: goal complete (${active.drive}): ${active.goal}`);
         this.active = null;
@@ -180,6 +183,7 @@ export class CognitionLoop {
         const active = this.active;
         this._recordOutcome(active, false, reason);
         this.drive_state.setCooldown(active.drive, Date.now() + this.drive_cooldown_ms);
+        this.agent.memory?.record('goal_abandoned', `Abandoned goal (${active.drive}): ${active.goal} — ${reason}`, { drive: active.drive, goal: active.goal, reason });
         this.last_thought = `Gave up: ${active.goal} (${reason})`;
         console.log(`Cognition: goal abandoned (${reason}): ${active.goal}`);
         this.active = null;

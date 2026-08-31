@@ -7,7 +7,7 @@ export class Ollama {
         this.params = params;
         this.url = url || 'http://127.0.0.1:11434';
         this.chat_endpoint = '/api/chat';
-        this.embedding_endpoint = '/api/embeddings';
+        this.embedding_endpoint = '/api/embed';
     }
 
     async sendRequest(turns, systemMessage) {
@@ -72,7 +72,8 @@ export class Ollama {
         let model = this.model_name || 'embeddinggemma';
         let body = { model: model, input: text };
         let res = await this.send(this.embedding_endpoint, body);
-        return res['embedding'];
+        // /api/embed returns {embeddings: [[...]]}; legacy /api/embeddings returned {embedding: [...]}
+        return res['embeddings']?.[0] ?? res['embedding'];
     }
 
     async send(endpoint, body) {

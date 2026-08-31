@@ -104,7 +104,8 @@ export function getFullState(agent) {
         modes: {
             summary: bot.modes.getMiniDocs()
         },
-        cognition: agent.cognition ? agent.cognition.getStatus() : null
+        cognition: agent.cognition ? agent.cognition.getStatus() : null,
+        memory: agent.memory ? agent.memory.getStatus() : null
     };
 
     return state;

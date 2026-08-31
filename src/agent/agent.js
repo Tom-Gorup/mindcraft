@@ -10,6 +10,7 @@ import { NPCContoller } from './npc/controller.js';
 import { MemoryBank } from './memory_bank.js';
 import { SelfPrompter } from './self_prompter.js';
 import { CognitionLoop } from './cognition/index.js';
+import { AgentMemory } from './memory/index.js';
 import convoManager from './conversation.js';
 import { handleTranslation, handleEnglishTranslation } from '../utils/translator.js';
 import { addBrowserViewer } from './vision/browser_viewer.js';
@@ -46,6 +47,8 @@ export class Agent {
         this.memory_bank = new MemoryBank();
         this.self_prompter = new SelfPrompter(this);
         this.cognition = new CognitionLoop(this);
+        this.memory = new AgentMemory(this);
+        this.memory_bank.attachMemory(this.memory); // durable places + place events
         convoManager.initAgent(this);
         await this.prompter.initExamples();
 
@@ -124,6 +127,7 @@ export class Agent {
                 
                 console.log(`${this.name} spawned.`);
                 this.clearBotLogs();
+                this.memory.record('session', 'Spawned into the world');
               
                 this._setupEventHandlers(save_data, init_message);
                 this.startEvents();
@@ -315,10 +319,13 @@ export class Agent {
             }
             behavior_log = 'Recent behaviors log: \n' + behavior_log;
             await this.history.add('system', behavior_log);
+            this.memory.record('narration', behavior_log);
         }
 
         // Handle other user messages
         await this.history.add(source, message);
+        if (!self_prompt)
+            this.memory.record('chat_received', `${source} said: ${message}`, { source });
         this.history.save();
 
         if (!self_prompt && (this.self_prompter.isActive() || this.cognition.isPursuing())) // message is from user during autonomous behavior
@@ -372,6 +379,7 @@ export class Agent {
 
                 console.log('Agent executed:', command_name, 'and got:', execute_res);
                 used_command = true;
+                this.memory.record('command', `${command_name}: ${(execute_res || 'done').substring(0, 150)}`, { command: command_name });
 
                 if (execute_res)
                     this.history.add('system', execute_res);
@@ -392,6 +400,7 @@ export class Agent {
 
     async routeResponse(to_player, message) {
         if (this.shut_up) return;
+        this.memory.record('speech', message, { to: to_player });
         let self_prompt = to_player === 'system' || to_player === this.name;
         if (self_prompt && this.last_sender) {
             // this is for when the agent is prompted by system while still in conversation
@@ -457,6 +466,8 @@ export class Agent {
             if (this.bot.health < prev_health) {
                 this.bot.lastDamageTime = Date.now();
                 this.bot.lastDamageTaken = prev_health - this.bot.health;
+                if (this.bot.lastDamageTaken >= 3)
+                    this.memory.record('damage', `Took ${this.bot.lastDamageTaken.toFixed(0)} damage (health now ${this.bot.health.toFixed(0)}/20)`);
             }
             prev_health = this.bot.health;
         });
@@ -492,6 +503,7 @@ export class Agent {
                 }
                 let dimention = this.bot.game.dimension;
                 this.cognition.onDeath();
+                this.memory.record('death', `Died in the ${dimention} dimension at ${death_pos_text || 'unknown position'}: ${message}`);
                 this.handleMessage('system', `You died at position ${death_pos_text || "unknown"} in the ${dimention} dimension with the final message: '${message}'. Your place of death is saved as 'last_death_position' if you want to return. Previous actions were stopped and you have respawned.`);
             }
         });

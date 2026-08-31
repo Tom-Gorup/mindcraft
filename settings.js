@@ -27,6 +27,7 @@ const settings = {
     ],
 
     "use_cognition": false, // autonomous drive-based cognition loop (drives -> goals -> plans). experimental
+    "use_memory": false, // long-term event memory with retrieval and reflection. experimental
     "load_memory": false, // load memory from previous session
     "init_message": "Respond with hello world and your name", // sends to all on spawn
     "only_chat_with": [], // users that the bots listen to and send general messages to. if empty it will chat publicly
