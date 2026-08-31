@@ -101,7 +101,9 @@ node main.js                     # or: node main.js --profiles ./andy.json
 ```
 Mindserver UI at http://localhost:8080 (set `auto_open_ui: false` on a headless box).
 Ollama at default `http://127.0.0.1:11434` — set `"model": "ollama/<model>"` and
-`"embedding": "ollama"` (→ `embeddinggemma`, must be pulled) to run fully local; see
+`"embedding": "ollama/embeddinggemma"` (must be pulled first). **Note the model after the
+slash is required** — a bare `"ollama"` resolves to a model literally named `ollama` and
+fails at the first embedding call. to run fully local; see
 `profiles/homelab.json`. A profile naming a provider whose key is missing fails at
 boot with that provider's name — **except** the embedding model, which degrades to
 word-overlap retrieval with a warning. Docker: `docker-compose.yml` (host networking;
