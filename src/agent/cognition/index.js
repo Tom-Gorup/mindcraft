@@ -384,7 +384,8 @@ export class CognitionLoop {
             + `You are autonomously pursuing this goal, motivated by your ${active.drive} drive: "${active.goal}"\n`
             + `Your plan:\n${formatPlan(active.steps, active.step_index)}\n`
             + `Work ONLY on the CURRENT step. Your next response MUST contain a command with !commandName syntax. `
-            + `When the current step is complete, use !stepDone. If the step is impossible or keeps failing, use !stepFailed("short reason"). Respond:`;
+            + `When the current step is complete, use !stepDone. If the step is impossible or keeps failing, use !stepFailed("short reason"). `
+            + `Reply with the command and nothing else — no reasoning, no commentary. Respond:`;
         // bounded so control returns to the loop: timeouts, replans, and
         // preemption stay live even for chatty query-heavy plans.
         // cognition_step scopes step_interrupt to THIS loop.

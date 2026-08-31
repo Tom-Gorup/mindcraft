@@ -22,8 +22,17 @@ export class SkillLibrary {
                     })();
                 });
                 await Promise.all(embeddingPromises);
-            } catch (error) {
-                console.warn('Error with embedding model, using word-overlap instead.');
+            } catch (err) {
+                // No embedding model configured means this falls back to the chat
+                // provider, and Claude's embed() throws by design. Word-overlap
+                // scoring is a fine degradation, but say why once rather than
+                // emitting a bare warning per item.
+                if (!globalThis.__warned_embedding) {
+                    globalThis.__warned_embedding = true;
+                    console.warn(`No usable embedding model (skill docs); falling back to word-overlap `
+                        + `matching. Reason: ${err?.message || err}. `
+                        + `Set "embedding" in the profile ("ollama" keeps it free and local).`);
+                }
                 this.embedding_model = null;
             }
         }
