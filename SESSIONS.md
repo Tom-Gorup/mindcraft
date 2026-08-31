@@ -146,3 +146,44 @@ Ollama embedding end-to-end.
   original roadmap wording.
 - Memory tuning (`memory` profile block) awaits the Phase 7 profile editor for UI
   parity, same as `drives`/`cognition`.
+
+---
+
+## Session 4 — 2026-08-30 — Hardening review of Phases 1-2 (pre-Phase-3 gate)
+
+Tom requested a bug/logic review before Phase 3. Ran two independent adversarial
+reviewers (state-machine/concurrency lens; integration-contract lens) plus a manual
+pass. ~30 findings; all blockers and majors fixed in commit `15bfb2a`, 48/48 tests.
+
+**Highlights of what was broken and is now fixed:**
+- `$DRIVE` replacement clobbered `$DRIVE_STATE` — every autonomous goal was being
+  generated blind to drive levels and recent outcomes.
+- No interrupt path + unbounded command loop for cognition step prompts; now bounded
+  (5 responses/prompt) with a step_interrupt flag in checkInterrupt.
+- The agent's 300ms update pump had no exception guard — a disk error in
+  memory.record could silently kill modes/self-prompting/cognition. Pump and
+  record() are now exception-proof (vllm profiles could also crash the process
+  via a missing embed method — stub added).
+- satisfy() on sensor drives was erased next tick → infinite wealth-goal
+  regeneration; success now sets a cooldown. `!endGoal` recorded success as failure.
+- Mid-goal preemption added (safety can interrupt a wealth goal via arbiter
+  hysteresis — switch_margin was dead code before).
+- Prompt injection: retrieved chat memories were substituted before placeholder
+  expansion ($STATS in chat would expand; $' patterns duplicated prompt tails).
+  All dynamic content now substituted after replaceStrings with function replacers.
+- Reflection storms on LLM failure; permanent embedding-outage latch with no
+  backfill; step timeouts burning budget during conversations/long actions;
+  modes double-prompting concurrently with cognition — all fixed.
+- Agents now spawn curious (initial_level 0.5) instead of drive-inert for ~30 min.
+
+**Deliberately deferred (documented, not forgotten):**
+- events.jsonl grows unbounded on disk — accepted; it is Phase 8's research corpus.
+  RAM is capped (5000 events) with embedding-map pruning.
+- Mixed-scale relevance (cosine vs word-overlap for never-embedded event types) —
+  mitigated by the relevance floor; a principled fix can ride with Phase 3 retrieval
+  unification.
+- Dashboard panels for cognition/memory state (full_state already exposes both) —
+  Phase 7 by plan.
+
+**Next:** Phase 3 (skill library) on Tom's go-ahead. Live verification of 1+2 on the
+homelab still pending (unchanged).
