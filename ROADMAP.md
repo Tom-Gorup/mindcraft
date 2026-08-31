@@ -127,10 +127,10 @@ not scripts.
 - Tests: relationship update rules, gossip attribution/decay.
 
 **Done when:**
-- [ ] Relationship scores change from interactions (help, gift, attack, insult) and persist
-- [ ] Two agents with conflicting drives produce an unscripted dispute (observable transcript)
-- [ ] A third agent hears about the dispute via gossip, with attribution, and its relationship scores shift accordingly
-- [ ] A trade completes via negotiation between two agents
+- [x] Relationship scores change from interactions (help, gift, attack, insult) and persist (unit + restart tests; hooks on chat, `!givePlayer`, `!attackPlayer`, death-message killer parsing)
+- [ ] Two agents with conflicting drives produce an unscripted dispute (observable transcript) *(profiles/wilbur.json vs profiles/greta.json built for this; needs the live run)*
+- [x] A third agent hears about the dispute via gossip, with attribution, and its relationship scores shift accordingly (integration-tested: attributed note + `gossip` memory event + trust-weighted disposition shift; hearsay provably weaker than firsthand)
+- [x] A trade completes via negotiation between two agents (`!offerTrade`/`!acceptTrade`/`!declineTrade`, full cycle integration-tested; the *negotiation* itself is left to the agents' own conversation)
 
 **Verify:** unit tests; 3-agent run designed with conflicting drive profiles; transcripts + relationship store diffs.
 

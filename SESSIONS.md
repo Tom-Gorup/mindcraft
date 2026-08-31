@@ -390,3 +390,56 @@ exfiltrates the API key.
 **Next:** Phase 5 (social layer) on Tom's go-ahead. The standing homelab ask is
 unchanged and now higher-value than ever: one run with all flags on validates four
 phases at once.
+
+---
+
+## Session 9 — 2026-08-31 — Phase 5: Social layer (implementation)
+
+**What changed** (branch `feat/phase-5-social`, commit `d395278`):
+- New `src/agent/social/`. Three pure, unit-tested modules — `relationships.js`
+  (trust/affinity/grudge per peer, personality-scaled interaction deltas where harm
+  outweighs help, decay toward baseline with forgiveness pacing grudge fade),
+  `gossip.js` (retellable-memory selection, trust-weighted credibility capped below
+  firsthand, attributed notes), `trade.js` (offer bookkeeping, value ratio, an
+  acceptance threshold widened by friendship and generosity, expiry) — plus
+  `index.js` (`SocialModule`) binding them to the agent with an atomic, throttled
+  store in `bots/<name>/social/`.
+- **Key design decision, informed by the Session 8 audit:** social is *not* a
+  deliberative driver. It has no prompt loop, never seizes the action slot, and adds
+  **zero LLM calls** — relationship math is pure and gossip is chosen from memories
+  the agent already holds. It reaches behavior purely by modulating the conversation
+  prompt via a new `$SOCIAL` slot (substituted late, function replacer, since it
+  contains peer names and remembered chat).
+- Hooks: chat (`conversed`), `!givePlayer` (`gave_item`), `!attackPlayer`, killer
+  parsed from the death message (`killed_by`), inbound bot messages about third
+  parties absorbed as attributed gossip. Trade commands `!offerTrade` /
+  `!acceptTrade` / `!declineTrade`, all blocked when the flag is off. Relationships
+  surface in `full_state` and on the blackboard for Phase 7.
+- `profiles/greta.json` — a hoarder (wealth 0.95, generosity 0.15, forgiveness 0.4,
+  high gossip) built to collide with Wilbur the explorer; Wilbur gained a matching
+  `social` block. This is the pair for the dispute scenario.
+- 29 new tests (115 total), including two-agent gossip propagation and a full trade
+  cycle. Verified: hearsay provably moves a relationship less than firsthand
+  experience, and less again when the teller is distrusted.
+
+**Verification:** 115/115 unit + integration tests; end-to-end smoke with the real
+Greta profile shows firsthand harm plus attributed gossip producing a resentful
+disposition, correctly rendered into `$SOCIAL` and onto the dashboard payload, zero
+tier errors. New module lints clean; `conversation.js` went 5 → 4 pre-existing errors.
+
+**Acceptance:** 3 of 4 criteria met in test. The fourth — two agents with conflicting
+drives producing an *unscripted* dispute — is inherently a live-run observation and
+is what wilbur.json + greta.json exist for.
+
+**Next:** Phase 6 (model routing + economics) on Tom's go-ahead — and it now has a
+measured brief from Session 8 (~3.45M input tokens/hour/agent, with the top hotspots
+itemized in ROADMAP). Standing homelab ask now covers five phases in one run.
+
+**Known issues / notes:**
+- Gossip absorption uses keyword matching (`stole`, `helped`, ...) to classify a
+  mention as positive/negative. Deliberately cheap — an LLM classifier here would
+  add a model call per inbound bot message, which the economics audit rules out.
+  Expect occasional misreads; revisit if Phase 6 frees budget.
+- Trade item values are a small hardcoded table; unknown items default to 1. Fine for
+  fairness *advice*, not a real economy.
+- `social` profile block awaits the Phase 7 profile editor, like the other blocks.
