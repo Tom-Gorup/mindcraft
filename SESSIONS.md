@@ -234,3 +234,37 @@ taming errors. Then Phase 4 (concurrency/blackboard) on Tom's go-ahead.
   model on the homelab (profile `skills.direct_execute_cosine`).
 - `skills` profile block awaits the Phase 7 profile editor (same as drives/
   cognition/memory).
+
+---
+
+## Session 6 — 2026-08-30 — Phase 4: Concurrency (implementation)
+
+**What changed** (branch `feat/phase-4-concurrency`, commit `c5af955`):
+- `blackboard.js` — the shared agent-state surface: percepts, drive urgencies,
+  goal/step, pending replans, current action, consume-once interruption notes,
+  social context, per-tier telemetry. Exposed via full_state for Phase 7.
+- `scheduler.js` — cadenced tier dispatch from the existing 300ms pump. Tiers are
+  skipped (never queued) while their previous run is in flight; sync tiers complete
+  in-tick; per-tier error isolation (a throwing tier can't hurt siblings or the pump).
+- CognitionLoop split: `planTick` (~1s: drives, arbitration, goal gen, replanning,
+  preemption, timeouts) and `actTick` (~300ms: step prompting), separate busy guards.
+  Big win: preemption/timeout evaluation now continues WHILE a step's LLM call is in
+  flight; replans break the act loop via step_interrupt before revising the plan.
+- Five tiers registered in agent.startEvents: reflex (modes, always first), act,
+  plan, reflect (memory reflection triggering moved out of record() into the tier),
+  social (placeholder that keeps conversation state on the blackboard until Phase 5).
+- Coherence gate: `action_manager.isReflexActive()`; the act tier waits out reflexes
+  instead of stealing the slot back (no churn loops). modes.js reports interruptions
+  of `action:*` labels → blackboard + `interruption` memory event → the next step
+  prompt opens with a re-assess note. Task tree is never touched by interruptions.
+- 15 new unit tests (76 total): cadence math, busy-skip semantics, error isolation,
+  interruption→resume with intact plan, mid-step replan handoff, timeout accrual
+  while act-busy, blackboard mirroring.
+
+**Verification:** 76/76 tests; 5-tier smoke over 50 simulated ticks — zero tier
+errors, correct cadence ratios, graceful handling of unparseable LLM stubs. No new
+lint errors. **Pending live:** the 1-hour no-deadlock soak (needs homelab).
+
+**Next:** Phase 5 (social layer) on Tom's go-ahead — the social tier slot, blackboard
+social context, and conversation.js hooks are ready for it. Live verification of
+Phases 1-4 on the homelab remains the standing ask.

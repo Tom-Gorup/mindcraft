@@ -107,10 +107,10 @@ coherence gate so tiers never fight over the bot.
 - Tests: blackboard consistency, interruption → resume/revise logic (mocked actions).
 
 **Done when:**
-- [ ] A reflex (e.g. self_defense) interrupts a plan step without corrupting the task tree
-- [ ] After the interruption the plan resumes, or revises with the interruption recorded as an event
-- [ ] Tiers run at their own cadences; slow planning never blocks reflexes
-- [ ] No action-slot deadlocks or infinite interrupt loops in a 1-hour run
+- [x] A reflex (e.g. self_defense) interrupts a plan step without corrupting the task tree (unit-verified: task tree untouched, act tier stands down while reflex holds the slot)
+- [x] After the interruption the plan resumes, or revises with the interruption recorded as an event (unit-verified: consume-once blackboard note in the next step prompt + `interruption` memory event; mid-step replan handoff tested)
+- [x] Tiers run at their own cadences; slow planning never blocks reflexes (unit-verified: busy tiers are skipped not queued; error isolation per tier; smoke: 5 tiers, 0 errors over simulated run)
+- [ ] No action-slot deadlocks or infinite interrupt loops in a 1-hour run *(needs live homelab soak)*
 
 **Verify:** unit tests; scripted scenario (spawn a mob mid-task) showing interrupt + clean resume in logs; 1-hour soak run.
 
