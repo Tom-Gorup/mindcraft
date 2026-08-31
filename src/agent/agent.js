@@ -588,6 +588,7 @@ export class Agent {
             }
         });
         this.bot.on('idle', () => {
+            this.cognition?.notifyEvent('action finished'); // new information: decide again
             this.bot.clearControlStates();
             this.bot.pathfinder.stop(); // clear any lingering pathfinder
             this.bot.modes.unPauseAll();
@@ -614,6 +615,7 @@ export class Agent {
         this.scheduler.addTier('act', cog_opts.act_cadence_ms ?? 300, (elapsed) => this.cognition.actTick(elapsed));
         this.scheduler.addTier('plan', cog_opts.plan_cadence_ms ?? 1000, (elapsed) => this.cognition.planTick(elapsed));
         this.scheduler.addTier('reflect', mem_opts.reflect_cadence_ms ?? 10000, () => this.memory.reflectTick());
+        this.scheduler.addTier('economics', 3600000, () => this.logEconomics());
         this.scheduler.addTier('social', 2000, () => {
             this.blackboard.social = {
                 in_conversation: convoManager.inConversation(),
@@ -670,6 +672,7 @@ export class Agent {
                 try { this.cognition?.persist(); } catch (err) { console.error('Failed to persist cognition state on shutdown:', err); }
                 try { this.learned_skills?.flush(); } catch (err) { console.error('Failed to flush skills on shutdown:', err); }
                 try { this.social?.flush(); } catch (err) { console.error('Failed to flush social state on shutdown:', err); }
+                try { this.logEconomics(); } catch (err) { console.error('Failed to log economics summary:', err); }
                 process.exit(code);
             });
     }
@@ -684,6 +687,22 @@ export class Agent {
                 this.killAll();
             }
         }
+    }
+
+    // Run-summary log: what this agent actually cost, and how much of it
+    // stayed local. Printed on shutdown and hourly during long runs.
+    logEconomics() {
+        const router = this.prompter?.router;
+        if (!router) return;
+        const s = router.getStatus();
+        const tiers = Object.entries(s.by_tier)
+            .sort((a, b) => b[1].calls - a[1].calls)
+            .map(([t, v]) => `${t}=${v.calls}(${Math.round(v.local_share * 100)}% local)`)
+            .join(' ');
+        console.log(`[economics] ${this.name}: ${s.totals.calls} calls, `
+            + `${Math.round((s.totals.in_tokens + s.totals.out_tokens) / 1000)}k tokens, `
+            + `$${s.totals.cost.toFixed(4)}, ${Math.round(s.local_share * 100)}% local | `
+            + `~${s.per_hour.calls} calls/hr, ~$${s.per_hour.cost}/hr | ${tiers}`);
     }
 
     killAll() {

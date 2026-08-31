@@ -9,6 +9,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { selectAPI, createModel } from './_model_map.js';
+import { ModelRouter } from './router.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -100,6 +101,21 @@ export class Prompter {
             this.embedding_model = createModel({api: chat_model_profile.api});
         }
 
+        // Tiered routing over the roles above. With no "tiers" block in the
+        // profile every tier resolves to the same model it used before, so
+        // existing profiles are unaffected.
+        this.router = new ModelRouter(this.profile, {
+            chat: this.chat_model,
+            code: this.code_model,
+            vision: this.vision_model,
+        }, {
+            buildModel: (spec) => {
+                const resolved = selectAPI(spec);
+                return { model: createModel(resolved), api: resolved.api, name: resolved.model };
+            },
+        });
+        this.embedding_api = embedding_model_profile?.api ?? chat_model_profile.api;
+
         this.skill_libary = new SkillLibrary(agent, this.embedding_model);
         mkdirSync(`./bots/${name}`, { recursive: true });
         writeFileSync(`./bots/${name}/last_profile.json`, JSON.stringify(this.profile, null, 4), (err) => {
@@ -126,6 +142,7 @@ export class Prompter {
             return vec;
         }
         const vec = await this.embedding_model.embed(key);
+        this.router?.recordEmbedding(this.embedding_api, this.embedding_model?.model_name, key);
         if (Array.isArray(vec)) {
             this._embed_cache.set(key, vec);
             if (this._embed_cache.size > this._embed_cache_max)
@@ -290,7 +307,8 @@ export class Prompter {
                 // used by $STATS) would otherwise escape promptConvo entirely
                 // and silently kill the calling loop
                 prompt = await this.replaceStrings(prompt, messages, this.convo_examples);
-                generation = await this.chat_model.sendRequest(messages, prompt);
+                generation = await this.router.run('chat', 'conversing',
+                    (model) => model.sendRequest(messages, prompt), { in_text: prompt });
                 if (typeof generation !== 'string') {
                     console.error('Error: Generated response is not a string', generation);
                     throw new Error('Generated response is not a string');
@@ -340,7 +358,8 @@ export class Prompter {
             let prompt = this.profile.coding;
             prompt = await this.replaceStrings(prompt, messages, this.coding_examples);
 
-            let resp = await this.code_model.sendRequest(messages, prompt);
+            let resp = await this.router.run('code', 'coding',
+                (model) => model.sendRequest(messages, prompt), { in_text: prompt });
             await this._saveLog(prompt, messages, resp, 'coding');
             return resp;
         } finally {
@@ -354,7 +373,8 @@ export class Prompter {
         await this.checkCooldown();
         let prompt = this.profile.saving_memory;
         prompt = await this.replaceStrings(prompt, null, null, to_summarize);
-        let resp = await this.chat_model.sendRequest([], prompt);
+        let resp = await this.router.run('reflex', 'memSaving',
+            (model) => model.sendRequest([], prompt), { in_text: prompt });
         await this._saveLog(prompt, to_summarize, resp, 'memSaving');
         if (resp?.includes('</think>')) {
             const [_, afterThink] = resp.split('</think>')
@@ -369,7 +389,8 @@ export class Prompter {
         let messages = this.agent.history.getHistory();
         messages.push({role: 'user', content: new_message});
         prompt = await this.replaceStrings(prompt, null, null, messages);
-        let res = await this.chat_model.sendRequest([], prompt);
+        let res = await this.router.run('reflex', 'botResponder',
+            (model) => model.sendRequest([], prompt), { in_text: prompt });
         return res.trim().toLowerCase() === 'respond';
     }
 
@@ -377,7 +398,8 @@ export class Prompter {
         await this.checkCooldown();
         let prompt = this.profile.image_analysis;
         prompt = await this.replaceStrings(prompt, messages, null, null, null);
-        return await this.vision_model.sendVisionRequest(messages, prompt, imageBuffer);
+        return await this.router.run('vision', 'vision',
+            (model) => model.sendVisionRequest(messages, prompt, imageBuffer), { in_text: prompt });
     }
 
     async promptGoalGeneration(drive_name, drive_state_text) {
@@ -388,7 +410,8 @@ export class Prompter {
         // $DRIVE_STATE must go first: $DRIVE is its prefix and would clobber it
         prompt = prompt.replaceAll('$DRIVE_STATE', () => drive_state_text);
         prompt = prompt.replaceAll('$DRIVE', () => drive_name);
-        let res = await this.chat_model.sendRequest([], prompt);
+        let res = await this.router.run('plan', 'goalGeneration',
+            (model) => model.sendRequest([], prompt), { in_text: prompt });
         await this._saveLog(prompt, [], res, 'goalGeneration');
         return res;
     }
@@ -400,7 +423,8 @@ export class Prompter {
         prompt = await this._replaceRelevantMemories(prompt, goal_text);
         prompt = prompt.replaceAll('$GOAL', () => goal_text);
         prompt = prompt.replaceAll('$FAILURE_CONTEXT', () => failure_context);
-        let res = await this.chat_model.sendRequest([], prompt);
+        let res = await this.router.run('plan', 'taskPlanning',
+            (model) => model.sendRequest([], prompt), { in_text: prompt });
         await this._saveLog(prompt, [], res, 'taskPlanning');
         return res;
     }
@@ -412,7 +436,8 @@ export class Prompter {
         prompt = prompt.replaceAll('$TASK', () => task);
         prompt = prompt.replaceAll('$CODE', () => code.substring(0, 2000));
         prompt = prompt.replaceAll('$OUTPUT', () => (output || '').substring(0, 500));
-        let res = await this.chat_model.sendRequest([], prompt);
+        let res = await this.router.run('reflex', 'skillDocstring',
+            (model) => model.sendRequest([], prompt), { in_text: prompt });
         await this._saveLog(prompt, [], res, 'skillDocstring');
         if (res?.includes('</think>'))
             res = res.split('</think>').pop();
@@ -424,7 +449,8 @@ export class Prompter {
         let prompt = this.profile.reflecting;
         prompt = await this.replaceStrings(prompt, null);
         prompt = prompt.replaceAll('$EVENTS', () => events_text);
-        let res = await this.chat_model.sendRequest([], prompt);
+        let res = await this.router.run('reflect', 'reflection',
+            (model) => model.sendRequest([], prompt), { in_text: prompt });
         await this._saveLog(prompt, [], res, 'reflection');
         return res;
     }
@@ -449,7 +475,8 @@ export class Prompter {
         user_message = await this.replaceStrings(user_message, messages, null, null, last_goals);
         let user_messages = [{role: 'user', content: user_message}];
 
-        let res = await this.chat_model.sendRequest(user_messages, system_message);
+        let res = await this.router.run('plan', 'goalSetting',
+            (model) => model.sendRequest(user_messages, system_message), { in_text: system_message });
 
         let goal = null;
         try {

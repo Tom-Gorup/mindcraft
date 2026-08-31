@@ -29,6 +29,13 @@ export class CognitionLoop {
         this.planner = new Planner(agent);
 
         this.step_cooldown_ms = opts.step_cooldown_ms ?? 2000;
+        // Event-driven prompting: after something actually happens the agent
+        // may prompt again after step_cooldown_ms. With nothing happening it
+        // waits for the heartbeat instead of re-prompting every 2s, which was
+        // the single largest source of call volume (~96% of the cooldown
+        // ceiling, 24/7). Set heartbeat_ms very low to restore polling.
+        this.heartbeat_ms = opts.heartbeat_ms ?? 45000;
+        this.pending_event = 'goal started';
         this.goal_cooldown_ms = opts.goal_cooldown_ms ?? 15000;
         this.drive_cooldown_ms = opts.drive_cooldown_ms ?? 3 * 60000;
         this.success_cooldown_ms = opts.success_cooldown_ms ?? 60000;
@@ -177,10 +184,23 @@ export class CognitionLoop {
             this.idle_ms += delta;
         else
             this.idle_ms = 0;
-        if (this.idle_ms >= this.step_cooldown_ms) {
+        // prompt when something happened (after a short settle), or when the
+        // heartbeat expires so a stuck plan still gets re-examined
+        const ready = this.pending_event
+            ? this.idle_ms >= this.step_cooldown_ms
+            : this.idle_ms >= this.heartbeat_ms;
+        if (ready) {
             this.idle_ms = 0;
+            this.pending_event = null;
             this._runAct(() => this._promptStep());
         }
+    }
+
+    // Something happened that may warrant a new decision. Cheap and
+    // idempotent — many callers, at most one prompt.
+    notifyEvent(reason) {
+        if (!settings.use_cognition) return;
+        this.pending_event = reason || 'event';
     }
 
     // ---- goal lifecycle ----
@@ -233,6 +253,7 @@ export class CognitionLoop {
         }
         if (this.active !== null || !this._canAct()) return;
         this.active = { drive, goal: goal.goal, reason: goal.reason, steps, step_index: 0 };
+        this.notifyEvent('goal started');
         this.monitor.reset();
         this.monitor.startStep();
         this.no_command_count = 0;
@@ -300,6 +321,7 @@ export class CognitionLoop {
         }
         active.steps = steps;
         active.step_index = 0;
+        this.notifyEvent('replanned');
         this.monitor.startStep();
         this.no_command_count = 0;
         this._safeRecordMemory('plan_revised', `Replanned goal "${active.goal}" after failure: ${reason}. New plan: ${steps.join('; ')}`, { goal: active.goal, reason });
@@ -366,6 +388,7 @@ export class CognitionLoop {
         }
         this.monitor.startStep();
         this.no_command_count = 0;
+        this.notifyEvent('step completed');
         this.persist();
         return `Step complete. Next step: ${this._currentStep()}`;
     }
@@ -384,10 +407,12 @@ export class CognitionLoop {
 
     onInteraction() {
         if (!settings.use_cognition) return;
+        this.notifyEvent('someone spoke to me');
         this.drive_state.satisfy('social', 0.15);
     }
 
     onDeath() {
+        this.notifyEvent('died');
         if (!this.isPursuing()) return;
         this._onFailure('You died and respawned');
     }
@@ -397,6 +422,7 @@ export class CognitionLoop {
     // step prompt and in memory for the research trace.
     onModeInterruption(mode_name, interrupted_action) {
         if (!settings.use_cognition || !this.isPursuing()) return;
+        this.notifyEvent(`interrupted by ${mode_name}`);
         if (!interrupted_action || !interrupted_action.startsWith('action:')) return;
         // only attribute actions the act tier actually launched — a reflex
         // interrupting a user-conversation command is not a plan interruption
@@ -413,6 +439,7 @@ export class CognitionLoop {
         this.last_failure = reason;
         const decision = this.monitor.noteFailure();
         if (decision === 'retry') {
+            this.notifyEvent('step failed, retrying');
             this.monitor.startStep();
             this.last_thought = `Step failed (${reason}), retrying.`;
         }

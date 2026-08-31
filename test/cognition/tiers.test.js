@@ -72,10 +72,34 @@ test('reflex interruption: plan survives intact and the next prompt re-assesses'
     assert.ok(agent.captured[0].includes('[CURRENT] mine iron ore'));
     assert.equal(cog.active.step_index, 0); // task tree not corrupted
 
-    // interruption is consumed exactly once
+    // interruption is consumed exactly once: the next prompt (triggered by a
+    // fresh event, since prompting is event-driven now) has no reflex note
+    cog.notifyEvent('test');
     cog.actTick(300);
     await cog._act_task;
+    assert.equal(agent.captured.length, 2);
     assert.equal(agent.captured[1].includes('reflex'), false);
+});
+
+test('prompting is event-driven: quiet time waits for the heartbeat', async () => {
+    const agent = makeAgent({ heartbeat_ms: 30000 });
+    const cog = new CognitionLoop(agent);
+    cog.active = activeGoal();
+    cog.monitor.startStep();
+    cog.pending_event = null; // nothing has happened
+
+    // a full minute of idle at the old 2s cadence would have been ~30 prompts
+    for (let i = 0; i < 60; i++) { cog.actTick(300); await cog._act_task; }
+    assert.equal(agent.captured.length, 0, 'no event, no prompt before the heartbeat');
+
+    // ...but an event prompts promptly
+    cog.notifyEvent('something happened');
+    cog.actTick(300); await cog._act_task;
+    assert.equal(agent.captured.length, 1);
+
+    // ...and with nothing else happening, the heartbeat eventually fires
+    for (let i = 0; i < 120; i++) { cog.actTick(300); await cog._act_task; }
+    assert.ok(agent.captured.length >= 2, 'heartbeat must still re-examine a stuck plan');
 });
 
 test('replan requested mid-step: act loop is broken first, then the plan revises', async () => {

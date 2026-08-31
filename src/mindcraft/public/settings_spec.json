@@ -111,6 +111,11 @@
         "description": "Whether to openly chat automatic behavior like 'Picking up item!'",
         "default": true
     },
+    "log_routing": {
+        "type": "boolean",
+        "description": "Whether to log every model call's tier, provider, and estimated tokens. Useful for verifying tier routing.",
+        "default": false
+    },
     "log_all_prompts": {
         "type": "boolean",
         "description": "Whether to log all prompts to file. Can be very verbose.",

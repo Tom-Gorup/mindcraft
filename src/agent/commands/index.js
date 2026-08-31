@@ -4,6 +4,9 @@ import { queryList } from './queries.js';
 
 let suppressNoDomainWarning = true;
 
+// Cap on any single command's returned text before it enters history.
+const MAX_COMMAND_OUTPUT = 1500;
+
 const commandList = queryList.concat(actionsList);
 const commandMap = {};
 for (let command of commandList) {
@@ -226,12 +229,36 @@ export async function executeCommand(agent, message) {
             return `Command ${command.name} was given ${numArgs} args, but requires ${numParams(command)} args.`;
         else {
             const result = await command.perform(agent, ...parsed.args);
+            // Some queries return unbounded text (!searchWiki returns whole
+            // wiki articles). Unclamped it enters history, then inflates every
+            // later prompt, gets embedded, and gets summarized — paying for it
+            // many times over.
+            if (typeof result === 'string' && result.length > MAX_COMMAND_OUTPUT) {
+                return result.substring(0, MAX_COMMAND_OUTPUT)
+                    + `\n...(output truncated at ${MAX_COMMAND_OUTPUT} characters)`;
+            }
             return result;
         }
     }
 }
 
+// The rendered docs are ~1,900 tokens and were rebuilt by string concatenation
+// on every single prompt. The inputs (command list, blocked_actions, settings)
+// are fixed after boot, so memoize on them.
+let _docs_cache = null;
+let _docs_cache_key = null;
+
 export function getCommandDocs(agent) {
+    const key = `${(agent?.blocked_actions || []).join(',')}|${Object.keys(commandMap).length}`;
+    if (_docs_cache_key === key)
+        return _docs_cache;
+    const docs = _buildCommandDocs(agent);
+    _docs_cache_key = key;
+    _docs_cache = docs;
+    return docs;
+}
+
+function _buildCommandDocs(agent) {
     const typeTranslations = {
         //This was added to keep the prompt the same as before type checks were implemented.
         //If the language model is giving invalid inputs changing this might help.

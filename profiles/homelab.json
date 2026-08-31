@@ -1,0 +1,23 @@
+{
+    "name": "Homelab",
+
+    "_comment": "Reference 24/7 profile: local Ollama for the high-frequency tiers, a mid API model for planning, a frontier model only for reflection. Requires use_cognition/use_memory/use_social and an Ollama host. The 'tiers' block is what Phase 6 added — omit it and every tier falls back to 'model' exactly as before.",
+
+    "model": "ollama/sweaterdog/andy-4:micro-q8_0",
+    "embedding": "ollama",
+
+    "tiers": {
+        "reflex": "ollama/sweaterdog/andy-4:micro-q8_0",
+        "chat": "ollama/sweaterdog/andy-4:micro-q8_0",
+        "code": "ollama/qwen2.5-coder:7b",
+        "plan": "gpt-5.4-mini",
+        "reflect": "claude-sonnet-4-6",
+        "vision": "ollama/llava"
+    },
+
+    "cognition": {
+        "heartbeat_ms": 45000
+    },
+
+    "cooldown": 1000
+}

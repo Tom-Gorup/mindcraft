@@ -114,6 +114,7 @@ export function getFullState(agent) {
         memory: agent.memory ? agent.memory.getStatus() : null,
         skills: agent.learned_skills ? agent.learned_skills.getStatus() : null,
         social: agent.social ? agent.social.getStatus() : null,
+        economics: agent.prompter?.router ? agent.prompter.router.getStatus() : null,
         blackboard: agent.blackboard ? agent.blackboard.snapshot() : null
     };
 
