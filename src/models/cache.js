@@ -15,7 +15,15 @@ export const CACHE_BOUNDARY = '\n<<<CACHE_BOUNDARY>>>\n';
 // Sonnet/Opus, 2048 on Haiku. Below the bar the breakpoint is silently ignored
 // — no error, no hit, and the cache-write premium is still charged — so the
 // threshold has to follow the model, not a single constant.
-const CHARS_PER_TOKEN = 4.2;
+// Deliberately ABOVE the observed ratio. Estimating tokens from characters
+// decides whether to send a cache breakpoint at all, and the two errors are not
+// symmetric: claiming cacheable when the prefix is under the model's floor gets
+// the breakpoint silently ignored and still pays the cache-write premium, while
+// being too cautious only forgoes a marginal cache. Measured against a real
+// Haiku run the true ratio was ~4.41 chars/token for this prompt, and a 4.2
+// estimate wrongly reported 2107 tokens for a prefix Anthropic counted as
+// ~2007 — 41 short of the floor, and the cache never engaged.
+const CHARS_PER_TOKEN = 4.6;
 export const MIN_CACHEABLE_TOKENS = 1024;
 export const MIN_CACHEABLE_TOKENS_SMALL = 2048;
 export const MIN_CACHEABLE_CHARS = MIN_CACHEABLE_TOKENS * CHARS_PER_TOKEN;

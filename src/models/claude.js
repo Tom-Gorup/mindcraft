@@ -9,6 +9,7 @@ export class Claude {
     // Only used when a profile names no model at all.
     static DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
     static _warned_no_cache = false;
+    static _warned_rejected = false;
     constructor(model_name, url, params) {
         this.model_name = model_name;
         this.params = params || {};
@@ -62,6 +63,14 @@ export class Claude {
             // Real token counts, including cache hits — the router reads this
             // instead of estimating from string length. cache_read_input_tokens
             // being non-zero is the proof that prompt caching is working.
+            // Definitive check, using the provider's own numbers rather than a
+            // character estimate: if a breakpoint was sent but the response
+            // reports neither a cache write nor a cache read, Anthropic ignored
+            // it — the prefix is under this model's floor. Say so once, with
+            // the real token count, so it is not a silent bill.
+            if (cacheable && resp.usage
+                && !(resp.usage.cache_creation_input_tokens || resp.usage.cache_read_input_tokens))
+                this._warnBreakpointRejected(resp.usage.input_tokens, this.model_name);
             this.last_usage = resp.usage ? {
                 in_tokens: (resp.usage.input_tokens ?? 0)
                     + (resp.usage.cache_creation_input_tokens ?? 0)
@@ -96,6 +105,18 @@ export class Claude {
             throw new Error(`Anthropic request failed${status ? ` (${status})` : ''} on ${this.model_name}: ${detail}`);
         }
         return res;
+    }
+
+    _warnBreakpointRejected(input_tokens, model_name) {
+        if (Claude._warned_rejected) return;
+        Claude._warned_rejected = true;
+        const floor = Math.round(minCacheableChars(model_name) / 4.6);
+        console.warn(
+            `\nPrompt caching: ${model_name} IGNORED the cache breakpoint. The whole prompt measured `
+            + `${input_tokens} tokens, and the cacheable prefix is below this model's ${floor}-token floor.\n`
+            + `  You are paying full input price on every call. Lengthen the stable text ahead of\n`
+            + `  <<<CACHE_BOUNDARY>>> in profiles/defaults/_default.json, or use a model with a lower floor.\n`
+            + `  Check with: node tools/measure_prompt.mjs\n`);
     }
 
     // A prefix under the model's floor is not an error — the request succeeds,

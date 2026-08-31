@@ -4,7 +4,7 @@ const settings = {
     // to whatever runs the bots, so 127.0.0.1 is only right when they run on the
     // same box as the server.
     "host": "127.0.0.1", // <-- set to the Proxmox IP, e.g. "192.168.1.50"
-    "port": 55916, // <-- set to the server's port (vanilla/Paper default is 25565)
+    "port": 25565, // <-- set to the server's port (vanilla/Paper default is 25565)
     "auth": "offline", // or "microsoft"
     "world": "", // optional label for this Minecraft world; groups agents in the dashboard and reports. Defaults to host:port
 
