@@ -11,30 +11,50 @@
 
 export const CACHE_BOUNDARY = '\n<<<CACHE_BOUNDARY>>>\n';
 
-// Anthropic's minimum cacheable prefix is model-dependent: 1024 tokens on
-// Sonnet/Opus, 2048 on Haiku. Below the bar the breakpoint is silently ignored
-// — no error, no hit, and the cache-write premium is still charged — so the
-// threshold has to follow the model, not a single constant.
-// Deliberately ABOVE the observed ratio. Estimating tokens from characters
-// decides whether to send a cache breakpoint at all, and the two errors are not
-// symmetric: claiming cacheable when the prefix is under the model's floor gets
-// the breakpoint silently ignored and still pays the cache-write premium, while
-// being too cautious only forgoes a marginal cache. Measured against a real
-// Haiku run the true ratio was ~4.41 chars/token for this prompt, and a 4.2
-// estimate wrongly reported 2107 tokens for a prefix Anthropic counted as
-// ~2007 — 41 short of the floor, and the cache never engaged.
-const CHARS_PER_TOKEN = 3.6;
-export const MIN_CACHEABLE_TOKENS = 1024;
-export const MIN_CACHEABLE_TOKENS_SMALL = 2048;
-export const MIN_CACHEABLE_CHARS = MIN_CACHEABLE_TOKENS * CHARS_PER_TOKEN;
+// Anthropic's minimum cacheable prefix is model-dependent, and the published
+// figures do not carry forward between model generations. MEASURED with
+// tools/probe_cache_floor.mjs against the live API:
+//
+//   claude-haiku-4-5   caching begins between 3,149 and 4,114 tokens (~4096)
+//   sonnet / opus      1024 (documented, and our prefix clears it easily)
+//
+// The 2048 figure widely cited for "Haiku" is Haiku 3/3.5. Assuming it applied
+// to 4.5 cost several debugging rounds: the breakpoint was sent every time, the
+// API parsed it, and it silently declined to write anything.
+//
+// Re-probe when adding a model. Do not infer this from documentation.
+const CHARS_PER_TOKEN = 3.6;   // measured; see tools/count_prompt_tokens.mjs
 
-// Haiku (and any future small model) needs the higher bar. Unknown models get
-// the conservative one: forgoing a marginal cache beats paying for one that
-// never hits.
-export function minCacheableChars(model_name) {
+// Longest-prefix wins, so a dated id resolves to its family.
+export const CACHE_FLOORS = [
+    ['claude-haiku-4-5', 4096],   // MEASURED
+    ['claude-3-5-haiku', 2048],   // documented
+    ['claude-3-haiku', 2048],     // documented
+    ['claude-sonnet', 1024],
+    ['claude-opus', 1024],
+    ['claude-3-5-sonnet', 1024],
+];
+const STRICTEST = Math.max(...CACHE_FLOORS.map(([, f]) => f));
+const LENIENT = 1024;
+
+// Tokens of stable prefix this model needs before a breakpoint does anything.
+export function cacheFloorTokens(model_name) {
     const m = String(model_name || '').toLowerCase();
-    const tokens = (!m || m.includes('haiku')) ? MIN_CACHEABLE_TOKENS_SMALL : MIN_CACHEABLE_TOKENS;
-    return tokens * CHARS_PER_TOKEN;
+    let best = null;
+    for (const [prefix, floor] of CACHE_FLOORS)
+        if (m.startsWith(prefix) && (!best || prefix.length > best[0].length))
+            best = [prefix, floor];
+    if (best) return best[1];
+    // An unrecognised model gets the strictest floor we have measured, not the
+    // most permissive: sending a breakpoint that silently does nothing costs
+    // money quietly, whereas withholding one only forgoes a discount.
+    return m ? STRICTEST : LENIENT;
+}
+
+export const MIN_CACHEABLE_CHARS = LENIENT * CHARS_PER_TOKEN;
+
+export function minCacheableChars(model_name) {
+    return cacheFloorTokens(model_name) * CHARS_PER_TOKEN;
 }
 
 export function hasBoundary(system) {

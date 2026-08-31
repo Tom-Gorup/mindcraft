@@ -145,9 +145,18 @@ export class ActionManager {
             this.currentActionFn = null;
             clearTimeout(TIMEOUT);
             this.cancelResume();
-            console.error("Code execution triggered catch:", err);
-            // Log the full stack trace
-            console.error(err.stack);
+            // PathStopped is how mineflayer-pathfinder reports "your path was
+            // cancelled" — which is exactly what happens every time a new action
+            // interrupts a running one, i.e. the coherence gate working. Logging
+            // it as a full stack trace made routine interruptions look like
+            // crashes and buried the genuine errors around them.
+            const path_interrupted = /PathStopped|Path was stopped/i.test(String(err?.name || '') + String(err?.message || ''));
+            if (path_interrupted)
+                console.log(`Action '${actionLabel}' was interrupted mid-path (expected when another action takes over).`);
+            else {
+                console.error('Code execution triggered catch:', err);
+                console.error(err.stack);
+            }
             await this.stop();
             const stack = err?.stack || '(no stack)';
 

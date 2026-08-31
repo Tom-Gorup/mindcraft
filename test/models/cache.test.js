@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { CACHE_BOUNDARY, MIN_CACHEABLE_CHARS, splitCachePrefix, stripBoundary, hasBoundary } from '../../src/models/cache.js';
+import { CACHE_BOUNDARY, MIN_CACHEABLE_CHARS, cacheFloorTokens, hasBoundary, minCacheableChars, splitCachePrefix, stripBoundary } from '../../src/models/cache.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const defaults = JSON.parse(readFileSync(path.join(root, 'profiles/defaults/_default.json'), 'utf8'));
@@ -21,21 +21,29 @@ test('a prefix below the provider minimum is not marked cacheable', () => {
     assert.equal(splitCachePrefix(big + CACHE_BOUNDARY + 'tail', 'claude-sonnet-5').cacheable, true);
 });
 
-// Anthropic's minimum is 1024 tokens on Sonnet/Opus but 2048 on Haiku. Below
-// the bar the breakpoint is silently ignored — no error, no hit, and the
-// cache-write premium is charged anyway — so a prefix that is cacheable on
-// Sonnet must NOT be marked cacheable on Haiku.
-test('the cacheable threshold follows the model', () => {
-    const between = 'x'.repeat(Math.ceil(MIN_CACHEABLE_CHARS) + 100);   // >1024 tok, <2048 tok
-    const prompt = between + CACHE_BOUNDARY + 'volatile tail';
+// Floors are model-specific and MEASURED, not inferred from documentation:
+// probe_cache_floor.mjs found Haiku 4.5 declining a 2,985-token prefix and
+// caching at 4,114. The widely-cited 2048 is Haiku 3/3.5 and does not carry
+// forward. Below the floor a breakpoint is silently ignored — no error, no
+// hit, and the cache-write premium charged anyway.
+test('the cacheable threshold follows the model family', () => {
+    assert.equal(cacheFloorTokens('claude-haiku-4-5-20251001'), 4096);
+    assert.equal(cacheFloorTokens('claude-3-5-haiku-latest'), 2048);
+    assert.equal(cacheFloorTokens('claude-sonnet-5'), 1024);
+    assert.equal(cacheFloorTokens('claude-opus-5'), 1024);
+});
+
+test('an unrecognised model gets the strictest floor, not the most permissive', () => {
+    // withholding a breakpoint only forgoes a discount; sending one that
+    // silently does nothing costs money quietly
+    assert.equal(cacheFloorTokens('some-future-model'), 4096);
+});
+
+test('a prefix is cacheable on Sonnet but not on Haiku 4.5 at the same size', () => {
+    const mid = 'x'.repeat(Math.ceil(minCacheableChars('claude-sonnet-5')) + 4000);
+    const prompt = mid + CACHE_BOUNDARY + 'volatile tail';
     assert.equal(splitCachePrefix(prompt, 'claude-sonnet-5').cacheable, true);
     assert.equal(splitCachePrefix(prompt, 'claude-haiku-4-5-20251001').cacheable, false);
-    // an unknown or absent model gets the conservative bar
-    assert.equal(splitCachePrefix(prompt).cacheable, false);
-    assert.equal(splitCachePrefix(prompt, 'some-future-model').cacheable, true);
-
-    const big = 'x'.repeat(Math.ceil(MIN_CACHEABLE_CHARS) * 2 + 100);
-    assert.equal(splitCachePrefix(big + CACHE_BOUNDARY + 'tail', 'claude-haiku-4-5-20251001').cacheable, true);
 });
 
 test('no boundary means no prefix and no crash', () => {
