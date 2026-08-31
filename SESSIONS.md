@@ -843,3 +843,105 @@ memory, skills, and the second agent.
   one genuinely slow chain will log a stall it recovers from.
 - `runs/` grows without bound on disk. Deliberate (it is the research corpus) but it
   will need pruning.
+
+---
+
+## Session 16 — 2026-08-31 — Second audit pass + dashboard rebuild
+
+Two tracks: another error/logic sweep over ground the earlier passes hadn't
+covered, and a full UI/UX rebuild of the :8080 app. Commits `5ea51b1`..`65c5b99`.
+**185/185 tests. Zero real lint errors** (78 remaining are pre-existing upstream
+style: `require-await` on providers whose `embed()` only throws, and deliberate
+fire-and-forget promises).
+
+### Audit — the mindserver, which earlier passes had mostly skipped
+
+- **Path traversal in the texture proxy.** Express percent-decodes route params
+  *after* matching, so `..%2F..%2F` in `/assets/item/:agent/:name.png` survives
+  into `req.params.name` and escapes the minecraft-assets directory. Verified
+  against the installed Express: the param came back as `../../../keys.json`.
+  The handler appends `.png`, so the read is bounded to .png files rather than
+  arbitrary secrets — still an arbitrary-file-read on the host. Item ids are now
+  validated against `[a-z0-9_]{1,64}`.
+- **One bot greeting another could kill the whole mindserver.** The
+  `chat-message` relay called `.socket.emit` unguarded, but an
+  `AgentConnection` exists from `createAgent` onward while `.socket` stays null
+  until that agent's *process* connects. The TypeError escaped a socket.io
+  handler and, with no `uncaughtException` handler in the parent, took every
+  agent down with it. This is the exact two-bot startup race Tom's first run
+  will hit.
+- **The state poll ran agents serially** behind an 800ms timeout each, so N
+  agents could take N×800ms inside a 1000ms interval and ticks piled up. Now
+  concurrent, and skipped rather than queued while a round is in flight.
+- **Socket.io ack leak:** `emit('get-full-state', cb)` with no timeout retains
+  the callback forever when an agent never answers — one per second, per wedged
+  agent, for the life of the run. Now `.timeout(800)`.
+- **Listener bookkeeping:** `addListener` had no dedup and `removeListener`
+  spliced at index `-1` when the socket was absent, which removes the *last*
+  listener rather than none. Either one strands a dead socket that keeps the
+  poll interval alive forever.
+- **Three unreachable branches in `full_state`'s activity chain** — they sat
+  after a `!isStopped()` test that made them impossible. Cognition that is on
+  but uncommitted now reports "Content" rather than "Stopped".
+
+### The dashboard rebuild
+
+The old UI was Arial on flat grey with Material primary colours and no shared
+vocabulary — every component picked its own hex.
+
+- **`theme.css`** is now the single source of truth: surfaces, ink, categorical
+  slots 1-5, the blue sequential ramp, the blue↔red diverging pair, the fixed
+  status palette, spacing, radii, elevation, motion. **Both light and dark are
+  selected palettes**, not an automatic flip, declared under the OS media query
+  *and* an explicit `data-theme` stamp so a manual toggle wins either way. The
+  theme is applied before first paint, so no flash of the wrong palette.
+- **`app.css`** replaces the inline `<style>` block: sticky glass app bar, tabs
+  with a sliding indicator, agent cards with a status rail and a name-derived
+  avatar, health and hunger as severity meters, animated modals, toasts, empty
+  states.
+- **`ui.js`** adds the shared behaviour — a `data-tip` tooltip engine with
+  keyboard parity, toasts, the theme toggle, and shortcuts (1/2/3, t, d, ?, Esc).
+
+**The part worth defending: I rendered it and looked at it.** The palette
+validator checks colour, not layout, so `tools/ui_demo.py` builds an offline
+demo of the whole dashboard from fixture data (three agents, a 1,476-event run,
+48 timeline buckets) and `tools/ui_shots.sh` screenshots every view in both
+themes with headless Chrome. Two real defects were invisible until then:
+
+- `belief` and `goal` rendered as near-identical blues in the activity legend,
+  and `social` and `speech` shared a hue *adjacent in the stack*. The lesson is
+  structural: a stack's colour gates are measured on **adjacent** pairs, so
+  stacking order and colour assignment cannot be chosen separately. They now
+  live in one `CAT_ORDER`/`CAT_ROLE` map, validated in both modes (worst
+  adjacent CVD ΔE 8.4 dark / 9.1 light, normal-vision 19.3 / 19.6).
+- The interaction matrix picked its text colour by ramp *index*, but the ramp
+  inverts between modes — so the lightest blue got white text in dark mode and
+  was unreadable. Ink is now a token carried by each ramp step.
+
+Client bugs fixed on the way through: `renderAgents()` existed twice (a dead
+copy plus an inline one in the socket handler), which is how the "no agents"
+empty state became unreachable from the live path; `window.currentAgents` was
+read by the connect-retry timer but never assigned; a failed
+`settings_spec.json` fetch was completely silent, leaving the create-agent
+modal blank with no explanation; and the sim view rebuilt its entire innerHTML
+once per incoming event (now coalesced to one render per frame).
+
+### Known issues
+
+- The `file://` demo cannot fetch `settings_spec.json` (Chrome blocks it on an
+  opaque origin), so the create-agent modal shows its new error state in the
+  screenshots. That is the harness, not the app.
+- Light mode has three categorical slots under 3:1 contrast. This is the
+  documented palette's own trade; the relief rule applies and is satisfied
+  (every series is named in a legend and repeated in a table view), but if
+  light mode becomes the primary way Tom watches runs, re-step those slots.
+- The dashboard still has no authentication. Unchanged, and still fine for a
+  single-user homelab — but the texture proxy finding is a reminder that
+  "localhost only" is a deployment assumption, not a security boundary.
+
+### What's next
+
+Unchanged and still the only thing that matters: **the project has never talked
+to a real Minecraft server.** Start with one agent and `use_cognition` only,
+confirm it connects and pursues a goal, then layer on memory, skills, and the
+second agent.
