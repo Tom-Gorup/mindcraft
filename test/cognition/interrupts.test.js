@@ -69,3 +69,40 @@ test('cognition is dormant and does not resurrect goals when the flag is off', (
     assert.equal(reloaded.shouldInterrupt(), false);
     setSettings({ use_cognition: true, narrate_behavior: false });
 });
+
+// A goal must not outlive the situation that produced it. Preemption only
+// fires when a DIFFERENT drive wins, so a goal whose premise has evaporated
+// used to survive as long as its own drive stayed on top. Observed live: a
+// "deal with the nearby skeleton" goal persisted long after the skeleton left,
+// because safety is fed by health as well as by hostiles.
+test('a goal is dropped once its motivating drive has eased', () => {
+    const { cog: loop } = makeCog();
+    loop.goal_relief_margin = 0.25;
+    loop.active = { drive: 'safety', goal: 'deal with the skeleton', steps: ['a'], step_index: 0,
+        urgency_at_start: 0.80, active_ms: 0 };
+    loop.drive_state.urgency = () => 0.78;                 // barely moved
+    assert.equal(loop._goalNoLongerWarranted(), null, 'a small change must not drop the goal');
+
+    loop.drive_state.urgency = () => 0.50;                 // threat resolved
+    const reason = loop._goalNoLongerWarranted();
+    assert.ok(reason, 'an eased drive should retire its goal');
+    assert.match(reason, /safety has eased/);
+});
+
+test('a goal that never finishes is dropped by the backstop', () => {
+    const { cog: loop } = makeCog();
+    loop.goal_relief_margin = 0.25;
+    loop.goal_max_active_ms = 60000;
+    loop.drive_state.urgency = () => 0.80;                 // drive unchanged, so only age can end it
+    loop.active = { drive: 'safety', goal: 'stuck forever', steps: ['a'], step_index: 0,
+        urgency_at_start: 0.80, active_ms: 59000 };
+    assert.equal(loop._goalNoLongerWarranted(), null);
+    loop.active.active_ms = 61000;
+    assert.match(loop._goalNoLongerWarranted(), /no progress after/);
+});
+
+test('no active goal is not an error', () => {
+    const { cog: loop } = makeCog();
+    loop.active = null;
+    assert.equal(loop._goalNoLongerWarranted(), null);
+});

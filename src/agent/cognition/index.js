@@ -43,6 +43,9 @@ export class CognitionLoop {
         this.drive_cooldown_ms = opts.drive_cooldown_ms ?? 3 * 60000;
         this.success_cooldown_ms = opts.success_cooldown_ms ?? 60000;
         this.preempt_check_ms = opts.preempt_check_ms ?? 10000;
+        // how much the motivating drive must ease before a goal is re-decided
+        this.goal_relief_margin = opts.goal_relief_margin ?? 0.25;
+        this.goal_max_active_ms = opts.goal_max_active_ms ?? 12 * 60000;
         this.max_step_responses = opts.max_step_responses ?? 5;
         this.arbiter_opts = {
             switch_margin: opts.switch_margin ?? 0.1,
@@ -130,8 +133,12 @@ export class CognitionLoop {
         // Step budget counts only time the step could actually progress:
         // while a tier is working it or it's idle-and-eligible. Time in
         // conversations, user goals, or long-running actions doesn't count.
-        if (this.active && (this.act_busy || this.plan_busy || (can_act && this.agent.isIdle())))
+        if (this.active && (this.act_busy || this.plan_busy || (can_act && this.agent.isIdle()))) {
             this.monitor.noteActiveTime(delta);
+            // goal-level budget, separate from the per-step one: a goal can
+            // churn through many steps without ever finishing
+            this.active.active_ms = (this.active.active_ms ?? 0) + delta;
+        }
 
         this._syncBlackboard();
 
@@ -254,6 +261,28 @@ export class CognitionLoop {
         this.preempt_accum += delta;
         if (this.preempt_accum < this.preempt_check_ms) return false;
         this.preempt_accum = 0;
+        // A goal outliving its motivation. Preemption only fires when a
+        // DIFFERENT drive wins, so a goal whose premise has evaporated survives
+        // as long as its own drive stays on top. Observed live: "Deal with the
+        // nearby skeleton threat" persisted long after the skeleton left,
+        // because safety is a sensor drive fed by health — the threat was gone
+        // but the low health that also depresses safety was not.
+        const stale = this._goalNoLongerWarranted();
+        if (stale) {
+            const active = this.active;
+            this.active = null;
+            this.pending_replan = null;
+            this.step_interrupt = this.act_busy;
+            this.blackboard.interruption = null;
+            this._recordOutcome(active, 'preempted', stale);
+            this.last_thought = `Dropping "${active.goal}" — ${stale}.`;
+            console.log(`Cognition: goal no longer warranted (${stale}): ${active.goal}`);
+            this._safeRecordMemory('goal_abandoned', `Dropped goal (${active.drive}): ${active.goal} — ${stale}`,
+                { drive: active.drive, goal: active.goal, reason: stale });
+            this.persist();
+            return true;
+        }
+
         const winner = selectDrive(this.drive_state.getUrgencies(), this.active.drive, this.arbiter_opts);
         if (winner && winner !== this.active.drive) {
             const active = this.active;
@@ -269,6 +298,25 @@ export class CognitionLoop {
             return true;
         }
         return false;
+    }
+
+    // Two cheap, arithmetic-only reasons to stop pursuing a goal. Neither costs
+    // an LLM call, which matters because this runs every preempt_check_ms.
+    _goalNoLongerWarranted() {
+        const a = this.active;
+        if (!a) return null;
+        // 1. The need that motivated it has substantially eased. The goal was
+        //    written for a situation that no longer obtains, so re-deciding
+        //    beats grinding through a plan aimed at a solved problem.
+        const now_urgency = this.drive_state.urgency(a.drive);
+        if (typeof a.urgency_at_start === 'number'
+            && a.urgency_at_start - now_urgency >= this.goal_relief_margin)
+            return `${a.drive} has eased (${a.urgency_at_start.toFixed(2)} → ${now_urgency.toFixed(2)})`;
+        // 2. Backstop: any goal worked this long without finishing is stuck,
+        //    whatever the drives say.
+        if (this.goal_max_active_ms > 0 && (a.active_ms ?? 0) > this.goal_max_active_ms)
+            return `no progress after ${Math.round(a.active_ms / 60000)} minutes`;
+        return null;
     }
 
     async _startGoal(drive) {
@@ -297,7 +345,13 @@ export class CognitionLoop {
             return;
         }
         if (this.active !== null || !this._canAct()) return;
-        this.active = { drive, goal: goal.goal, reason: goal.reason, steps, step_index: 0 };
+        this.active = {
+            drive, goal: goal.goal, reason: goal.reason, steps, step_index: 0,
+            // captured so _goalNoLongerWarranted can tell whether the need that
+            // produced this goal has since eased
+            urgency_at_start: this.drive_state.urgency(drive),
+            active_ms: 0,
+        };
         this.notifyEvent('goal started');
         this.monitor.reset();
         this.monitor.startStep();
