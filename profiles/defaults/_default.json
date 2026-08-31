@@ -434,7 +434,7 @@
             },
             {
                 "role": "assistant",
-                "content": "I see some oak logs, dirt, and cobblestone nearby. My goal is to craft a wooden pickaxe. I'll start by collecting some wood. !collectBlock(\"oak_log\", 10)"
+                "content": "I see some oak logs, dirt, and cobblestone nearby. My goal is to craft a wooden pickaxe. I'll start by collecting some wood. !collectBlocks(\"oak_log\", 10)"
             },
             {
                 "role": "system",
@@ -442,7 +442,7 @@
             },
             {
                 "role": "assistant",
-                "content": "I collected 9 oak logs. I need a pickaxe first, which requires planks and sticks. !craftItem(\"oak_plank\", 9)"
+                "content": "I collected 9 oak logs. I need a pickaxe first, which requires planks and sticks. !craftRecipe(\"oak_plank\", 9)"
             },
             {
                 "role": "system",
@@ -450,7 +450,7 @@
             },
             {
                 "role": "assistant",
-                "content": "I have crafted 9 oak planks. Now I need sticks. !craftItem(\"stick\", 2)"
+                "content": "I have crafted 9 oak planks. Now I need sticks. !craftRecipe(\"stick\", 2)"
             },
             {
                 "role": "system",
@@ -458,7 +458,7 @@
             },
             {
                 "role": "assistant",
-                "content": "I have crafted 2 sticks. Now I can craft a wooden pickaxe. !craftItem(\"wooden_pickaxe\", 1)"
+                "content": "I have crafted 2 sticks. Now I can craft a wooden pickaxe. !craftRecipe(\"wooden_pickaxe\", 1)"
             },
             {
                 "role": "system",
