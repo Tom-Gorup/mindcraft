@@ -25,7 +25,9 @@ export default [
 
   // Node: the agent, the mindserver, the tests, the entry points.
   {
-    files: ["**/*.js"],
+    // .mjs too: tools/ uses it, and without this they fall through to the
+    // base config and lose the Node globals.
+    files: ["**/*.js", "**/*.mjs", "**/*.cjs"],
     ignores: ["src/mindcraft/public/**"],
     plugins: { "no-floating-promise": noFloatingPromise },
     languageOptions: {
