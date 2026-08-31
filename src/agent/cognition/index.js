@@ -77,6 +77,11 @@ export class CognitionLoop {
         return settings.use_cognition && this.active !== null;
     }
 
+    // On, but not currently committed to a goal — "content" rather than "off".
+    isEnabled() {
+        return !!settings.use_cognition;
+    }
+
     // Lets handleMessage's checkInterrupt() break a step's command loop when
     // the goal it serves has been abandoned/preempted mid-loop. Only consulted
     // for the act tier's OWN handleMessage call (opts.cognition_step) — a

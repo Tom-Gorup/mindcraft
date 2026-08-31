@@ -123,6 +123,12 @@ export function createMindServer(host_public = false, port = 8080) {
             const agentName = req.params.agent;
             const rawName = req.params.name;
             const itemName = String(rawName).toLowerCase();
+            // Minecraft item ids are [a-z0-9_] and nothing else. Anything else
+            // is an attempt to walk out of the assets directory.
+            if (!/^[a-z0-9_]{1,64}$/.test(itemName)) {
+                res.setHeader('Content-Type', 'image/svg+xml');
+                return res.status(400).send('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="100%" height="100%" fill="#444"/></svg>');
+            }
             const conn = agent_connections[agentName];
             const preferred = conn?.settings?.minecraft_version;
             const candidates = [];
@@ -294,7 +300,12 @@ export function createMindServer(host_public = false, port = 8080) {
                 return;
             }
             console.log(`${curAgentName} sending message to ${agentName}: ${json.message}`);
-            agent_connections[agentName].socket.emit('chat-message', curAgentName, json);
+            const target = agent_connections[agentName].socket;
+            if (!target) {
+                console.warn(`Agent ${agentName} is registered but not connected yet; dropping message.`);
+                return;
+            }
+            target.emit('chat-message', curAgentName, json);
         });
 
         socket.on('set-agent-settings', (agentName, new_settings) => {
@@ -359,7 +370,7 @@ export function createMindServer(host_public = false, port = 8080) {
                 return;
 			}
 			try {
-                agent_connections[agentName].socket.emit('send-message', data);
+                agent_connections[agentName].socket?.emit('send-message', data);
 			} catch (error) {
 				console.error('Error: ', error);
 			}
@@ -457,34 +468,47 @@ function agentsStatusUpdate(socket) {
 
 let listenerInterval = null;
 function addListener(listener_socket) {
+    if (agent_listeners.includes(listener_socket)) return;   // idempotent
     agent_listeners.push(listener_socket);
     if (agent_listeners.length === 1) {
-        listenerInterval = setInterval(async () => {
-            const states = {};
-            for (let agentName in agent_connections) {
-                let agent = agent_connections[agentName];
-                if (agent.in_game && agent.socket) {
+        let polling = false;
+        listenerInterval = setInterval(() => {
+            // Skip rather than queue: a slow round must not let ticks overlap
+            // and pile up. Agents are polled concurrently, so the tick costs
+            // the slowest agent, not the sum of all of them.
+            if (polling) return;
+            polling = true;
+            const names = Object.keys(agent_connections)
+                .filter(n => agent_connections[n].in_game && agent_connections[n].socket);
+            Promise.all(names.map(agentName => {
+                const agent = agent_connections[agentName];
+                // .timeout() lets socket.io release the ack callback itself;
+                // a bare emit with a callback retains it forever when the
+                // agent never answers.
+                return new Promise((resolve) => {
                     try {
-                        // a wedged agent must not stall the poll forever
-                        const state = await Promise.race([
-                            new Promise((resolve) => agent.socket.emit('get-full-state', (s) => resolve(s))),
-                            new Promise((resolve) => setTimeout(() => resolve(null), 800)),
-                        ]);
-                        if (state) states[agentName] = state;
+                        agent.socket.timeout(800).emit('get-full-state', (err, s) => resolve(err ? null : s));
                     } catch (e) {
-                        states[agentName] = { error: String(e) };
+                        resolve({ error: String(e) });
                     }
-                }
-            }
-            for (let listener of agent_listeners) {
-                listener.emit('state-update', states);
-            }
+                }).then(state => [agentName, state]);
+            })).then(entries => {
+                const states = {};
+                for (const [name, state] of entries)
+                    if (state) states[name] = state;
+                for (let listener of agent_listeners)
+                    listener.emit('state-update', states);
+            }).catch(err => {
+                console.error('State poll failed:', err?.message || err);
+            }).finally(() => { polling = false; });
         }, 1000);
     }
 }
 
 function removeListener(listener_socket) {
-    agent_listeners.splice(agent_listeners.indexOf(listener_socket), 1);
+    const i = agent_listeners.indexOf(listener_socket);
+    if (i === -1) return;   // splice(-1) would drop an innocent listener
+    agent_listeners.splice(i, 1);
     if (agent_listeners.length === 0) {
         clearInterval(listenerInterval);
         listenerInterval = null;

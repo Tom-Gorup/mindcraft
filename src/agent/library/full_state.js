@@ -56,14 +56,14 @@ export function getFullState(agent) {
             : { current: 'Chatting', kind: 'chatting' };
     } else if (agent.cognition?.isPursuing()) {
         activity = { current: `Goal: ${agent.cognition.active.goal}`.substring(0, 80), kind: 'thinking' };
-    } else if (agent.self_prompter.isStopped()) {
-        activity = { current: 'Stopped', kind: 'stopped' };   // self-prompter OFF: won't act on its own
-    } else if (agent.self_prompter.isPaused()) {
-        activity = { current: 'Chatting', kind: 'chatting' };
-    } else if (agent.self_prompter.isActive()) {
-        activity = { current: 'Thinking', kind: 'thinking' }; // self-prompting between actions
+    } else if (agent.cognition?.isEnabled?.()) {
+        // cognition is on but no drive is urgent enough to act on
+        activity = { current: 'Content', kind: 'idle' };
     } else {
-        activity = { current: 'Idle', kind: 'idle' };
+        // self-prompter off and nothing else driving: the agent will not act
+        // on its own. (Reaching here means isStopped() is true — the paused
+        // and active cases are already handled above.)
+        activity = { current: 'Stopped', kind: 'stopped' };
     }
 
     const state = {
