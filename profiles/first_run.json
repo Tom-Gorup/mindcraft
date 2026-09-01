@@ -21,7 +21,7 @@
             },
             {
                 "role": "assistant",
-                "content": "I've got a stone pickaxe and some spruce logs."
+                "content": "Let me look. !inventory"
             }
         ],
         [
