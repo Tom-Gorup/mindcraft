@@ -114,6 +114,10 @@ class AgentConnection {
         this.in_game = false;
         this.full_state = null;
         this.viewer_port = viewer_port;
+        // When this agent last changed connection state. An agent that has sat
+        // "joining" for hours is not joining; without a timestamp the dashboard
+        // cannot tell the two apart and shows the same placeholder either way.
+        this.since = Date.now();
     }
     setSettings(settings) {
         this.settings = settings;
@@ -383,6 +387,7 @@ export function createMindServer(host_public = false, port = 8080) {
             if (agent_connections[agentName]) {
                 agent_connections[agentName].socket = socket;
                 agent_connections[agentName].in_game = true;
+                agent_connections[agentName].since = Date.now();
                 curAgentName = agentName;
                 agentsStatusUpdate();
             }
@@ -396,6 +401,7 @@ export function createMindServer(host_public = false, port = 8080) {
                 console.log(`Agent ${curAgentName} disconnected`);
                 agent_connections[curAgentName].in_game = false;
                 agent_connections[curAgentName].socket = null;
+                agent_connections[curAgentName].since = Date.now();
                 agentsStatusUpdate();
             }
             if (agent_listeners.includes(socket)) {
@@ -584,6 +590,7 @@ function agentsStatusUpdate(socket) {
             in_game: conn.in_game,
             viewerPort: conn.viewer_port,
             socket_connected: !!conn.socket,
+            since: conn.since,
             world: conn.world
         });
     };

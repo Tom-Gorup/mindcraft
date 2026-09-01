@@ -637,6 +637,13 @@ export class CognitionLoop {
 
     onDeath() {
         this.notifyEvent('died');
+        // Respawn restores health to 20/20, so the safety sensor reports
+        // perfect safety moments after being killed and its urgency drops to
+        // zero. Dying is the strongest evidence there is of being unsafe; the
+        // alarm is what stops that evidence being erased by the respawn.
+        this.drive_state.raiseAlarm('safety', 0.9);
+        this.drive_state.raiseAlarm('food', 0.5);   // respawn also resets hunger to full
+        this.persist();
         if (!this.isPursuing()) return;
         this._onFailure('You died and respawned');
     }

@@ -20,6 +20,13 @@ const settings = {
     "auto_open_ui": true, // opens UI in browser on startup
     
     "base_profile": "assistant", // survival, assistant, creative, or god_mode
+    // Start agents automatically when the server boots.
+    // Leave this true: a crashed agent should come back. An agent you stop
+    // from the dashboard is recorded as deliberately stopped and stays down
+    // across restarts regardless, so you rarely need to turn this off.
+    // Set false to bring the server and dashboard up with nothing joining.
+    "autostart_agents": true,
+
     "profiles": [
         "./profiles/first_run.json", // one Haiku agent, no feature flags — start here
         // "./andy.json",

@@ -128,3 +128,86 @@ test('getUrgencies exposes both raw and effective, so the dashboard can explain 
     assert.ok(legacy.urgency > legacy.raw_urgency, 'effective is boosted');
     assert.equal(legacy.neglect_ms, 60000);
 });
+
+// ---- the overnight-run failures, as tests ----
+//
+// Run of 2026-08-31: 36 deaths in 9.3h, zero food goals generated, safety
+// completed 0 of 10 goals. Both regressions below are that run.
+
+// safety's level is health/20, and respawn restores health to 20/20 — so the
+// sensor reported perfect safety moments after each death and urgency fell to
+// zero. The agent then went straight back to its watchtower. 36 times.
+test('dying keeps safety urgent even though respawn restores full health', () => {
+    const d = new DriveState({}, { neglect_bonus_max: 0 });
+
+    d.update(1000, { safety: 1.0 });
+    assert.equal(d.urgency('safety'), 0, 'full health at rest is not urgent');
+
+    d.raiseAlarm('safety', 0.9);
+    d.update(1000, { safety: 1.0 });   // respawn: sensor still says 20/20
+    assert.ok(d.urgency('safety') > 0.85,
+        `death must survive the respawn, got ${d.urgency('safety')}`);
+});
+
+test('an alarm fades rather than switching off', () => {
+    const d = new DriveState({}, { alarm_half_life_ms: 60000 });
+    d.raiseAlarm('safety', 0.8);
+    d.update(60000, { safety: 1.0 });
+    const half = d.urgency('safety');
+    assert.ok(half > 0.3 && half < 0.55, `one half-life should roughly halve it, got ${half}`);
+
+    for (let i = 0; i < 8; i++) d.update(60000, { safety: 1.0 });
+    assert.ok(d.urgency('safety') < 0.05, 'and eventually clear entirely');
+});
+
+test('an alarm survives a restart', () => {
+    const a = new DriveState();
+    a.raiseAlarm('safety', 0.9);
+    const b = new DriveState();
+    b.loadJson(a.getJson());
+    b.update(1000, { safety: 1.0 });
+    assert.ok(b.urgency('safety') > 0.85, 'a crash-restart must not forget the death');
+});
+
+// Greta, at 1 HP and zero hunger, kept choosing her watchtower. She wrote the
+// finding herself: "Don't abandon urgent needs for legacy goals when starving."
+test('a neglected aspiration yields while a real need is pressing', () => {
+    const d = new DriveState({ legacy: { weight: 0.9 } });
+    d.noteAttention(60 * 60000, 'wealth');   // an hour of neglect: full claim
+
+    d.update(1000, { safety: 1.0, food: 1.0, wealth: 1.0 });
+    const calm = d.effectiveUrgency('legacy');
+    assert.ok(calm > d.urgency('legacy'), 'when all is well, neglect still earns its claim');
+
+    // 0.4 is what sensors.js reports with a hostile within 16 blocks.
+    d.update(1000, { safety: 0.4, food: 1.0, wealth: 1.0 });
+    assert.equal(d.effectiveUrgency('legacy'), d.urgency('legacy'),
+        'but a pressing need suspends the claim entirely');
+    assert.ok(d.effectiveUrgency('safety') > d.effectiveUrgency('legacy'),
+        'so safety outranks ambition with a hostile nearby — the run had this backwards');
+});
+
+// Where the gate sits is a design decision, not an accident, so it is pinned.
+// These are the actual outputs of sensors.js, and the boundary is deliberate:
+// half health with nothing attacking you is a fine time to build.
+test('the needs gate fires on real danger, not on any imperfection', () => {
+    const d = new DriveState();
+    const gated = (levels) => {
+        d.update(1000, { safety: 1, food: 1, wealth: 1, ...levels });
+        return d.needsArePressing();
+    };
+    assert.equal(gated({ safety: 0.3 }), true, 'damaged in the last 10s');
+    assert.equal(gated({ safety: 0.4 }), true, 'hostile within 16 blocks');
+    assert.equal(gated({ safety: 0.05 }), true, 'at 1 HP, as Greta was');
+    assert.equal(gated({ food: 0.34 }), true, 'hunger at 9/20');
+    assert.equal(gated({ safety: 0.5 }), false, 'half health, nothing attacking');
+    assert.equal(gated({ wealth: 0 }), false, 'owning nothing is not an emergency');
+});
+
+test('one aspiration cannot suppress another', () => {
+    const d = new DriveState({ legacy: { weight: 0.9 }, glory: { weight: 0.9, aspiration: true, initial_level: 0 } });
+    d.noteAttention(60 * 60000, 'wealth');
+    d.update(1000, { safety: 1.0, food: 1.0, wealth: 1.0 });
+    assert.ok(d.effectiveUrgency('legacy') > d.urgency('legacy'),
+        'an urgent aspiration is not a "need" and must not gate other aspirations');
+});

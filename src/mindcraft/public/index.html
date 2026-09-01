@@ -706,6 +706,17 @@
             const hue = window.hueFor(agent.name);
             const lastMessage = escapeHtml(agentLastMessage[agent.name] || '');
             const invOpen = inventoryOpen[agent.name] === true;
+            // Say what is actually true. An agent stuck pre-spawn used to show
+            // "waiting for first report…" indefinitely, which reads like a slow
+            // start rather than a bot that never got into the world.
+            function initialActivity(a) {
+                const mins = a.since ? Math.floor((Date.now() - a.since) / 60000) : 0;
+                const forTime = mins >= 1 ? ` for ${mins < 60 ? mins + 'm' : Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm'}` : '';
+                if (a.in_game) return 'waiting for first report…';
+                if (a.socket_connected)
+                    return `connected to the server but not in the world${forTime} — check the Minecraft server is reachable`;
+                return `not running${forTime}`;
+            }
             const live = agent.in_game;
             const joining = agent.socket_connected && !agent.in_game;
             const stateCls = live ? 'is-online' : (joining ? 'is-joining' : 'is-offline');
@@ -746,7 +757,7 @@
 
                 <div class="agent-activity" id="activity-${n}" data-kind="idle">
                     <span class="dot"></span>
-                    <span class="txt" id="action-${n}">waiting for first report…</span>
+                    <span class="txt" id="action-${n}">${escapeHtml(initialActivity(agent))}</span>
                 </div>
 
                 ${viewerHTML}

@@ -3,6 +3,7 @@ import { AgentProcess } from '../process/agent_process.js';
 import { getServer } from './mcserver.js';
 import { validateNameFormat } from '../agent/connection_handler.js';
 import open from 'open';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 
 let mindserver;
 let connected = false;
@@ -29,6 +30,41 @@ export async function init(host_public=false, port=8080, auto_open_ui=true) {
             }
         }, 3000);
     }
+}
+
+
+// Which agents the operator actually wants running.
+//
+// Auto-restart is right for a crash and wrong for a deliberate restart: after
+// `systemctl restart` every agent rejoins the world whether or not you wanted
+// it to. The distinction that matters is INTENT, not process state, so it is
+// recorded when you stop an agent and consulted on boot. A crashed agent is
+// still "running" and comes back; one you stopped stays stopped.
+const INTENT_FILE = './bots/.agent_intent.json';
+
+function loadIntent() {
+    try {
+        return JSON.parse(readFileSync(INTENT_FILE, 'utf8'));
+    } catch {
+        return {};                     // absent or unreadable: default to running
+    }
+}
+
+function setIntent(agentName, state) {
+    try {
+        const all = loadIntent();
+        all[agentName] = state;
+        mkdirSync('./bots', { recursive: true });
+        writeFileSync(INTENT_FILE, JSON.stringify(all, null, 2));
+    } catch (err) {
+        // Never let bookkeeping stop an agent from starting or stopping.
+        console.warn(`Could not record intent for ${agentName}:`, err.message || err);
+    }
+}
+
+// Exported so main.js can report what it is deliberately skipping.
+export function wantsToRun(agentName) {
+    return loadIntent()[agentName] !== 'stopped';
 }
 
 export async function createAgent(settings) {
@@ -77,8 +113,18 @@ export async function createAgent(settings) {
         }
 
         const agentProcess = new AgentProcess(agent_name, mindserver_port);
-        agentProcess.start(load_memory, init_message, agentIndex);
         agent_processes[settings.profile.name] = agentProcess;
+        // Registered either way, so it appears in the dashboard with a Start
+        // button rather than vanishing.
+        const autostart = settings.autostart_agents !== false;
+        if (autostart && wantsToRun(agent_name)) {
+            agentProcess.start(load_memory, init_message, agentIndex);
+        } else {
+            agentProcess.pending_start = { load_memory, init_message, agentIndex };
+            console.log(`${agent_name}: registered but not started `
+                + `(${autostart ? 'stopped by you previously' : 'autostart_agents is off'}). `
+                + `Start it from the dashboard.`);
+        }
     } catch (error) {
         console.error(`Error creating agent ${agent_name}:`, error);
         destroyAgent(agent_name);
@@ -99,7 +145,17 @@ export function getAgentProcess(agentName) {
 
 export function startAgent(agentName) {
     if (agent_processes[agentName]) {
-        agent_processes[agentName].forceRestart();
+        setIntent(agentName, 'running');
+        const p = agent_processes[agentName];
+        // First start after boot-with-autostart-off: the process was never
+        // spawned, so there is nothing to restart.
+        if (p.pending_start) {
+            const { load_memory, init_message, agentIndex } = p.pending_start;
+            p.pending_start = null;
+            p.start(load_memory, init_message, agentIndex);
+        } else {
+            p.forceRestart();
+        }
     }
     else {
         console.error(`Cannot start agent ${agentName}; not found`);
@@ -108,6 +164,7 @@ export function startAgent(agentName) {
 
 export function stopAgent(agentName) {
     if (agent_processes[agentName]) {
+        setIntent(agentName, 'stopped');
         agent_processes[agentName].stop();
     }
 }

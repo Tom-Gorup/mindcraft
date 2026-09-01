@@ -28,13 +28,21 @@
         "type": "string",
         "description": "The authentication method to use",
         "default": "offline",
-        "options": ["offline", "microsoft"]
+        "options": [
+            "offline",
+            "microsoft"
+        ]
     },
     "base_profile": {
         "type": "string",
         "description": "Allowed values: survival, assistant, creative, god_mode. Each has fine tuned settings for different game modes.",
         "default": "assistant",
-        "options": ["survival", "assistant", "creative", "god_mode"]
+        "options": [
+            "survival",
+            "assistant",
+            "creative",
+            "god_mode"
+        ]
     },
     "load_memory": {
         "type": "boolean",
@@ -89,7 +97,12 @@
     "blocked_actions": {
         "type": "array",
         "description": "List of actions that are blocked",
-        "default": ["!checkBlueprint", "!checkBlueprintLevel", "!getBlueprint", "!getBlueprintLevel"]
+        "default": [
+            "!checkBlueprint",
+            "!checkBlueprintLevel",
+            "!getBlueprint",
+            "!getBlueprintLevel"
+        ]
     },
     "relevant_docs_count": {
         "type": "number",
@@ -130,7 +143,11 @@
         "type": "string",
         "description": "Whether to show \"full\" command syntax, \"shortened\" command syntax, or \"none\"",
         "default": "full",
-        "options": ["full", "shortened", "none"]
+        "options": [
+            "full",
+            "shortened",
+            "none"
+        ]
     },
     "chat_ingame": {
         "type": "boolean",
@@ -166,5 +183,10 @@
         "type": "number",
         "description": "Number of seconds allowed for the bot to spawn before throwing an error. Increase when spawning takes a while.",
         "default": 30
+    },
+    "autostart_agents": {
+        "type": "boolean",
+        "default": true,
+        "description": "Start agents automatically when the server boots. Leave on: a crashed agent should come back. Agents you stop from the dashboard are recorded as deliberately stopped and stay down across restarts either way."
     }
 }

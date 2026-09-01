@@ -259,14 +259,31 @@
                 "type": "number",
                 "min": 0,
                 "max": 1,
-                "default": 0.45,
-                "description": "How much urgency a fully-neglected aspiration can add to itself. 0 disables aspirations entirely \u2014 they would never win."
+                "step": 0.05,
+                "default": 0.3,
+                "description": "How much urgency a fully-neglected aspiration can add to its own. Higher means a more single-minded agent; 0 means aspirations only ever win on raw urgency."
             },
             "neglect_full_ms": {
                 "type": "number",
                 "min": 60000,
                 "default": 1500000,
                 "description": "How long being passed over takes to earn the full bonus (ms). Lower makes an agent more restless about its ambitions."
+            },
+            "needs_gate": {
+                "type": "number",
+                "min": 0,
+                "max": 1,
+                "step": 0.05,
+                "default": 0.55,
+                "description": "Need urgency above which ambition waits. An aspiration keeps its raw urgency but forfeits the claim it earned by being neglected, so hunger and danger can interrupt a long-running project."
+            },
+            "alarm_half_life_ms": {
+                "type": "number",
+                "min": 0,
+                "max": 1800000,
+                "step": 30000,
+                "default": 240000,
+                "description": "How long the memory of dying keeps safety urgent. Respawning restores full health, so without this the drive system forgets the death immediately."
             }
         }
     },
