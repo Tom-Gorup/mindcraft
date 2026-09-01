@@ -499,6 +499,8 @@ export function createMindServer(host_public = false, port = 8080) {
     });
     server.listen(port, host, () => {
         console.log(`MindServer running on port ${port} on host ${host}`);
+        // independent of any browser being connected
+        startTrendSampling();
     });
 
     return server;
@@ -523,6 +525,48 @@ function agentsStatusUpdate(socket) {
 }
 
 
+// Poll every in-game agent for its full state, concurrently.
+function pollAgentStates() {
+    const names = Object.keys(agent_connections)
+        .filter(n => agent_connections[n].in_game && agent_connections[n].socket);
+    return Promise.all(names.map(agentName => {
+        const agent = agent_connections[agentName];
+        // .timeout() lets socket.io release the ack callback itself; a bare
+        // emit with a callback retains it forever when the agent never answers.
+        return new Promise((resolve) => {
+            try {
+                agent.socket.timeout(800).emit('get-full-state', (err, s) => resolve(err ? null : s));
+            } catch (e) {
+                resolve({ error: String(e) });
+            }
+        }).then(state => [agentName, state]);
+    })).then(entries => {
+        const states = {};
+        for (const [name, state] of entries)
+            if (state) states[name] = state;
+        return states;
+    });
+}
+
+// Trend history must accrue whether or not anyone is watching. It used to be
+// sampled inside the dashboard's 1Hz poll, which only exists while a browser
+// has the page open — so closing the tab silently stopped recording, and
+// "last 24 hours" showed only the minutes you happened to be looking.
+let trendInterval = null;
+let trend_polling = false;
+export function startTrendSampling() {
+    if (trendInterval) return;
+    trendInterval = setInterval(() => {
+        if (trend_polling) return;
+        trend_polling = true;
+        pollAgentStates()
+            .then(sampleTrends)
+            .catch(err => console.error('Trend poll failed:', err?.message || err))
+            .finally(() => { trend_polling = false; });
+    }, TREND_SAMPLE_MS);
+    trendInterval.unref?.();
+}
+
 let listenerInterval = null;
 function addListener(listener_socket) {
     if (agent_listeners.includes(listener_socket)) return;   // idempotent
@@ -531,28 +575,12 @@ function addListener(listener_socket) {
         let polling = false;
         listenerInterval = setInterval(() => {
             // Skip rather than queue: a slow round must not let ticks overlap
-            // and pile up. Agents are polled concurrently, so the tick costs
-            // the slowest agent, not the sum of all of them.
+            // and pile up.
             if (polling) return;
             polling = true;
-            const names = Object.keys(agent_connections)
-                .filter(n => agent_connections[n].in_game && agent_connections[n].socket);
-            Promise.all(names.map(agentName => {
-                const agent = agent_connections[agentName];
-                // .timeout() lets socket.io release the ack callback itself;
-                // a bare emit with a callback retains it forever when the
-                // agent never answers.
-                return new Promise((resolve) => {
-                    try {
-                        agent.socket.timeout(800).emit('get-full-state', (err, s) => resolve(err ? null : s));
-                    } catch (e) {
-                        resolve({ error: String(e) });
-                    }
-                }).then(state => [agentName, state]);
-            })).then(entries => {
-                const states = {};
-                for (const [name, state] of entries)
-                    if (state) states[name] = state;
+            pollAgentStates().then(states => {
+                // sampleTrends throttles on TREND_SAMPLE_MS, so sharing this
+                // faster poll with the independent one costs nothing.
                 sampleTrends(states);
                 for (let listener of agent_listeners)
                     listener.emit('state-update', states);
