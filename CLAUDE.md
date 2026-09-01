@@ -128,6 +128,13 @@ use `host.docker.internal` on Mac/Windows).
 7. **Watchability & controllability** — dashboard shows each agent's drive, goal, plan step, last thought, relationships; later a director camera. The mindserver app at :8080 is the *primary control surface*: any new config (settings flag, profile key, tuning knob) ships with UI support in the same phase, and a user can create and fully configure an agent in the browser without touching JSON on disk.
 8. **Research lab** — behavioral traces are a first-class product: typed events (deliberate speech vs auto-narration vs commands-by-kind vs deaths vs sessions vs goal/plan lifecycle) feed live and historical reports, scoped by agent/time/world/run, with named comparable runs and multi-world support. `tools/trace.py` is the offline reference implementation; if a behavior only appears in console logs, it doesn't exist to research.
 
+9. **Ambition** — agents that want to make something, and can make something nobody
+   specified. Aspiration drives that press over hours, projects whose state outlives a
+   goal, blueprints the agent derives rather than ones we author, skills it composes,
+   and taste formed by judging its own work. See ROADMAP Phase 9. **The trap to avoid
+   is shipping a blueprint library and calling it creativity**: if we author
+   `castle.json`, the agent built our castle.
+
 Emergent over scripted, always. Target 2–4 agents now, 10+ as a config change.
 
 ## Working agreements

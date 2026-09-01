@@ -6,6 +6,14 @@
 (function () {
     'use strict';
 
+    // Kept in sync with src/models/cache.js. Everything before this marker is
+    // sent as a cacheable block; everything after is per-call.
+    const CACHE_MARKER = '\n<<<CACHE_BOUNDARY>>>\n';
+    // The placeholders that change on every call. The boundary belongs
+    // immediately before whichever appears first.
+    const VOLATILE = ['$EXAMPLES', '$SELF_PROMPT', '$MEMORY', '$SOCIAL', '$STATS',
+        '$INVENTORY', '$TO_SUMMARIZE', '$RELEVANT_MEMORIES'];
+
     // `socket` is created by the page's main script; reach it off window so
     // this module has no implicit global dependency.
     const sock = () => window.socket;
@@ -64,7 +72,17 @@
             const attrs = [def.min !== undefined ? `min="${esc(def.min)}"` : '', def.max !== undefined ? `max="${esc(def.max)}"` : '', def.step !== undefined ? `step="${esc(def.step)}"` : ''].join(' ');
             input = `<input type="number" id="${id}" data-path="${esc(path)}" data-type="number" ${attrs} value="${esc(value ?? '')}" placeholder="${esc(def.default ?? '')}">`;
         } else if (def.type === 'prompt') {
-            input = `<textarea id="${id}" data-path="${esc(path)}" data-type="string" rows="4">${esc(value ?? '')}</textarea>`;
+            // Prompt caching is a checkbox, not a marker the user has to type.
+            // The boundary has to sit in the right PLACE — after the static
+            // persona and command docs, before the first per-call placeholder —
+            // and getting that wrong silently costs money rather than breaking,
+            // so it is not something to leave to hand-editing.
+            const cached = typeof value === 'string' && value.includes(CACHE_MARKER);
+            input = `<textarea id="${id}" data-path="${esc(path)}" data-type="string" rows="4">${esc(value ?? '')}</textarea>`
+                + `<label class="pf-cache"><input type="checkbox" id="${id}-cache" data-cache-for="${id}"`
+                + `${cached ? ' checked' : ''} onchange="pfToggleCache('${id}')">`
+                + ` Cache the static part of this prompt`
+                + `<span class="pf-cache-hint" id="${id}-cache-hint"></span></label>`;
         } else if (def.type === 'model') {
             const shown = (value && typeof value === 'object') ? JSON.stringify(value) : (value ?? '');
             input = `<input type="text" id="${id}" data-path="${esc(path)}" data-type="model" value="${esc(shown)}" placeholder="${esc(def.default ?? 'provider/model')}">`;
@@ -153,6 +171,55 @@
         }
         return edited;
     }
+
+    // Insert or remove the boundary for a template, positioning it correctly.
+    window.pfToggleCache = function (id) {
+        const ta = document.getElementById(id);
+        const box = document.getElementById(id + '-cache');
+        if (!ta || !box) return;
+        let text = ta.value.split(CACHE_MARKER).join('\n');   // always normalise first
+        if (box.checked) {
+            // first volatile placeholder marks where the per-call content starts
+            let at = -1;
+            for (const v of VOLATILE) {
+                const i = text.indexOf(v);
+                if (i !== -1 && (at === -1 || i < at)) at = i;
+            }
+            if (at === -1) {
+                box.checked = false;
+                pfCacheHint(id, 'no per-call placeholder found — nothing to cache before', true);
+                return;
+            }
+            text = text.slice(0, at) + CACHE_MARKER + text.slice(at);
+        }
+        ta.value = text;
+        pfCacheHint(id);
+    };
+
+    // Say whether the prefix is actually big enough to cache. Below the model's
+    // floor a breakpoint is silently ignored: no error, no hit, and the
+    // cache-write premium charged anyway.
+    function pfCacheHint(id, override, isError) {
+        const el = document.getElementById(id + '-cache-hint');
+        const ta = document.getElementById(id);
+        if (!el || !ta) return;
+        if (override) {
+            el.textContent = ' — ' + override;
+            el.classList.toggle('bad', !!isError);
+            return;
+        }
+        const i = ta.value.indexOf(CACHE_MARKER.trim());
+        if (i === -1) { el.textContent = ''; return; }
+        // $COMMAND_DOCS and $STATIC_EXAMPLES expand to a few thousand tokens at
+        // render time, so a raw character count badly understates the prefix.
+        const raw = Math.round(ta.value.slice(0, i).length / 3.5);
+        const expands = (ta.value.slice(0, i).match(/\$COMMAND_DOCS|\$STATIC_EXAMPLES/g) || []).length;
+        el.classList.remove('bad');
+        el.textContent = expands
+            ? ` — ~${raw} tokens plus expansions; verify with tools/count_prompt_tokens.mjs`
+            : ` — ~${raw} tokens (Haiku needs 4096, Sonnet 1024)`;
+    }
+    window.pfCacheHint = pfCacheHint;
 
     window.openProfileEditor = function (name) {
         agentName = name;

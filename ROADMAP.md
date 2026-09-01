@@ -340,6 +340,109 @@ reads. Agreement is structural, not coincidental — and trace.py now sees the i
 
 ---
 
+## Phase 9 — Ambition: projects, invention, and taste
+
+**Goal:** agents that want to make something, and can make something nobody
+specified. Survival is a floor, not a purpose.
+
+**Why the current system cannot do this, structurally.** The arbiter picks the
+most urgent drive; a goal dies when that drive eases or after 12 minutes.
+Nothing represents a *project*: a thing with a design, a materials bill, and
+progress that outlives any single goal. A castle serves none of safety, food,
+wealth, curiosity or social strongly, so it would never be chosen — and if it
+were, the first zombie would preempt it. This is not a prompting problem and no
+amount of prompt tuning fixes it.
+
+**The thing to avoid.** Shipping a library of blueprints and calling it
+creativity. If we author `castle.json`, the agent has built our castle. The
+interesting result is a structure we did not design, made of skills the agent
+composed, because it wanted to.
+
+### The pieces
+
+**1. Aspiration drives — long-horizon needs that a single action cannot satisfy.**
+Custom drives already work (a profile may name a drive absent from
+DEFAULT_DRIVES), so this is mostly design, not plumbing. Candidates: `legacy`
+(leave something permanent), `mastery` (get better at a thing), `beauty` (make
+it good, not just functional). These decay slowly — over hours — so they press
+persistently without ever spiking, which is exactly the shape "ambition" has and
+"hunger" does not.
+- [ ] Aspiration drives with slow decay and a satisfaction source that is a
+      *judgement about the world* ("does something I made still stand?") rather
+      than a sensor reading.
+- [ ] The arbiter must let a low-urgency-but-persistent drive win sometimes.
+      Today the most urgent always wins, so a slow drive is starved forever by
+      the churn of hunger and safety. Possibly an accumulated-neglect term.
+
+**2. Projects — state that outlives a goal.**
+- [ ] A project record: intent, design, materials ledger, site, progress,
+      persisted per agent. Goals become *steps toward* a project rather than the
+      unit of ambition.
+- [ ] The arbiter can resume an existing project instead of generating a new
+      goal, so being interrupted by nightfall is a pause and not an abandonment.
+- [ ] Projects survive restarts. Wilbur already resumes a goal from
+      cognition.json; this is the same idea one level up.
+
+**3. Invented blueprints — the agent designs, we do not.**
+The existing `npc/build_goal.js` places blocks from authored JSON and is
+completely disconnected from cognition. Reuse the *executor*, not the content.
+- [ ] The agent derives a structure spec from intent plus what it knows
+      (materials it has, ground it stands on) and writes it to its own blueprint
+      store — a learned artifact, like a learned skill.
+- [ ] Blueprints are revisable. A build that failed, or that the agent judged
+      poor, produces a changed spec rather than a repeat.
+- [ ] Blueprints compose: a tower plus a wall plus a gate is a keep. This is the
+      Voyager idea applied to structures instead of code.
+
+**4. Composition over instruction.**
+Phase 3's skill library already saves successful programs with embeddings and
+supports composition with cycle and depth guards, and it has never been switched
+on in a live run. A castle is `buildWall` called forty times with different
+arguments — the primitive is learnable, the composition is where the surprise
+lives.
+- [ ] Turn on `use_skill_library` in the container and see whether composition
+      actually happens under a real workload.
+- [ ] Skills learned in service of a project get recorded against it, so
+      "how did it learn to do that" is answerable afterwards.
+
+**5. Taste — the hard part, and the one that makes it not-a-script.**
+An agent that cannot tell good work from bad can only ever execute. Reflection
+already turns events into beliefs; the same machinery pointed at artifacts
+instead of episodes gives critique.
+- [ ] After a build, the agent inspects what it made and forms a belief about
+      it. "The roof leaks light and mobs spawned inside" is a design lesson, and
+      it should change the next blueprint.
+- [ ] Aspiration is partly satisfied by *judged quality*, not just completion —
+      otherwise the optimal strategy is a 1x1 dirt tower.
+
+### Done when
+
+- [ ] An agent, unprompted, starts a multi-hour project and finishes it across
+      several sessions and at least one restart.
+- [ ] The structure was not authored by us: its spec exists only in the agent's
+      blueprint store, and its build used at least one composed learned skill.
+- [ ] A second attempt at a similar structure is measurably different because of
+      a belief formed from the first.
+- [ ] Two agents with different drive weights produce visibly different work
+      from the same starting conditions. Greta hoards and fortifies; Wilbur
+      explores and decorates.
+- [ ] Tom looks at something and did not expect it.
+
+### Honest risks
+
+- **Cost.** A castle is thousands of actions. At tonight's ~$0.20/hr for two
+  agents a multi-day project is affordable; at the pre-tuning $118/day it would
+  not have been. This phase depends on the local-model work landing.
+- **Spatial reasoning.** LLMs are weak at 3D coordinates. The blueprint layer
+  may need to give structure (grids, relative placement, symmetry primitives)
+  rather than asking the model to emit coordinates directly.
+- **Credit assignment over hours.** Reflection currently sees an event stream.
+  Judging "was this project good" spans far more context than fits in a prompt,
+  and will need summarisation the memory layer does not do yet.
+- **The scripted-emergence trap.** Every piece here can be implemented in a way
+  that produces exactly what we designed. The test in "done when" is deliberately
+  written so that passing it requires surprise.
+
 ## Later / parking lot
 
 ### Settings changed in the app do not survive a cold start (found 2026-08-31, first live run)
