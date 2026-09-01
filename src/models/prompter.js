@@ -168,11 +168,21 @@ export class Prompter {
         try {
             this.convo_examples = new Examples(this.embedding_model, settings.num_examples);
             this.coding_examples = new Examples(this.embedding_model, settings.num_examples);
-            
-            // Wait for both examples to load before proceeding
+
+            // Only embed the example sets a template actually retrieves from.
+            // `conversing` now renders every example statically into the cached
+            // prefix ($STATIC_EXAMPLES) rather than picking the closest few, so
+            // embedding its 29 examples is pure cost — and it BLOCKS agent
+            // startup, which on a CPU-only Ollama is seconds per agent.
+            const usesRetrieval = (tpl) => typeof tpl === 'string' && tpl.includes('$EXAMPLES');
+            const need_convo = usesRetrieval(this.profile.conversing);
+            const need_coding = usesRetrieval(this.profile.coding) && settings.allow_insecure_coding;
+            if (!need_convo && !need_coding)
+                console.log('Examples: no template retrieves examples; skipping embedding at boot.');
+
             await Promise.all([
-                this.convo_examples.load(this.profile.conversation_examples),
-                this.coding_examples.load(this.profile.coding_examples),
+                need_convo ? this.convo_examples.load(this.profile.conversation_examples) : Promise.resolve(),
+                need_coding ? this.coding_examples.load(this.profile.coding_examples) : Promise.resolve(),
                 this.skill_libary.initSkillLibrary()
             ]).catch(error => {
                 // Preserve error details
