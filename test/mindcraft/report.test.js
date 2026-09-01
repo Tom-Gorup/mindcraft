@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReport, filterEvents, categoryOf, commandKind, interactionMatrix, timeline } from '../../src/mindcraft/report.js';
+import { buildReport, filterEvents, categoryOf, commandKind, interactionMatrix, timeline, parseGoalContent, goalOutcomes } from '../../src/mindcraft/report.js';
 
 const T0 = 1_700_000_000_000;
 function ev(agent, type, dt, extra = {}) {
@@ -131,4 +131,57 @@ test('an empty or fully-filtered-out set produces a valid empty report', () => {
 test('malformed events are filtered rather than crashing the report', () => {
     const r = buildReport([...SAMPLE, null, {}, { agent: 'X' }, { ts: 'nope', agent: 'Y' }]);
     assert.equal(r.totals.events, 10);
+});
+
+// ---- why goals ended ----
+//
+// A long autonomous run abandons far more goals than it completes; that is
+// expected. Which ones, and why, is the actual finding.
+
+const goalEv = (agent, type, content, data) => ({ agent, type, content, ts: 1, data });
+
+test('goal outcomes separate preemption from failure', () => {
+    const { goal_outcomes } = buildReport([
+        goalEv('Wilbur', 'goal_completed', 'Completed goal (food): eat', { drive: 'food', goal: 'eat' }),
+        goalEv('Wilbur', 'goal_abandoned', 'Abandoned goal (legacy): tower',
+            { drive: 'legacy', goal: 'tower', reason: 'step timed out after 3 retries' }),
+        goalEv('Wilbur', 'goal_abandoned', 'Set aside goal (legacy): tower',
+            { drive: 'legacy', goal: 'tower', preempted_by: 'food' }),
+    ]);
+    const w = goal_outcomes.Wilbur;
+    assert.equal(w.completed, 1);
+    assert.equal(w.abandoned, 2);
+    assert.ok(Math.abs(w.completion_rate - 1 / 3) < 0.01);
+    assert.equal(w.by_reason['step timeout'], 1, 'free-text reasons are normalized so they group');
+    assert.equal(w.by_reason['preempted by food'], 1, 'preemption is its own outcome, not a failure');
+    assert.deepEqual(w.preemptions, { legacy: { food: 1 } });
+    assert.deepEqual(w.by_drive.legacy, { completed: 0, abandoned: 2 });
+});
+
+// Archives written before the structured fields were allowlisted carry
+// everything in the prose. Runs are research data — old ones must stay readable.
+test('outcomes are recovered from content when no structured data exists', () => {
+    const { goal_outcomes } = buildReport([
+        goalEv('Greta', 'goal_abandoned', 'Abandoned goal (legacy): build a watchtower — step timed out'),
+        goalEv('Greta', 'goal_abandoned', 'Set aside goal (legacy): build a watchtower — food became more urgent'),
+        goalEv('Greta', 'goal_completed', 'Completed goal (food): eat cooked mutton'),
+    ]);
+    const g = goal_outcomes.Greta;
+    assert.deepEqual(g.by_drive.legacy, { completed: 0, abandoned: 2 });
+    assert.deepEqual(g.by_drive.food, { completed: 1, abandoned: 0 });
+    assert.equal(g.by_reason['step timeout'], 1);
+    assert.deepEqual(g.preemptions, { legacy: { food: 1 } });
+});
+
+test('a goal containing a dash is not mistaken for a reason', () => {
+    const p = parseGoalContent('Abandoned goal (legacy): build a tower — tall — step timed out');
+    assert.equal(p.goal, 'build a tower — tall', 'splits on the LAST separator');
+    assert.equal(p.reason, 'step timed out');
+});
+
+test('unparseable content degrades to unspecified rather than inventing a reason', () => {
+    assert.deepEqual(parseGoalContent('something else entirely'), {});
+    const { goal_outcomes } = buildReport([goalEv('X', 'goal_abandoned', 'something else entirely')]);
+    assert.equal(goal_outcomes.X.by_reason.unspecified, 1);
+    assert.deepEqual(goal_outcomes.X.by_drive, { unknown: { completed: 0, abandoned: 1 } });
 });

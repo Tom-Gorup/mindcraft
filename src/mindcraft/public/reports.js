@@ -83,6 +83,14 @@
                 ? '<button class="stop-btn" onclick="reportsStopRun()">Stop recording</button>'
                 : '<button class="start-btn" onclick="reportsStartRun()">Start a run</button>')
             + '<button class="neutral-btn" onclick="reportsRefresh()">Refresh</button>'
+            // Plain anchors: the browser downloads them directly, and they keep
+            // working if the socket has dropped.
+            + (scope.run
+                ? `<a class="neutral-btn" download href="/run/${encodeURIComponent(scope.run)}/report.json"`
+                  + ' data-tip="A self-contained JSON bundle: totals, per-agent breakdown, why goals ended, and every belief in full.">Download report</a>'
+                  + `<a class="neutral-btn" download href="/run/${encodeURIComponent(scope.run)}/events.jsonl"`
+                  + ' data-tip="The raw event stream — every event, unaggregated. Feeds tools/trace.py.">Download events</a>'
+                : '')
             + '</div>'
             + '<div class="rp-row">'
             + '<label for="rpWorld">World</label>'
@@ -187,6 +195,43 @@
             + (blocks || '<p class="rp-dim">No agents in scope.</p>') + '</div>';
     }
 
+    // Why goals ended.
+    //
+    // "94% abandoned" is a fact about the run; the reasons are the fact about
+    // the design. Preemption is separated from failure because they have
+    // different fixes: preemption means the arbiter is thrashing, failure means
+    // execution is losing.
+    function renderGoals(rep) {
+        const entries = Object.entries(rep.goal_outcomes || {});
+        if (!entries.length) return '';
+        const blocks = entries.map(([agent, rec]) => {
+            const attempted = rec.completed + rec.abandoned;
+            if (!attempted) return '';
+            const pct = Math.round(rec.completion_rate * 100);
+            const reasons = Object.entries(rec.by_reason).sort((a, b) => b[1] - a[1]);
+            const worst = reasons.length ? reasons[0][1] : 1;
+            const rows = reasons.map(([reason, n]) =>
+                '<tr><td>' + esc(reason) + '</td><td class="num">' + n + '</td>'
+                + '<td class="rp-barcell"><span class="rp-bar" style="width:'
+                + Math.round((n / worst) * 100) + '%"></span></td></tr>').join('');
+            const preempt = Object.entries(rec.preemptions).flatMap(([drive, by]) =>
+                Object.entries(by).map(([winner, n]) =>
+                    esc(winner) + ' interrupted ' + esc(drive) + ' &times;' + n));
+            return '<div class="rp-goal-block">'
+                + '<div class="rp-goal-head"><strong>' + esc(agent) + '</strong>'
+                + '<span class="rp-dim">' + rec.completed + ' completed &middot; '
+                + rec.abandoned + ' abandoned &middot; ' + pct + '% completion</span></div>'
+                + '<div class="rp-table-wrap"><table class="rp-table">'
+                + '<thead><tr><th>why it ended</th><th class="num">n</th><th></th></tr></thead>'
+                + '<tbody>' + rows + '</tbody></table></div>'
+                + (preempt.length ? '<p class="rp-note">' + preempt.join(' &middot; ') + '</p>' : '')
+                + '</div>';
+        }).join('');
+        if (!blocks) return '';
+        return '<div class="sim-section"><div class="heading">Why goals ended</div>'
+            + '<div class="rp-goals">' + blocks + '</div></div>';
+    }
+
     function renderResources(rep) {
         const rows = Object.entries(rep.resources || {}).flatMap(([agent, items]) =>
             Object.entries(items).sort((a, b) => b[1] - a[1]).slice(0, 8)
@@ -222,6 +267,7 @@
             + renderTimeline(report.timeline)
             + renderAgents(report)
             + renderMatrix(report)
+            + renderGoals(report)
             + renderResources(report)
             + renderBeliefs(report);
         if (report._export_path)

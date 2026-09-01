@@ -150,6 +150,12 @@ export function sendEventToServer(agentName, event) {
             item: typeof d.item === 'string' ? d.item.substring(0, 40) : undefined,
             qty: Number.isFinite(d.qty) ? d.qty : undefined,
             drive: typeof d.drive === 'string' ? d.drive.substring(0, 24) : undefined,
+            // Why a goal ended. Without these the report can count abandonments
+            // but not explain them, which is the only question worth asking of
+            // a long run: 100 dead goals is normal, WHICH 100 is the finding.
+            goal: typeof d.goal === 'string' ? d.goal.substring(0, 200) : undefined,
+            reason: typeof d.reason === 'string' ? d.reason.substring(0, 200) : undefined,
+            preempted_by: typeof d.preempted_by === 'string' ? d.preempted_by.substring(0, 24) : undefined,
         } : undefined;
         serverProxy.getSocket()?.emit('agent-event', {
             agent: agentName,

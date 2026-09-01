@@ -156,6 +156,101 @@ export function believedVsObserved(events) {
     return out;
 }
 
+// Why goals die.
+//
+// A run that completes 5 goals and abandons 100 is the normal case for a
+// long autonomous run, and counting the two tells you nothing about which
+// 100. The events already carry drive, reason and preempted_by; this groups
+// them so "the agent got stuck" becomes a specific claim about what stopped it.
+//
+// Three questions, because they have three different fixes:
+//   · which reasons recur          → the execution layer is failing
+//   · which drive interrupts which → the arbiter is thrashing
+//   · which drives never finish    → those goals are unreachable as written
+export function goalOutcomes(events) {
+    const out = Object.create(null);
+    const agent = (name) => (out[name] ||= {
+        completed: 0, abandoned: 0,
+        by_reason: {}, by_drive: {}, preemptions: {},
+        completed_goals: [], abandoned_goals: [],
+    });
+
+    for (const ev of events) {
+        if (ev.type !== 'goal_completed' && ev.type !== 'goal_abandoned') continue;
+        const a = agent(ev.agent);
+        const parsed = parseGoalContent(ev.content);
+        const drive = ev.data?.drive ?? parsed.drive ?? 'unknown';
+        a.by_drive[drive] ||= { completed: 0, abandoned: 0 };
+
+        if (ev.type === 'goal_completed') {
+            a.completed++;
+            a.by_drive[drive].completed++;
+            a.completed_goals.push({ ts: ev.ts, drive, goal: ev.data?.goal ?? parsed.goal ?? null });
+            continue;
+        }
+
+        a.abandoned++;
+        a.by_drive[drive].abandoned++;
+        // A preemption is a distinct outcome from a failure: the goal was not
+        // beaten by the world, it was outvoted. Conflating them hides arbiter
+        // thrash inside what looks like an execution problem.
+        const by = ev.data?.preempted_by ?? parsed.preempted_by;
+        const reason = by ? `preempted by ${by}` : normalizeReason(ev.data?.reason ?? parsed.reason);
+        a.by_reason[reason] = (a.by_reason[reason] || 0) + 1;
+        if (by) {
+            a.preemptions[drive] ||= {};
+            a.preemptions[drive][by] = (a.preemptions[drive][by] || 0) + 1;
+        }
+        a.abandoned_goals.push({ ts: ev.ts, drive, goal: ev.data?.goal ?? parsed.goal ?? null, reason });
+    }
+
+    for (const a of Object.values(out)) {
+        const attempted = a.completed + a.abandoned;
+        a.completion_rate = attempted ? Number((a.completed / attempted).toFixed(3)) : 0;
+        // Keep the bundle hand-readable; the raw JSONL has every one of them.
+        a.completed_goals = a.completed_goals.slice(-25);
+        a.abandoned_goals = a.abandoned_goals.slice(-25);
+    }
+    return out;
+}
+
+// Recover drive/goal/reason from the event's prose.
+//
+// Archives written before the structured fields were allowlisted still carry
+// everything in `content` — "Abandoned goal (legacy): build a tower — step
+// timeout". Runs are research data that must stay comparable across code
+// changes, so old ones are parsed rather than written off.
+export function parseGoalContent(content) {
+    const text = String(content ?? '');
+    const m = /^(?:Completed|Abandoned|Dropped|Set aside) goal(?:\s*\(([^)]{1,40})\))?:\s*([\s\S]*)$/.exec(text);
+    if (!m) return {};
+    const out = { drive: m[1] || undefined };
+    const rest = m[2] ?? '';
+    // The goal text itself can contain a dash, so split on the LAST separator.
+    const sep = rest.lastIndexOf(' — ');
+    if (sep === -1) { out.goal = rest.trim() || undefined; return out; }
+    out.goal = rest.slice(0, sep).trim() || undefined;
+    const tail = rest.slice(sep + 3).trim();
+    const pre = /^(\S{1,24}) became more urgent$/.exec(tail);
+    if (pre) out.preempted_by = pre[1];
+    else out.reason = tail || undefined;
+    return out;
+}
+
+// Free-text reasons come from the monitor and the model, so they carry goal
+// names and counts that would shatter the grouping into singletons.
+export function normalizeReason(reason) {
+    const r = String(reason ?? '').toLowerCase().trim();
+    if (!r) return 'unspecified';
+    if (r.includes('timeout') || r.includes('timed out')) return 'step timeout';
+    if (r.includes('no longer') || r.includes('stale') || r.includes('warranted')) return 'no longer warranted';
+    if (r.includes('too many') || r.includes('retries') || r.includes('retry')) return 'retries exhausted';
+    if (r.includes('replan')) return 'replan failed';
+    if (r.includes('died') || r.includes('death')) return 'died';
+    if (r.includes('budget') || r.includes('too long')) return 'out of time';
+    return r.substring(0, 60);
+}
+
 // The full report.
 export function buildReport(all_events, scope = {}) {
     const events = filterEvents(all_events, scope).sort((a, b) => a.ts - b.ts);
@@ -223,5 +318,6 @@ export function buildReport(all_events, scope = {}) {
         sessions: sessions(events),
         timeline: timeline(events, scope.buckets ?? 60, span_from, span_to),
         believed_vs_observed: believedVsObserved(events),
+        goal_outcomes: goalOutcomes(events),
     };
 }

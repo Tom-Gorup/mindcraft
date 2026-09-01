@@ -4,7 +4,7 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as mindcraft from './mindcraft.js';
-import { readFileSync } from 'fs';
+import { readFileSync, createReadStream } from 'fs';
 import { RunRegistry } from './runs.js';
 import { buildReport } from './report.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -159,6 +159,72 @@ export function createMindServer(host_public = false, port = 8080) {
     // Serve static files
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
     app.use(express.static(path.join(__dirname, 'public')));
+
+    // ---- run downloads ----
+    //
+    // A report you can only look at is a report you cannot share or diff. These
+    // give a file: a self-contained JSON bundle for reading and comparing, and
+    // the raw JSONL that tools/trace.py consumes.
+    //
+    // Express percent-decodes route params AFTER matching, so the id must be
+    // validated in its DECODED form — this is exactly how ..%2F got through the
+    // asset route. Run ids come from slugify(): lowercase, digits, dashes.
+    const validRunId = (id) => /^[a-z0-9-]{1,80}$/.test(String(id ?? ''));
+
+    // A run the registry does not know is not a run, whatever is on disk.
+    const resolveRun = (req, res) => {
+        const id = String(req.params.id ?? '');
+        if (!validRunId(id)) { res.status(400).json({ error: 'invalid run id' }); return null; }
+        const run = runs.get(id);
+        if (!run) { res.status(404).json({ error: 'no such run' }); return null; }
+        return run;
+    };
+
+    app.get('/run/:id/report.json', (req, res) => {
+        const run = resolveRun(req, res);
+        if (!run) return;
+        try {
+            const events = runs.events(run.id);
+            const report = buildReport(events, { run: run.id });
+            // Beliefs in full: they are the reason to read the file at all, and
+            // buildReport keeps only counts.
+            const beliefs = events.filter(e => e.type === 'belief')
+                .map(e => ({ ts: e.ts, agent: e.agent, content: e.content }));
+            const bundle = {
+                format: 'mindcraft-run-report',
+                version: 1,
+                exported_at: Date.now(),
+                run,
+                report,
+                beliefs,
+                // Naming what is NOT here beats a reader inferring it is complete.
+                note: 'Aggregated view. The full event stream is at /run/<id>/events.jsonl.',
+            };
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${run.id}-report.json"`);
+            res.send(JSON.stringify(bundle, null, 2));
+        } catch (err) {
+            console.error('Report export failed:', err);
+            res.status(500).json({ error: String(err.message || err) });
+        }
+    });
+
+    app.get('/run/:id/events.jsonl', (req, res) => {
+        const run = resolveRun(req, res);
+        if (!run) return;
+        const fp = runs.exportPath(run.id);
+        if (!fp) { res.status(404).json({ error: 'no events file' }); return; }
+        res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${run.id}-events.jsonl"`);
+        // Streamed: a long run's archive is far too big to hold in memory twice.
+        const stream = createReadStream(fp, { encoding: 'utf-8' });
+        stream.on('error', (err) => {
+            console.error('Event export failed:', err.message || err);
+            if (!res.headersSent) res.status(500).json({ error: 'could not read events' });
+            else res.end();
+        });
+        stream.pipe(res);
+    });
 
     // Texture proxy: resolve item/block textures using minecraft-assets with version fallback
     app.get('/assets/item/:agent/:name.png', async (req, res) => {
