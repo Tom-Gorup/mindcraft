@@ -1,0 +1,70 @@
+# systemd unit for running mindcraft 24/7 on a homelab box.
+#
+#   sudo cp deploy/mindcraft.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mindcraft
+#   journalctl -u mindcraft -f          # live logs
+#
+# EDIT BEFORE USE: User, WorkingDirectory, and the node path in ExecStart.
+# Check the node path with `which node` — it differs under nvm, and systemd
+# does not read your shell profile, so a bare "node" will not resolve.
+#
+# The dashboard binds 127.0.0.1 and has NO authentication. Do not add a reverse
+# proxy or open the port to the LAN without putting auth in front of it: the
+# socket API can create and destroy agents, rewrite profiles, inject chat as any
+# player, and shut the whole thing down. Reach it over an SSH tunnel instead:
+#
+#   ssh -N -L 8080:localhost:8080 tgorup@mindcraft-server
+#   # then browse to http://localhost:8080 on your laptop
+
+[Unit]
+Description=Mindcraft agent simulation
+Documentation=https://github.com/Tom-Gorup/mindcraft
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tgorup
+Group=tgorup
+WorkingDirectory=/home/tgorup/mindcraft
+
+# `which node` — an nvm install lives under ~/.nvm/versions/node/vX/bin/node
+ExecStart=/usr/bin/node main.js
+
+# Agents are child processes; make sure they die with the parent rather than
+# being reparented to init and left holding Minecraft connections.
+KillMode=control-group
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+# SIGINT is what the agent's clean shutdown path listens for: it flushes
+# history, cognition state, learned skills and social state before exiting.
+# Do not change KillSignal to SIGKILL or a run's state is lost on every restart.
+
+Restart=on-failure
+RestartSec=10
+# Do not fight a persistent failure (bad API key, unreachable server) forever.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+Environment=NODE_ENV=production
+# Prefer keys.json (gitignored). If you would rather use the environment,
+# uncomment and use systemctl edit so the key is not world-readable here:
+# Environment=ANTHROPIC_API_KEY=...
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mindcraft
+
+# Modest hardening. Deliberately NOT using ProtectHome or a read-only root:
+# the agent writes bots/<name>/ and runs/ inside WorkingDirectory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

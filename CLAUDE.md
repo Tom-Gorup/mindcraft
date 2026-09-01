@@ -100,6 +100,9 @@ cp keys.example.json keys.json   # fill in whichever providers your profile name
 node main.js                     # or: node main.js --profiles ./andy.json
 ```
 Mindserver UI at http://localhost:8080 (set `auto_open_ui: false` on a headless box).
+For 24/7 on a server see `deploy/` — systemd unit plus why the dashboard must be reached
+over an SSH tunnel rather than bound to the LAN (it has no authentication and its socket
+API includes shutdown and agent destruction).
 Ollama at default `http://127.0.0.1:11434` — set `"model": "ollama/<model>"` and
 `"embedding": "ollama/embeddinggemma"` (must be pulled first). **Note the model after the
 slash is required** — a bare `"ollama"` resolves to a model literally named `ollama` and
