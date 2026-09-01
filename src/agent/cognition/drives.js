@@ -34,6 +34,21 @@ export const DEFAULT_DRIVES = {
         type: 'sensor',
         description: 'Accumulate valuable resources, tools, and equipment.',
     },
+    // ---- aspiration drives (Phase 9) ----
+    // These differ from the needs above in kind, not just in weight. A need
+    // spikes and is satisfied by one action; an aspiration presses gently for
+    // hours and is only satisfied by something that lasts. The slow decay is
+    // the point: it never wins on urgency alone, which is what the arbiter's
+    // neglect term is for.
+    legacy: {
+        weight: 0.7,
+        type: 'decay',
+        decay_per_min: 0.0015,   // ~11 hours from sated to fully unsatisfied
+        initial_level: 0.6,
+        aspiration: true,
+        description: 'Build something permanent and worth remembering. Satisfied by lasting work, '
+            + 'not by gathering or surviving. Never urgent, never absent.',
+    },
 };
 
 function clamp01(x) {
@@ -43,7 +58,12 @@ function clamp01(x) {
 export class DriveState {
     // config: optional per-drive overrides from the profile's "drives" block.
     // Unknown drive names are accepted as custom decay drives.
-    constructor(config = {}) {
+    constructor(config = {}, opts = {}) {
+        // How much a fully-neglected aspiration can add to its own urgency, and
+        // how long "fully neglected" takes. Defaults chosen so a legacy drive
+        // wins roughly twice an hour when nothing is on fire.
+        this.neglect_bonus_max = opts.neglect_bonus_max ?? 0.45;
+        this.neglect_full_ms = opts.neglect_full_ms ?? 25 * 60000;
         this.drives = {};
         const names = new Set([...Object.keys(DEFAULT_DRIVES), ...Object.keys(config)]);
         for (const name of names) {
@@ -52,6 +72,8 @@ export class DriveState {
             this.drives[name] = {
                 name,
                 weight: cfg.weight ?? def.weight ?? 0.5,
+                aspiration: cfg.aspiration ?? def.aspiration ?? false,
+                neglect_ms: 0,
                 type: cfg.type ?? def.type ?? 'decay',
                 decay_per_min: cfg.decay_per_min ?? def.decay_per_min ?? 0.01,
                 description: cfg.description ?? def.description ?? '',
@@ -89,6 +111,31 @@ export class DriveState {
         return d.weight * (1 - d.level);
     }
 
+    // Raw urgency plus a claim earned by being passed over. Without this a
+    // slow-decaying aspiration can never win: hunger and safety churn between
+    // 0.4 and 0.9 all day, and a drive sitting at 0.3 is starved forever no
+    // matter how long it waits. This is the mechanical difference between "a
+    // need I have" and "a thing I keep meaning to do".
+    effectiveUrgency(name) {
+        const d = this.drives[name];
+        if (!d) return 0;
+        const raw = this.urgency(name);
+        if (!this.neglect_bonus_max || !d.aspiration) return raw;
+        const share = Math.min(1, (d.neglect_ms || 0) / this.neglect_full_ms);
+        return raw + share * this.neglect_bonus_max;
+    }
+
+    // Called each tick with the drive currently being acted on (or null).
+    // Only aspirations accumulate neglect — a hunger you ignored is not a debt,
+    // it just gets hungrier, which the sensor already reflects.
+    noteAttention(delta_ms, current_name) {
+        for (const d of Object.values(this.drives)) {
+            if (!d.aspiration) continue;
+            if (d.name === current_name) d.neglect_ms = 0;
+            else d.neglect_ms = (d.neglect_ms || 0) + delta_ms;
+        }
+    }
+
     setCooldown(name, until_ts) {
         if (this.exists(name))
             this.drives[name].cooldown_until = until_ts;
@@ -99,7 +146,10 @@ export class DriveState {
         return Object.values(this.drives)
             .map(d => ({
                 name: d.name,
-                urgency: this.urgency(d.name),
+                urgency: this.effectiveUrgency(d.name),
+                raw_urgency: this.urgency(d.name),
+                aspiration: !!d.aspiration,
+                neglect_ms: d.neglect_ms || 0,
                 level: d.level,
                 weight: d.weight,
                 on_cooldown: d.cooldown_until > now,

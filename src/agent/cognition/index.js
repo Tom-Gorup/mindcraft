@@ -4,6 +4,7 @@ import convoManager from '../conversation.js';
 import { DriveState } from './drives.js';
 import { selectDrive } from './arbiter.js';
 import { ExecutionMonitor } from './monitor.js';
+import { ProjectStore } from './projects.js';
 import { Planner, formatPlan } from './planner.js';
 import { readSensors } from './sensors.js';
 import { Blackboard } from './blackboard.js';
@@ -24,7 +25,9 @@ export class CognitionLoop {
         const profile = agent.prompter.profile;
         const opts = profile.cognition || {};
 
-        this.drive_state = new DriveState(profile.drives || {});
+        this.drive_state = new DriveState(profile.drives || {}, opts);
+        // Phase 9: ambition that outlives a goal. Loaded from cognition.json.
+        this.projects = new ProjectStore({}, opts);
         this.monitor = new ExecutionMonitor(opts);
         this.planner = new Planner(agent);
 
@@ -255,10 +258,78 @@ export class CognitionLoop {
     _maybeStartGoal() {
         const now = Date.now();
         if (now - this.last_goal_attempt < this.goal_cooldown_ms) return;
-        const drive = selectDrive(this.drive_state.getUrgencies(now), null, this.arbiter_opts);
+        const urgencies = this.drive_state.getUrgencies(now);
+        const drive = selectDrive(urgencies, null, this.arbiter_opts);
         if (drive === null) return; // content — nothing urgent enough
         this.last_goal_attempt = now;
+
+        // An aspiration drive does not want a fresh goal, it wants its project
+        // advanced. This is the whole point of the projects layer: being
+        // interrupted by nightfall becomes a pause rather than an abandonment,
+        // because the next time legacy wins we pick up the next milestone
+        // instead of inventing something new.
+        const is_aspiration = urgencies.find(u => u.name === drive)?.aspiration;
+        if (is_aspiration) {
+            this._runPlan(() => this._advanceProject(drive));
+            return;
+        }
         this._runPlan(() => this._startGoal(drive));
+    }
+
+    // Either resume the active project or, if there is none, decide what this
+    // agent wants to be remembered for.
+    async _advanceProject(drive) {
+        let project = this.projects.active;
+
+        if (!project) {
+            this.last_thought = 'Thinking about what I want to leave behind...';
+            const proposal = await this.planner.proposeProject(drive, this._driveStateText());
+            if (!proposal) {
+                // same backoff as goal generation: a model that cannot emit the
+                // JSON will not start doing so, and this tier is billed
+                this.drive_state.setCooldown(drive, Date.now() + this.drive_cooldown_ms);
+                return;
+            }
+            project = this.projects.start(proposal.intent, proposal.milestones,
+                { drive, now: Date.now(), needed: proposal.materials });
+            this._safeRecordMemory('discovery',
+                `Decided on a project: ${project.intent}. Milestones: ${project.milestones.map(m => m.text).join('; ')}`,
+                { project: project.id, intent: project.intent });
+            console.log(`Cognition: new PROJECT (${drive}): ${project.intent}`);
+        }
+
+        const milestone = project.nextMilestone;
+        if (!milestone) return;   // finished between ticks
+
+        // The goal is the milestone, with the project as context. The step
+        // planner then breaks it down exactly as it would any other goal.
+        if (this.active !== null || !this._canAct()) return;
+        const steps = await this.planner.makePlan(
+            `${milestone.text} (part of your ongoing project: ${project.intent})`);
+        if (!steps) {
+            this.drive_state.setCooldown(drive, Date.now() + this.goal_cooldown_ms);
+            return;
+        }
+        if (this.active !== null || !this._canAct()) return;
+        this.active = {
+            drive, goal: milestone.text, reason: `Advancing my project: ${project.intent}`,
+            steps, step_index: 0,
+            urgency_at_start: this.drive_state.urgency(drive),
+            active_ms: 0,
+            project_id: project.id,          // links the goal back to the project
+            milestone: milestone.text,
+        };
+        this.notifyEvent('project milestone started');
+        this.monitor.reset();
+        this.monitor.startStep();
+        this.no_command_count = 0;
+        this.step_interrupt = false;
+        this.last_thought = `Working on my project: ${milestone.text}`;
+        this._safeRecordMemory('goal_started',
+            `Resumed project "${project.intent}" — milestone: ${milestone.text}. Plan: ${steps.join('; ')}`,
+            { drive, goal: milestone.text, project: project.id, steps });
+        console.log(`Cognition: project milestone (${drive}): ${milestone.text}`);
+        this.persist();
     }
 
     // Mid-goal arbitration: a drive that beats the current one by the
@@ -482,6 +553,19 @@ export class CognitionLoop {
         this._recordOutcome(active, 'completed', null);
         this.last_thought = `Completed: ${active.goal}`;
         console.log(`Cognition: goal complete (${active.drive}): ${active.goal}`);
+        // If this goal was a project milestone, the project advances with it.
+        if (active.project_id) {
+            const project = this.projects.active;
+            if (project && project.id === active.project_id && project.nextMilestone?.text === active.milestone) {
+                project.completeNextMilestone();
+                if (project.status === 'complete') {
+                    this._safeRecordMemory('discovery',
+                        `Finished my project: ${project.intent}. It took ${Math.round(project.active_ms / 60000)} minutes of work across ${project.sessions + 1} sessions.`,
+                        { project: project.id, intent: project.intent });
+                    console.log(`Cognition: PROJECT COMPLETE — ${project.intent}`);
+                }
+            }
+        }
         this._safeRecordMemory('goal_completed', `Completed goal (${active.drive}): ${active.goal}`, { drive: active.drive, goal: active.goal });
         this.persist();
     }
@@ -583,6 +667,10 @@ export class CognitionLoop {
         // the next goal generation sees it via $RELEVANT_MEMORIES, reflection
         // can turn it into a belief, and it shows up in the feed instead of
         // being re-learned every time.
+        if (this.active?.project_id) {
+            const project = this.projects.active;
+            if (project && project.id === this.active.project_id) project.addNote(reason);
+        }
         this._safeRecordMemory('discovery',
             `Could not do "${this._currentStep()}" while pursuing "${this.active?.goal}": ${reason}`,
             { goal: this.active?.goal, step: this._currentStep(), reason });
@@ -643,6 +731,14 @@ export class CognitionLoop {
                 }
             }
         }
+        // An aspiration is satisfied by what stands, not by a sensor reading.
+        const built = this.projects.satisfaction();
+        if (this.drive_state.drives.legacy)
+            this.drive_state.drives.legacy.level = built;
+        // and it earns a claim on attention for every tick it is passed over
+        this.drive_state.noteAttention(delta, this.active?.drive ?? null);
+        if (this.active?.project_id && this.projects.active?.id === this.active.project_id)
+            this.projects.noteWork(delta, Date.now());
         this.drive_state.update(delta, this.sensor_levels);
     }
 
@@ -657,6 +753,8 @@ export class CognitionLoop {
 
     _driveStateText() {
         let text = this.drive_state.describe();
+        const project = this.projects.active;
+        if (project) text += '\n\n' + project.describe();
         const live = this._liveOutcomes();
         if (live.length > 0) {
             text += '\nRecent goal outcomes:\n';
@@ -731,6 +829,7 @@ export class CognitionLoop {
 
     // Surfaced through getFullState() for the dashboard.
     getStatus() {
+        // (project appended below)
         return {
             enabled: settings.use_cognition,
             state: this.isPursuing() ? 'pursuing' : 'idle',
@@ -748,6 +847,18 @@ export class CognitionLoop {
                 on_cooldown: u.on_cooldown,
             })),
             last_thought: this.last_thought,
+            // Phase 9: the long-horizon thing, so the dashboard can show what
+            // this agent is actually trying to leave behind.
+            project: this.projects.active ? {
+                intent: this.projects.active.intent,
+                progress: this.projects.active.progress,
+                milestones: this.projects.active.milestones,
+                next: this.projects.active.nextMilestone?.text ?? null,
+                outstanding: this.projects.active.outstanding,
+                active_ms: this.projects.active.active_ms,
+                sessions: this.projects.active.sessions,
+            } : null,
+            projects_completed: this.projects.completed.length,
         };
     }
 
@@ -758,6 +869,7 @@ export class CognitionLoop {
                 active: this.active,
                 monitor: this.active ? { replans: this.monitor.replans } : null,
                 recent_outcomes: this.recent_outcomes,
+                projects: this.projects.toJSON(),
                 visited_chunks: [...this.visited_chunks].slice(-4000),
             };
             const tmp = this.state_fp + '.tmp';
@@ -778,6 +890,10 @@ export class CognitionLoop {
             const data = JSON.parse(readFileSync(this.state_fp, 'utf8'));
             this.drive_state.loadJson(data.drives);
             this.recent_outcomes = data.recent_outcomes || [];
+            this.projects = new ProjectStore(data.projects || {}, {});
+            // A restart is a new session for whatever was in flight; counting
+            // them is how "finished across several sessions" becomes checkable.
+            this.projects.noteSession();
             this.recent_outcomes = this._liveOutcomes();
             this.visited_chunks = new Set(data.visited_chunks || []);
             const a = data.active;

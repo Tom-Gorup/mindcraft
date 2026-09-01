@@ -128,6 +128,29 @@
             + rows + '</div>';
     }
 
+    // The long-horizon thing. Shown above the immediate goal because it is the
+    // context that makes the goal make sense: "gather 64 stone" reads very
+    // differently when you can see it is milestone 2 of a watchtower.
+    function renderProject(cog) {
+        const p = cog?.project;
+        if (!p) return '';
+        const pct = Math.round((p.progress || 0) * 100);
+        const bar = '<div class="sim-progress">' + (p.milestones || []).map(m =>
+            `<i class="${m.done ? 'done' : ''}" title="${esc(m.text)}"></i>`).join('') + '</div>';
+        const short = Object.entries(p.outstanding || {}).slice(0, 4)
+            .map(([k, v]) => `${v} ${k}`).join(', ');
+        const hrs = (p.active_ms || 0) / 3600000;
+        const worked = hrs >= 1 ? `${hrs.toFixed(1)}h` : `${Math.round((p.active_ms || 0) / 60000)}m`;
+        return '<div class="sim-section sim-project"><div class="heading">'
+            + `<span>Project</span><span>${pct}% · ${esc(worked)} of work`
+            + (p.sessions ? ` · ${p.sessions + 1} sessions` : '') + '</span></div>'
+            + `<div class="sim-goal">${esc(p.intent)}</div>`
+            + bar
+            + (p.next ? `<div class="sim-step">Next: ${esc(p.next)}</div>` : '')
+            + (short ? `<div class="sim-step">Still needs: ${esc(short)}</div>` : '')
+            + '</div>';
+    }
+
     function renderGoal(cog) {
         if (!cog) return '';
         if (cog.state !== 'pursuing') {
@@ -187,6 +210,7 @@
         ].filter(Boolean).join('   ·   ');
         return `<div class="sim-agent"><header>${avatar}<h3>${esc(name)}</h3>`
             + `<span class="state">${esc(state)}</span></header>`
+            + renderProject(cog)
             + renderGoal(cog)
             + renderDrives(cog)
             + renderRelationships(s.social)

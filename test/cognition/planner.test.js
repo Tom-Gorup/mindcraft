@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseGoalResponse, parsePlanResponse, formatPlan } from '../../src/agent/cognition/planner.js';
+import { formatPlan, parseGoalResponse, parsePlanResponse, parseProjectResponse } from '../../src/agent/cognition/planner.js';
 
 test('parses a clean json codeblock goal', () => {
     const res = '```json\n{"goal": "Craft an iron pickaxe", "reason": "Time to upgrade!"}\n```';
@@ -66,4 +66,28 @@ test('genuinely unparseable output still returns null rather than throwing', () 
     assert.equal(parseGoalResponse('I would rather not.'), null);
     assert.equal(parseGoalResponse('{"goal":'), null);
     assert.equal(parsePlanResponse('{"steps":"not an array"}'), null);
+});
+
+test('a project proposal parses, and salvages a partial one', () => {
+    const good = parseProjectResponse('{"intent":"A watchtower on the ridge, so travellers can see the way home",'
+        + '"milestones":["quarry 64 stone","raise the base","build the beacon room"],'
+        + '"materials":{"stone":64,"torch":8}}');
+    assert.equal(good.milestones.length, 3);
+    assert.deepEqual(good.materials, { stone: 64, torch: 8 });
+    assert.match(good.intent, /watchtower/);
+
+    // materials missing entirely is still worth keeping
+    const partial = parseProjectResponse('{"intent":"a bridge","milestones":["gather wood"]}');
+    assert.deepEqual(partial.materials, {});
+    assert.equal(partial.milestones.length, 1);
+
+    // junk counts are dropped rather than poisoning the ledger
+    const messy = parseProjectResponse('{"intent":"x","milestones":["a"],"materials":{"stone":"lots","wood":-4,"clay":12}}');
+    assert.deepEqual(messy.materials, { clay: 12 });
+});
+
+test('a proposal with no usable milestones is rejected', () => {
+    assert.equal(parseProjectResponse('{"intent":"a castle","milestones":[]}'), null);
+    assert.equal(parseProjectResponse('{"intent":"","milestones":["a"]}'), null);
+    assert.equal(parseProjectResponse('not json at all'), null);
 });

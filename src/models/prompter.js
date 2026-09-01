@@ -435,6 +435,21 @@ export class Prompter {
             (model) => model.sendVisionRequest(messages, prompt, imageBuffer), { in_text: prompt });
     }
 
+    // A project is chosen once and lived with for hours, so this is the one
+    // planning call that can afford to be expensive and ambitious.
+    async promptProjectProposal(drive_name, drive_state_text) {
+        await this.checkCooldown();
+        let prompt = this.profile.project_proposal;
+        prompt = await this.replaceStrings(prompt, []);
+        prompt = await this._replaceRelevantMemories(prompt, 'ambition project build ' + drive_state_text);
+        prompt = prompt.replaceAll('$DRIVE_STATE', () => drive_state_text);
+        prompt = prompt.replaceAll('$DRIVE', () => drive_name);
+        let res = await this.router.run('plan', 'projectProposal',
+            (model) => model.sendRequest([], stripBoundary(prompt)), { in_text: prompt });
+        await this._saveLog(prompt, [], res, 'projectProposal');
+        return res;
+    }
+
     async promptGoalGeneration(drive_name, drive_state_text) {
         await this.checkCooldown();
         let prompt = this.profile.goal_generation;

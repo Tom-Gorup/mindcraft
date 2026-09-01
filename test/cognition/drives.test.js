@@ -86,3 +86,45 @@ test('getJson/loadJson round-trips levels and cooldowns', () => {
     ds2.loadJson(null); // no throw
     ds2.loadJson({ unknown_drive: { level: 0.5 } }); // ignored, no throw
 });
+
+// An aspiration must be able to win eventually. Without a neglect term a
+// slow-decaying drive sitting at 0.3 is starved forever by hunger and safety
+// churning between 0.4 and 0.9 — which is the difference between "a need I
+// have" and "a thing I keep meaning to do".
+test('a neglected aspiration earns urgency; a need does not', () => {
+    const d = new DriveState({}, { neglect_bonus_max: 0.45, neglect_full_ms: 60000 });
+    const rawLegacy = d.urgency('legacy');
+    const rawFood = d.urgency('food');
+
+    d.noteAttention(60000, 'food');   // a full period of being passed over
+
+    assert.ok(d.effectiveUrgency('legacy') > rawLegacy, 'the aspiration gained a claim');
+    assert.ok(Math.abs(d.effectiveUrgency('legacy') - (rawLegacy + 0.45)) < 1e-6);
+    assert.equal(d.effectiveUrgency('food'), rawFood, 'a need accrues nothing from being ignored');
+});
+
+test('acting on an aspiration clears its accumulated claim', () => {
+    const d = new DriveState({}, { neglect_bonus_max: 0.45, neglect_full_ms: 60000 });
+    d.noteAttention(60000, 'food');
+    assert.ok(d.effectiveUrgency('legacy') > d.urgency('legacy'));
+    d.noteAttention(1000, 'legacy');
+    assert.equal(d.effectiveUrgency('legacy'), d.urgency('legacy'), 'claim reset once addressed');
+});
+
+test('legacy decays slowly enough to be an ambition rather than a need', () => {
+    const d = new DriveState();
+    const legacy = d.drives.legacy;
+    const food = d.drives.food;
+    assert.ok(legacy.aspiration, 'legacy is flagged as an aspiration');
+    assert.ok(legacy.decay_per_min < 0.005, 'presses over hours, not minutes');
+    assert.ok(!food.aspiration, 'a need is not an aspiration');
+});
+
+test('getUrgencies exposes both raw and effective, so the dashboard can explain itself', () => {
+    const d = new DriveState({}, { neglect_bonus_max: 0.4, neglect_full_ms: 60000 });
+    d.noteAttention(60000, 'food');
+    const legacy = d.getUrgencies().find(u => u.name === 'legacy');
+    assert.ok(legacy.aspiration);
+    assert.ok(legacy.urgency > legacy.raw_urgency, 'effective is boosted');
+    assert.equal(legacy.neglect_ms, 60000);
+});

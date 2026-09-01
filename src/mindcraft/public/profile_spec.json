@@ -83,7 +83,7 @@
     "drives": {
         "type": "object",
         "section": "personality",
-        "description": "Intrinsic drives. Weight scales urgency; decay is per minute for non-sensor drives.",
+        "description": "Intrinsic drives. Weight scales urgency; decay is per minute for non-sensor drives. Aspiration drives (legacy) decay very slowly and earn urgency by being passed over, so they surface between crises rather than competing with them.",
         "each": {
             "type": "drive"
         },
@@ -92,7 +92,8 @@
             "food",
             "curiosity",
             "social",
-            "wealth"
+            "wealth",
+            "legacy"
         ],
         "fields": {
             "weight": {
@@ -112,6 +113,11 @@
             "description": {
                 "type": "string",
                 "description": "Shown to the model when it generates a goal for this drive."
+            },
+            "aspiration": {
+                "type": "boolean",
+                "default": false,
+                "description": "An aspiration rather than a need: presses gently for hours and earns urgency the longer it goes unaddressed. Only aspirations accumulate that claim."
             }
         }
     },
@@ -248,6 +254,19 @@
                 "max": 10,
                 "default": 3,
                 "description": "How much larger the switch margin is inside the commitment window. Genuine emergencies still preempt; noise does not."
+            },
+            "neglect_bonus_max": {
+                "type": "number",
+                "min": 0,
+                "max": 1,
+                "default": 0.45,
+                "description": "How much urgency a fully-neglected aspiration can add to itself. 0 disables aspirations entirely \u2014 they would never win."
+            },
+            "neglect_full_ms": {
+                "type": "number",
+                "min": 60000,
+                "default": 1500000,
+                "description": "How long being passed over takes to earn the full bonus (ms). Lower makes an agent more restless about its ambitions."
             }
         }
     },
@@ -435,5 +454,10 @@
         "section": "prompts",
         "advanced": true,
         "description": "Prompt for describing a screenshot."
+    },
+    "project_proposal": {
+        "type": "prompt",
+        "section": "prompts",
+        "description": "How the agent decides what to be remembered for. Used once per project, not per goal, so it can afford to be ambitious."
     }
 }

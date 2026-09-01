@@ -61,6 +61,28 @@ export function parseGoalResponse(res) {
     };
 }
 
+// -> { intent, milestones[], materials{} } or null.
+// Tolerant on purpose: a project proposal is worth salvaging even if the model
+// omitted materials or wrote a milestone list of one.
+export function parseProjectResponse(res) {
+    const data = parseJsonResponse(res);
+    if (!data || typeof data.intent !== 'string' || data.intent.trim().length === 0)
+        return null;
+    const milestones = (Array.isArray(data.milestones) ? data.milestones : [])
+        .filter(m => typeof m === 'string' && m.trim().length > 0)
+        .map(m => m.trim())
+        .slice(0, 8);
+    if (milestones.length === 0) return null;
+    const materials = {};
+    if (data.materials && typeof data.materials === 'object') {
+        for (const [k, v] of Object.entries(data.materials)) {
+            const n = Number(v);
+            if (Number.isFinite(n) && n > 0) materials[String(k).substring(0, 64)] = Math.round(n);
+        }
+    }
+    return { intent: data.intent.trim(), milestones, materials };
+}
+
 export function parsePlanResponse(res) {
     const data = parseJsonResponse(res);
     if (!data || !Array.isArray(data.steps))
@@ -95,6 +117,11 @@ export class Planner {
     }
 
     // Returns array of step strings or null. failure_context is included when replanning.
+    async proposeProject(drive_name, drive_state_text) {
+        const res = await this.agent.prompter.promptProjectProposal(drive_name, drive_state_text);
+        return parseProjectResponse(res);
+    }
+
     async makePlan(goal, failure_context = '') {
         const res = await this.agent.prompter.promptTaskPlanning(goal, failure_context);
         return parsePlanResponse(res);

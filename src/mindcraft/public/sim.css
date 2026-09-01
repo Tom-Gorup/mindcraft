@@ -581,3 +581,12 @@
     border-left-color: var(--warning);
     background: color-mix(in srgb, var(--warning) 6%, transparent);
 }
+
+/* the project: the long-horizon thing, given more weight than a passing goal */
+.sim-project {
+    border-left: 2px solid var(--series-4);
+    padding-left: var(--sp-3) !important;
+    margin-bottom: var(--sp-4) !important;
+}
+.sim-project .sim-goal { font-size: 14.5px; font-weight: 600; }
+.sim-project .sim-progress i.done { background: var(--series-4); }
