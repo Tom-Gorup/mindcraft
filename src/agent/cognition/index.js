@@ -46,6 +46,13 @@ export class CognitionLoop {
         // how much the motivating drive must ease before a goal is re-decided
         this.goal_relief_margin = opts.goal_relief_margin ?? 0.25;
         this.goal_max_active_ms = opts.goal_max_active_ms ?? 12 * 60000;
+        // A new goal gets a grace period before it can be preempted. Sensor
+        // drives are noisy — safety is capped hard whenever a hostile is within
+        // 16 blocks, so a wandering mob flips it — and without this the arbiter
+        // ping-pongs, burning two plan-tier calls per goal and never making
+        // progress. Observed live: goals living 10-22 seconds each.
+        this.min_goal_commit_ms = opts.min_goal_commit_ms ?? 60000;
+        this.commit_margin_multiplier = opts.commit_margin_multiplier ?? 3;
         this.max_step_responses = opts.max_step_responses ?? 5;
         this.arbiter_opts = {
             switch_margin: opts.switch_margin ?? 0.1,
@@ -283,14 +290,22 @@ export class CognitionLoop {
             return true;
         }
 
-        const winner = selectDrive(this.drive_state.getUrgencies(), this.active.drive, this.arbiter_opts);
+        // Inside the commitment window a challenger must clear a much larger
+        // margin. Genuine emergencies (a big urgency swing) still preempt;
+        // noise does not.
+        const young = (this.active.active_ms ?? 0) < this.min_goal_commit_ms;
+        const opts = young
+            ? { ...this.arbiter_opts, switch_margin: this.arbiter_opts.switch_margin * this.commit_margin_multiplier }
+            : this.arbiter_opts;
+        const winner = selectDrive(this.drive_state.getUrgencies(), this.active.drive, opts);
         if (winner && winner !== this.active.drive) {
             const active = this.active;
             this.active = null;
             this.pending_replan = null;
             this.step_interrupt = this.act_busy; // only break a loop that exists
             this.blackboard.interruption = null; // stale reflex notes die with the goal
-            this._recordOutcome(active, 'preempted', `${winner} became more urgent`);
+            this._recordOutcome(active, 'preempted',
+                `${winner} became more urgent after ${Math.round((active.active_ms ?? 0) / 1000)}s`);
             this.last_thought = `Setting aside "${active.goal}" — ${winner} needs attention.`;
             console.log(`Cognition: goal preempted by ${winner}: ${active.goal}`);
             this._safeRecordMemory('goal_abandoned', `Set aside goal (${active.drive}): ${active.goal} — ${winner} became more urgent`, { drive: active.drive, goal: active.goal, preempted_by: winner });

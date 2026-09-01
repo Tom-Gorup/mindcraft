@@ -235,6 +235,19 @@
                 "min": 0,
                 "default": 720000,
                 "description": "Backstop: abandon any goal worked this long (ms) without finishing. 0 disables."
+            },
+            "min_goal_commit_ms": {
+                "type": "number",
+                "min": 0,
+                "default": 60000,
+                "description": "Grace period before a new goal can be preempted. Sensor drives are noisy, and without this the arbiter ping-pongs, spending two plan-tier calls per goal with no progress."
+            },
+            "commit_margin_multiplier": {
+                "type": "number",
+                "min": 1,
+                "max": 10,
+                "default": 3,
+                "description": "How much larger the switch margin is inside the commitment window. Genuine emergencies still preempt; noise does not."
             }
         }
     },

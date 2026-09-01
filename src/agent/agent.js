@@ -224,8 +224,20 @@ export class Agent {
         this.bot.on('whisper', respondFunc);
         
         this.bot.on('chat', (username, message) => {
-            if (serverProxy.getNumOtherAgents() > 0) return;
-            // only respond to open chat messages when there are no other agents
+            // Public chat is ignored once a second agent exists, otherwise every
+            // bot answers every message at once. Upstream behaviour, but it used
+            // to drop messages in total silence — the player just gets ignored
+            // and has no way to know why. Say it once.
+            if (serverProxy.getNumOtherAgents() > 0) {
+                if (!this._warned_public_chat && username !== this.name) {
+                    this._warned_public_chat = true;
+                    console.log(`${this.name}: ignoring public chat because other agents are connected. `
+                        + `Use /msg ${this.name} <message> to talk to this one, or set only_chat_with.`);
+                    try { this.openChat(`(multiple bots here — /msg ${this.name} to talk to me)`); }
+                    catch { /* not logged in yet */ }
+                }
+                return;
+            }
             respondFunc(username, message);
         });
 
