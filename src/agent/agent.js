@@ -24,6 +24,7 @@ import { Task } from './tasks/tasks.js';
 import { speak } from './speak.js';
 import { log, validateNameFormat, handleDisconnection } from './connection_handler.js';
 import { lockdown } from './library/lockdown.js';
+import { existsSync } from 'fs';
 
 export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
@@ -159,7 +160,14 @@ export class Agent {
                 
                 console.log(`${this.name} spawned.`);
                 this.clearBotLogs();
-                this.memory.record('session', 'Spawned into the world');
+                // Distinguish a cold start from a restart: on a 24/7 run a
+                // restart means something exited non-zero, and that is worth
+                // seeing in the feed rather than inferring from a chart.
+                const restarted = existsSync(`./bots/${this.name}/cognition.json`)
+                    || existsSync(`./bots/${this.name}/memory.json`);
+                this.memory.record('session',
+                    restarted ? 'Agent process (re)started and spawned into the world'
+                        : 'Spawned into the world for the first time');
               
                 this._setupEventHandlers(save_data, init_message);
                 this.startEvents();

@@ -28,6 +28,7 @@
         social: 'social', gossip: 'social', chat_received: 'social', speech: 'social',
         belief: 'belief',
         death: 'death', damage: 'death',
+        session: 'session',
         discovery: 'discovery', place: 'discovery',
     };
 
@@ -265,7 +266,8 @@
         paint('simTiles', renderTiles(states));
         paint('simAgents', names.map(n => renderAgent(n, states[n])).join(''));
         paint('simLegend', legend([['series-1', 'goals'], ['series-2', 'skills'], ['series-3', 'social'],
-            ['series-4', 'beliefs'], ['seq-400', 'discoveries'], ['critical', 'deaths']]));
+            ['series-4', 'beliefs'], ['seq-400', 'discoveries'], ['critical', 'deaths'],
+            ['warning', 'restarts']]));
         paint('simFeedWrap', `<div class="sim-feed" role="log" aria-live="polite">${renderFeed()}</div>`);
     }
 
@@ -282,7 +284,11 @@
     // The stream carries the full taxonomy (the run archive needs it), so the
     // feed does its own filtering — it is a human-readable highlight reel, not
     // the archive.
-    const FEED_SKIP = new Set(['narration', 'command', 'session', 'damage', 'interruption']);
+    // 'session' is NOT skipped: an agent process restarting is one of the most
+    // important things that can happen on a 24/7 run, and hiding it meant the
+    // only signal was the call-rate chart dropping to zero — a restart resets
+    // the in-memory meter — which the reader had to notice and interpret.
+    const FEED_SKIP = new Set(['narration', 'command', 'damage', 'interruption']);
     window.simPushEvent = function (ev) {
         if (!ev || !ev.content) return;
         if (FEED_SKIP.has(ev.type)) return;

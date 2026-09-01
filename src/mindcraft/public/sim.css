@@ -573,3 +573,11 @@
 .sim-event.k-belief { border-left-color: var(--series-4); }
 .sim-event.k-belief .what { font-style: italic; }
 .sim-event.k-discovery { border-left-color: var(--seq-400); }
+
+/* An agent process restarting is a warning-level event on a 24/7 run: it means
+   something exited non-zero. Previously invisible in the feed, leaving the
+   call-rate chart dropping to zero as the only clue. */
+.sim-event.k-session {
+    border-left-color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 6%, transparent);
+}
