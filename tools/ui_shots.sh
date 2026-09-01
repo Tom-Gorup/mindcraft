@@ -80,7 +80,7 @@ shot() {   # shot <name> <url-fragment> <width> <height>
 
 echo "screenshots -> $D"
 shot agents        '#agents?dark'    1500 1000
-shot sim           '#sim?dark'       1500 1450
+shot sim           '#sim?dark'       1500 2400
 shot reports       '#reports?dark'   1500 1750
 shot tv            '#sim?tv,dark'    1920 1080
 shot agents-light  '#agents?light'   1500 1000

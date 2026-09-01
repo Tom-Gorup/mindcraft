@@ -19,11 +19,16 @@
         .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;').replaceAll("'", '&#39;'));
 
+    // Every type the memory system emits maps to a rail colour and a legend
+    // entry. 'belief' was missing, so reflection output — the most interesting
+    // thing the agent produces — rendered as an unlabelled grey row.
     const EVENT_KIND = {
         goal_started: 'goal', goal_completed: 'goal', goal_abandoned: 'goal', plan_revised: 'goal',
         code: 'skill',
         social: 'social', gossip: 'social', chat_received: 'social', speech: 'social',
-        death: 'death',
+        belief: 'belief',
+        death: 'death', damage: 'death',
+        discovery: 'discovery', place: 'discovery',
     };
 
     function clock(ts) {
@@ -204,6 +209,36 @@
         }).join('');
     }
 
+    // Replacing the whole body's innerHTML once a second tears down and
+    // rebuilds every node, which the browser paints as a visible flash and
+    // which also destroys text selection and scroll position. Instead the
+    // shell is built once and each section is only rewritten when its HTML has
+    // actually changed — drives change constantly, the feed rarely, the legend
+    // never.
+    const lastHtml = {};
+    function paint(id, html) {
+        if (lastHtml[id] === html) return;
+        const el = document.getElementById(id);
+        if (!el) return;
+        lastHtml[id] = html;
+        // Preserve where the reader was in a scrollable section.
+        const scroller = el.querySelector('.sim-feed');
+        const scroll = scroller ? scroller.scrollTop : null;
+        el.innerHTML = html;
+        if (scroll !== null) {
+            const next = el.querySelector('.sim-feed');
+            if (next) next.scrollTop = scroll;
+        }
+    }
+
+    function buildShell(body) {
+        if (document.getElementById('simTiles')) return;
+        for (const k of Object.keys(lastHtml)) delete lastHtml[k];
+        body.innerHTML = '<div id="simTiles"></div><div id="simAgents" class="sim-agents"></div>'
+            + '<div class="sim-section"><div class="heading">Event feed</div>'
+            + '<div id="simLegend"></div><div id="simFeedWrap"></div></div>';
+    }
+
     function render() {
         const root = document.getElementById('sim');
         if (!root || !root.classList.contains('active')) return;
@@ -211,23 +246,27 @@
         const names = Object.keys(states);
         const body = document.getElementById('simBody');
         if (!body) return;
+
         if (names.length === 0) {
-            body.innerHTML = '<div class="sim-empty">'
+            const empty = '<div class="sim-empty">'
                 + '<h3 style="margin-bottom:6px;">No agents are reporting yet</h3>'
                 + '<p style="margin:0;">Start an agent from the Agents tab and its drives, goals and '
                 + 'relationships appear here live.</p></div>';
+            if (lastHtml.__empty !== empty) {
+                body.innerHTML = empty;
+                for (const k of Object.keys(lastHtml)) delete lastHtml[k];
+                lastHtml.__empty = empty;
+            }
             return;
         }
-        const feedEl = document.querySelector('#simBody .sim-feed');
-        const scroll = feedEl ? feedEl.scrollTop : 0;
-        body.innerHTML = renderTiles(states)
-            + '<div class="sim-agents">' + names.map(n => renderAgent(n, states[n])).join('') + '</div>'
-            + '<div class="sim-section"><div class="heading">Event feed</div>'
-            + legend([['series-1', 'goals'], ['series-2', 'skills'], ['series-3', 'social'], ['critical', 'deaths']])
-            + `<div class="sim-feed" role="log" aria-live="polite">${renderFeed()}</div></div>`;
-        // don't yank the reader back to the top on every tick
-        const newFeed = document.querySelector('#simBody .sim-feed');
-        if (newFeed && scroll) newFeed.scrollTop = scroll;
+        delete lastHtml.__empty;
+
+        buildShell(body);
+        paint('simTiles', renderTiles(states));
+        paint('simAgents', names.map(n => renderAgent(n, states[n])).join(''));
+        paint('simLegend', legend([['series-1', 'goals'], ['series-2', 'skills'], ['series-3', 'social'],
+            ['series-4', 'beliefs'], ['seq-400', 'discoveries'], ['critical', 'deaths']]));
+        paint('simFeedWrap', `<div class="sim-feed" role="log" aria-live="polite">${renderFeed()}</div>`);
     }
 
     // A burst of events used to trigger one full innerHTML rebuild each.
