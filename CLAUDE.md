@@ -133,7 +133,13 @@ use `host.docker.internal` on Mac/Windows).
    goal, blueprints the agent derives rather than ones we author, skills it composes,
    and taste formed by judging its own work. See ROADMAP Phase 9. **The trap to avoid
    is shipping a blueprint library and calling it creativity**: if we author
-   `castle.json`, the agent built our castle.
+   `castle.json`, the agent built our castle. Two rules hold the phase together:
+   *configure dispositions, derive behaviours* (a knob per behaviour is
+   combinatorial and unusable), and **few drives, many beliefs** — drives are few,
+   universal and configured; beliefs are many, particular and learned. Religion,
+   superstition and personal codes are belief-layer, not drives. Working ceiling is
+   5-7 drives for a small model; past that the arbiter stops discriminating and
+   nobody, including reflection, can attribute behaviour to a cause.
 
 Emergent over scripted, always. Target 2–4 agents now, 10+ as a config change.
 

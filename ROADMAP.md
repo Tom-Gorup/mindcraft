@@ -448,6 +448,68 @@ instead of episodes gives critique.
 - [ ] Aspiration is partly satisfied by *judged quality*, not just completion —
       otherwise the optimal strategy is a 1x1 dirt tower.
 
+**6. Norms and reciprocity — the missing social primitive.**
+Grudges exist, but grudges are retaliation for *damage*. What is missing is the
+expectation that precedes them: that exchange should be fair, and that a
+defector should be punished even at cost to yourself. Most human social drama is
+norm violation, not injury — and without norms two agents can fall out over
+being attacked but never over being cheated.
+- [ ] An expectation of reciprocity that can be violated, separately from harm.
+- [ ] Willingness to bear a cost to punish a violation. Free punishment is not
+      a norm, it is bookkeeping.
+- [ ] Norms should be *local and learned* — what counts as fair here, between
+      these two — rather than a global constant.
+
+### Two design rules, learned the hard way
+
+**Configure dispositions, derive behaviours.** The social block currently mixes
+levels: `trust_gain`, `trust_loss` and `forgiveness` are learning rates,
+`warmth` and `generosity` are dispositions, and `gossip_propensity` is the
+frequency of one specific behaviour. That last one is the smell. Follow it and
+you get `trade_propensity`, `boast_propensity`, `apology_propensity` — a knob
+per behaviour, combinatorial, and impossible for a model to use coherently.
+Gossip frequency should FALL OUT of warmth, trust and how interesting the news
+is. Then a new social behaviour needs no new knob.
+- [ ] Derive gossip_propensity rather than configuring it, and treat that as the
+      pattern for every behaviour added afterwards.
+
+**Few drives, many beliefs.** This is the rule that keeps the whole phase
+tractable.
+
+Humans do not have a religion drive. They have meaning-seeking, belonging and
+fear of death, and religion is a *belief structure* that satisfies them. The
+same is true of superstition, personal codes, grudge-holding norms, and taste.
+All of it belongs in the belief layer, which already exists: reflection turns
+experience into beliefs, beliefs are retrieved into the prompt, and behaviour
+changes — with no new drive, no new knob, and no arbiter cost.
+
+    Drives are FEW, universal, and configured.
+    Beliefs are MANY, particular, and learned.
+
+Greta reached one unprompted on the first live run: "goal prioritization is
+unstable and counterproductive — repeatedly abandoning safety goals for wealth
+gathering has led to death." Nobody configured that. It is the layer where
+open-ended complexity belongs.
+
+**The complexity ceiling, with evidence.** The binding constraint is not context
+size. On the first live run, Haiku with *five* drives invented a Minecraft
+crafting rule and blocked itself on it, looped six calls on an impossible goal,
+called `!restart` to escape being stuck, and had to be told in the prompt to
+report step completion. Two things break before the context does:
+
+- **The arbiter stops discriminating.** With 5 drives, urgencies spread and one
+  clearly wins. With 15 they cluster around 0.4-0.6 and a 0.1 switch margin is
+  noise. More drives produce *less* decisive behaviour, not more nuanced
+  behaviour — the goal thrashing already observed, made permanent.
+- **Attribution dies.** Today you can look at the dashboard and say "he is
+  sheltering because safety is 0.85". At fifteen drives neither the operator nor
+  reflection can say why anything happened, and reflection is what turns
+  experience into beliefs. The system stops being legible to itself.
+
+Working ceiling: **5-7 drives for a small model, 8-10 for a frontier one.** This
+phase proposes legacy, standing and belonging on top of the existing five, which
+is eight. **That is the budget. Anything else goes in the belief layer.**
+
 ### Done when
 
 - [ ] An agent, unprompted, starts a multi-hour project and finishes it across
@@ -462,6 +524,9 @@ instead of episodes gives critique.
 - [ ] An agent does something *because another agent will see it*, and the
       relationship graph shows the effect. This is the acceptance test for
       standing: behaviour that only makes sense with an audience.
+- [ ] Two agents with IDENTICAL drive weights diverge in behaviour because they
+      lived different lives. This is the real test of the belief layer: if they
+      stay interchangeable, beliefs are decoration.
 - [ ] Tom looks at something and did not expect it.
 
 ### Honest risks
