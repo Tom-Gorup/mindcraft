@@ -1,10 +1,17 @@
+// Per-machine configuration lives in settings.local.json, NOT in this file.
+// This file is tracked in git, but host, port and feature flags differ on every
+// machine — so editing it directly makes every `git pull` a merge conflict on
+// your own config. Anything in settings.local.json (gitignored) overrides the
+// defaults below. See settings.local.example.json.
+import { readFileSync, existsSync } from 'fs';
+
 const settings = {
     "minecraft_version": "auto", // or specific version like "1.21.6"
-    // FIRST RUN: point these at the Proxmox Minecraft server. `host` is relative
-    // to whatever runs the bots, so 127.0.0.1 is only right when they run on the
-    // same box as the server.
-    "host": "127.0.0.1", // <-- set to the Proxmox IP, e.g. "192.168.1.50"
-    "port": 25565, // <-- set to the server's port (vanilla/Paper default is 25565)
+    // These are DEFAULTS. Put your machine's real values in settings.local.json
+    // (gitignored) — editing them here means your private network config gets
+    // committed, and every git pull becomes a conflict on your own settings.
+    "host": "127.0.0.1", // override in settings.local.json, not here
+    "port": 55916, // override in settings.local.json, not here
     "auth": "offline", // or "microsoft"
     "world": "", // optional label for this Minecraft world; groups agents in the dashboard and reports. Defaults to host:port
 
@@ -71,5 +78,22 @@ const settings = {
     "log_all_prompts": false, // log ALL prompts to file
     "log_routing": false, // log every model call's tier, provider, and token estimate
 };
+
+// ---- overlay: defaults < settings.local.json < SETTINGS_JSON env ----
+const LOCAL_SETTINGS = './settings.local.json';
+if (existsSync(LOCAL_SETTINGS)) {
+    try {
+        const local = JSON.parse(readFileSync(LOCAL_SETTINGS, 'utf8'));
+        for (const [k, v] of Object.entries(local)) {
+            if (k.startsWith('//')) continue;   // allow comment keys
+            settings[k] = v;
+        }
+        console.log(`Loaded local overrides from ${LOCAL_SETTINGS}: ${Object.keys(local).filter(k => !k.startsWith('//')).join(', ')}`);
+    } catch (err) {
+        // Loud, not silent: a typo here changes which server the bots join.
+        console.error(`\n${LOCAL_SETTINGS} exists but could not be read: ${err.message}`);
+        console.error('Falling back to the defaults in settings.js. Fix the JSON and restart.\n');
+    }
+}
 
 export default settings;

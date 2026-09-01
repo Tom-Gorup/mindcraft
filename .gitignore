@@ -31,3 +31,6 @@ src/mindcraft-py/__pycache__/
 
 # research run archives (event streams; can grow large)
 runs/
+
+# per-machine config: host, ports, feature flags (see settings.local.example.json)
+settings.local.json

@@ -2,13 +2,29 @@
 
 ## 1. Set it up for headless
 
-`auto_open_ui` tries to launch a browser on startup. On a headless server that
-fails harmlessly (it warns rather than crashing) but there is no reason to try:
+**Put per-machine config in `settings.local.json`, never in `settings.js`.**
+That file is gitignored; `settings.js` is tracked, so editing it directly both
+commits your private network config and makes every `git pull` a conflict on
+your own settings.
 
-```js
-// settings.js
-"auto_open_ui": false,
+```bash
+cp settings.local.example.json settings.local.json
+$EDITOR settings.local.json
 ```
+
+```json
+{
+    "host": "192.168.x.x",
+    "port": 25565,
+    "auto_open_ui": false,
+    "use_cognition": true
+}
+```
+
+Precedence is `settings.js` defaults < `settings.local.json` < `SETTINGS_JSON`
+env var. On boot it prints which keys it overrode; if the JSON is malformed it
+says so loudly and falls back to the defaults rather than starting against the
+wrong server silently.
 
 Then confirm the box is ready:
 

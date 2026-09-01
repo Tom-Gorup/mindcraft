@@ -1,0 +1,19 @@
+{
+    "//": "Copy to settings.local.json and edit. That file is gitignored, so your host, port, keys-adjacent config and feature flags never reach the repo. Anything here overrides settings.js. Comment keys starting with // are ignored.",
+
+    "//host": "The Minecraft server, relative to whatever runs the bots.",
+    "host": "127.0.0.1",
+    "port": 25565,
+
+    "//world": "Optional label; groups agents in the dashboard and reports. Defaults to host:port.",
+    "world": "",
+
+    "//headless": "No browser to open on a server.",
+    "auto_open_ui": false,
+
+    "//flags": "Turn these on one at a time so a failure has one obvious cause.",
+    "use_cognition": true,
+    "use_memory": false,
+    "use_social": false,
+    "use_skill_library": false
+}

@@ -10,7 +10,7 @@ See `ROADMAP.md` for phases and `SESSIONS.md` for session handoffs.
 ## Repo map
 
 - `main.js` — entry. Parses args/env, calls `Mindcraft.init()` then `Mindcraft.createAgent(settings)` per profile.
-- `settings.js` — global config object (root). `src/agent/settings.js` is a *separate* empty singleton, populated in the agent child process via `setSettings()` with settings fetched from the mindserver over socket.io.
+- `settings.js` — global config **defaults** (root). Per-machine values (host, port, flags) belong in `settings.local.json`, which is gitignored and overrides these on load; `settings.js` is tracked, so editing it directly commits your network config and turns every `git pull` into a conflict. Precedence: defaults < `settings.local.json` < `SETTINGS_JSON` env. `src/agent/settings.js` is a *separate* empty singleton, populated in the agent child process via `setSettings()` with settings fetched from the mindserver over socket.io.
 - `src/mindcraft/` — parent-process orchestrator + mindserver.
   - `mindcraft.js` — create/start/stop/destroy agents; assigns viewer ports (3000+i).
   - `mindserver.js` — express + socket.io on `mindserver_port` (8080). Registry of `AgentConnection`s; relays bot-to-bot chat; polls each in-game agent's `get-full-state` every 1s and broadcasts `state-update` to browser listeners.
