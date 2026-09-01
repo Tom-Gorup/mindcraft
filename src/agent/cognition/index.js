@@ -576,6 +576,16 @@ export class CognitionLoop {
 
     _onFailure(reason) {
         this.last_failure = reason;
+        // A step failure is often the agent establishing a real fact about the
+        // world — "brown mushrooms cannot be cooked or smelted in Minecraft"
+        // was worked out over six calls and then discarded, because only
+        // goal-level events were recorded. Storing it makes it retrievable, so
+        // the next goal generation sees it via $RELEVANT_MEMORIES, reflection
+        // can turn it into a belief, and it shows up in the feed instead of
+        // being re-learned every time.
+        this._safeRecordMemory('discovery',
+            `Could not do "${this._currentStep()}" while pursuing "${this.active?.goal}": ${reason}`,
+            { goal: this.active?.goal, step: this._currentStep(), reason });
         const decision = this.monitor.noteFailure();
         if (decision === 'retry') {
             this.notifyEvent('step failed, retrying');

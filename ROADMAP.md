@@ -374,6 +374,39 @@ persistently without ever spiking, which is exactly the shape "ambition" has and
       Today the most urgent always wins, so a slow drive is starved forever by
       the churn of hunger and safety. Possibly an accumulated-neglect term.
 
+**1b. Standing — drives whose satisfaction is another agent's judgement.**
+This is the piece that separates ambition from mere productivity, and it is
+mechanically distinct from everything else in the system. `safety` reads a
+sensor. `legacy` is self-judged: did I build a thing, does it stand. But
+*status* cannot be self-assessed at all — it is satisfied only by how other
+agents regard you, which means it is the first drive that cannot be computed
+from an agent's own state.
+
+That makes it the strongest source of genuinely emergent behaviour available,
+because it couples agents' goals to each other. An agent that wants standing
+must do things that are *visible*, must do them where others will see, and must
+care what others think of the result. Two agents competing for the same standing
+produce rivalry without anyone scripting rivalry.
+
+The social layer already tracks per-pair trust, affinity and grudges, and gossip
+already propagates reputation with attribution. Standing is the drive that reads
+from that store rather than from the world.
+
+- [ ] `standing` / `esteem`: satisfied by others' regard, computed from the
+      existing relationship store plus what gossip says about you. Falls when
+      you are ignored or spoken badly of.
+- [ ] `belonging`: satisfied by reciprocated positive relationships, not by
+      their count. Distinct from standing — you can be admired and lonely.
+- [ ] Visibility matters. An achievement nobody witnessed should satisfy
+      `legacy` but not `standing`. That asymmetry is what makes an agent build
+      where it will be seen, or tell someone afterwards.
+- [ ] Hierarchy should be an *outcome*, never a configured field. If one agent
+      ends up deferred to, it must be because the relationship graph made it so.
+
+The failure mode to watch for: status drives collapsing into a leaderboard the
+agents optimise. The interesting version is closer to reputation — contextual,
+contested, and revisable — which is what the trust/grudge model already is.
+
 **2. Projects — state that outlives a goal.**
 - [ ] A project record: intent, design, materials ledger, site, progress,
       persisted per agent. Goals become *steps toward* a project rather than the
@@ -426,6 +459,9 @@ instead of episodes gives critique.
 - [ ] Two agents with different drive weights produce visibly different work
       from the same starting conditions. Greta hoards and fortifies; Wilbur
       explores and decorates.
+- [ ] An agent does something *because another agent will see it*, and the
+      relationship graph shows the effect. This is the acceptance test for
+      standing: behaviour that only makes sense with an audience.
 - [ ] Tom looks at something and did not expect it.
 
 ### Honest risks
