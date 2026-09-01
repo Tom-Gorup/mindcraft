@@ -97,8 +97,8 @@ self-prompter string.
 - *Added beyond plan:* `sensors.js` (health/hunger/hostiles/inventory → sensor drive levels).
 
 **Done when:**
-- [ ] An agent with no user commands generates a goal from drive state and pursues it *(implemented, needs live verification)*
-- [ ] Inducing a failure (e.g. removing a needed item, blocking a path) visibly triggers replanning, not a retry loop *(implemented; retry→replan→abandon unit-tested, needs live verification)*
+- [x] An agent with no user commands generates a goal from drive state and pursues it — **VERIFIED LIVE 2026-08-31.** Wilbur autonomously produced "Gather wood and stone tools to establish a resource base" (wealth), "Deal with the nearby skeleton threat" (safety), "Hunt for food..." (food) and "Find shelter and craft a bed to survive the night" (safety), each grounded in real sensor state — biome, inventory, health, time of day. Nobody told him to do any of it.
+- [~] Inducing a failure visibly triggers replanning, not a retry loop — **partially verified live.** The agent emitted `!stepFailed("no animals found in 128 block range")` and the monitor retried with a different approach. But an earlier run showed a genuine loop: a step that keeps *succeeding* at an action without ever completing (placing cobblestone repeatedly) is bounded only by the step timeout, since nothing calls noteFailure(). Mid-goal preemption also fired correctly (safety displacing wealth).
 - [ ] Drive weights in a profile JSON change observed behavior priorities *(profiles/wilbur.json vs greta.json ready; personality scaling unit-tested)*
 - [~] `use_cognition: false` reproduces today's behavior; existing profiles boot — **partially verified offline**: all 21 shipped profiles merge cleanly across all 4 base profiles and carry every required template; the loop is provably dormant when the flag is off (unit-tested, incl. no goal resurrection from disk). Still needs one real spawn.
 - [x] Unit tests pass for drive decay/satisfaction/arbitration (28 tests: drives, arbiter, monitor, planner)
@@ -163,7 +163,7 @@ coherence gate so tiers never fight over the bot.
 - [x] A reflex (e.g. self_defense) interrupts a plan step without corrupting the task tree (unit-verified: task tree untouched, act tier stands down while reflex holds the slot)
 - [x] After the interruption the plan resumes, or revises with the interruption recorded as an event (unit-verified: consume-once blackboard note in the next step prompt + `interruption` memory event; mid-step replan handoff tested)
 - [x] Tiers run at their own cadences; slow planning never blocks reflexes (unit-verified: busy tiers are skipped not queued; error isolation per tier; smoke: 5 tiers, 0 errors over simulated run)
-- [ ] No action-slot deadlocks or infinite interrupt loops in a 1-hour run *(needs live homelab soak)*
+- [~] No action-slot deadlocks or infinite interrupt loops — **no deadlocks seen live**, and reflex-vs-action interruption behaved (PathStopped is the mechanism, now logged quietly rather than as a crash). Still needs a genuine multi-hour unattended soak.
 - [x] Unit tests pass for cadence, busy-skip, error isolation, and interrupt handoff (21 tests: blackboard, scheduler, tiers, interrupts)
 
 **Verify:** unit tests; scripted scenario (spawn a mob mid-task) showing interrupt + clean resume in logs; 1-hour soak run.
@@ -239,6 +239,24 @@ cooldown ceiling. ≈$27/day/agent on a cheap API tier; ~half a 3090 on prefill 
   cheaper per input on a hit (`src/models/cache.js`, 7 tests)
 - [x] Every model call has a deadline (120s) and a hung tier is reported rather than
   silently wedged (S15 audit — there was previously no timeout anywhere in `src/models/`)
+
+**Measured LIVE 2026-08-31** (single Haiku agent on the homelab, first real run):
+
+| | at first light | after tuning |
+|---|---|---|
+| calls/hr | 1,398 | 244 |
+| cost/hr | $4.93 | $0.48 |
+| cost/day | $118 | **$11.54** |
+| prompt cache | 0% | 64% |
+| local share | 0% | 0% (no GPU yet) |
+
+Four things got it there, in order of size: the act tier's `step_cooldown_ms`
+was 2s (a 1,800 calls/hr ceiling) and is now 10s; `max_step_responses` was
+spending a full call per action asking a model that never chains "anything
+else?"; prompt caching required finding that Haiku 4.5's floor is ~4096 tokens,
+not the documented 2048; and the cached prefix had to grow past it, which the
+static examples paid for. The ≥70% local target remains unreachable without a
+GPU — the chat tier cannot run on CPU at this cadence.
 
 **Measured result** (simulated steady-state hour vs the Session 8 baseline):
 

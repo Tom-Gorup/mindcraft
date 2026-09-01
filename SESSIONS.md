@@ -1036,3 +1036,128 @@ line report the hit rate. 0% on a paid model is the signal that something moved.
   the first thing to look at — `use_cognition` with a bigger `plan` tier model
   is the cheap fix, since the profile `tiers` block already supports it.
 - Everything else in the ROADMAP's unchecked boxes still awaits this run.
+
+---
+
+## Session 18 — 2026-08-31 — First live run, and what it cost to learn
+
+The project talked to a real Minecraft server for the first time. Everything
+below came out of watching it rather than reasoning about it, which is the
+point: eight phases of unit-tested code survived first contact, and the things
+that broke were almost all things no test could have caught.
+
+### It works
+
+Wilbur connected on the first attempt and, with `use_cognition` on, generated
+goals nobody asked for — "Gather wood and stone tools to establish a resource
+base" (wealth), "Deal with the nearby skeleton threat" (safety), "Find shelter
+and craft a bed to survive the night" (safety) — each grounded in real sensor
+state: biome, inventory, health, time of day. Mid-goal preemption fired
+correctly when safety displaced wealth. The retry→replan→abandon monitor
+recovered a failed step. That is the mission working.
+
+### The cost arc, and four wrong turns
+
+    at first light   1,398 calls/hr   $4.93/hr   $118/day    cache 0%
+    after tuning       244 calls/hr   $0.48/hr    $11.54/day cache 64%
+
+A 10x reduction, but I reached it by being wrong four times in a row, and the
+pattern is worth recording because it will recur:
+
+1. **Call volume.** `step_cooldown_ms: 2000` is a 1,800 calls/hr ceiling and the
+   agent was running at it. Reasonable for a free local model, ruinous against
+   an API. Now 10s.
+2. **A wasted call per action.** `max_step_responses: 5` re-prompts so the model
+   can chain or report `!stepDone`. Haiku does neither — one command then
+   silence — so half the spend was asking "anything else?" of a model that never
+   chains.
+3. **The cache floor.** I assumed Haiku 4.5 inherited the documented 2048-token
+   minimum. It is ~4096, found by bisecting against the API. Before that I
+   "fixed" the chars/token ratio three times (4.2 → 4.6 → 5.3, all wrong in the
+   same direction; the real value is 3.7) and upgraded the SDK, none of which
+   was the cause.
+4. **Sonnet.** I recommended switching on the theory that caching would make it
+   cheaper. At the real 57% cache rate its effective input rate is $1.46/1M
+   against Haiku's $1.00/1M uncached, so it was never going to pay off. Reverted.
+
+**The failure mode was consistent: I kept treating an inference as a finding.**
+My own warning message asserted "the prefix is below this model's floor" — a
+guess, presented as a diagnosis, which sent me chasing prompt length three
+times. The fix that actually mattered was building tools that ask the API
+instead of estimating: `count_prompt_tokens.mjs`, `check_cache_live.mjs`,
+`probe_cache_floor.mjs`. Those should have come first.
+
+**The insight that unlocked it:** once a prefix caches, its size is nearly free
+(0.1x). I had spent hours treating prefix growth as a cost to minimise when past
+the floor it is close to free — so the 29 conversation examples moved from the
+volatile tail (2 sent per call, full price, forever) into the cached prefix (all
+29, byte-identical, 0.1x). More coverage for less money.
+
+### Bugs the live run surfaced that tests did not
+
+- **"No response from Claude." spoken in chat.** The persona tells the bot to
+  answer with a bare tab when it has nothing to say; Anthropic strips
+  whitespace-only blocks; the provider substituted prose for the empty content,
+  said it out loud, and wrote it into history as a real assistant turn. Third
+  instance of the same root cause in one file: inventing prose where the honest
+  answer was "nothing" or "it failed".
+- **Two shipped few-shot examples used commands that do not exist** —
+  `!collectBlock` and `!craftItem`. A model copying its own examples looks like
+  it is hallucinating when it was taught.
+- **A goal outlived its situation.** Wilbur pursued a skeleton that had left,
+  because safety is a sensor drive fed by health as well as hostiles, so the
+  drive stayed top while the goal's premise evaporated. Goals now retire when
+  the motivating drive eases, or after a backstop age.
+- **Trend history only accrued while a browser was open**, because sampling
+  lived in the dashboard's listener poll. Exactly backwards for 24/7.
+
+### Deployment
+
+`deploy/` has a systemd unit and a guide. Two details matter: `KillSignal=SIGINT`
+(the clean-shutdown path flushes history, cognition, skills and social state on
+SIGINT; SIGKILL discards a run's state every restart) and `KillMode=control-group`
+so agent children die with the parent.
+
+The dashboard is reached over an SSH tunnel, not a bound port. It has no
+authentication and its socket API includes `shutdown`, `destroy-agent`,
+`set-profile` and chat injection. Binding to the LAN would need the bind address,
+the origin allowlist AND auth that does not exist.
+
+### Two mistakes of mine worth remembering
+
+**I killed Tom's browser** with `pkill -f "Google Chrome"` while cleaning up a
+screenshot harness, and a leftover headless instance then made the real Chrome
+appear not to open at all (macOS routes the launch to the running process). Rule
+and recovery are in CLAUDE.md; the harness now kills only its own child PIDs.
+
+**Tom's LAN IP reached the public repo.** A `git add -A` swept up his working-tree
+edit to the tracked `settings.js`, and my "nothing sensitive" audit missed it —
+the IP filter I ran excluded my own example address. Purged with git-filter-repo
+and force-pushed; `settings.local.json` (gitignored) now holds per-machine config
+so it cannot recur. The real lesson is `git add -A` in a repo whose tracked files
+double as local configuration.
+
+### Where it stands
+
+- Running on the homelab under systemd, ~$11.54/day, 64% cache, one agent.
+- `settings.local.json` overlay is half of the backlogged UI-parity gap: the
+  dashboard could now persist settings by writing data rather than code.
+
+### Next
+
+1. **Ollama for embeddings** (`ollama/embeddinggemma` — the model after the slash
+   is required; a bare `"ollama"` resolves to a model named `ollama` and fails).
+   Do this BEFORE `use_memory`: embeddings become the highest-count calls the
+   moment memory is on.
+2. **`use_memory`** — the event feed, reflection and beliefs are the last major
+   subsystem never seen running.
+3. **A second agent** once one is stable. Wilbur and Greta are built to conflict.
+4. Local share is 0% and will stay there without a GPU; the chat tier cannot run
+   on CPU at this cadence. Revisit the ≥70% target when hardware changes.
+
+### Known issues
+
+- Steps still complete unreliably — Haiku needed to be *told*, in the prompt, to
+  emit `!stepDone`. Watch for goals ending on timeout rather than completion.
+- Trend history is in-memory; `systemctl restart` clears it.
+- The `runs/` archive grows unbounded and needs manual pruning.
