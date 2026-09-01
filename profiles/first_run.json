@@ -2,7 +2,7 @@
     "name": "Wilbur",
     "//": "First live-run profile. Deliberately minimal: one agent, Haiku on every tier, no feature flags. The goal of the first run is only to prove the pipe works end to end — connect, perceive, be talked to, run a command. Layer cognition/memory/skills on afterwards, one at a time, so a failure has one obvious cause.",
     "model": "claude-haiku-4-5-20251001",
-    "//embedding": "Uncomment 'embedding' below once Ollama is running and embeddinggemma is pulled. The model name after the slash is REQUIRED: a bare \"ollama\" resolves to a model literally named 'ollama' and fails. Embeddings become the highest-count calls in the system the moment use_memory is on (~2,460/hr vs ~1,160 chat), so moving them local is the single best CPU-only win. Point it at another host with {\"api\":\"ollama\",\"model\":\"embeddinggemma\",\"url\":\"http://10.0.0.5:11434\"} if Ollama lives on a different box.",
+    "//embedding": "Local and free. The model name after the slash is REQUIRED — a bare \"ollama\" resolves to a model literally named 'ollama' and every embedding call fails, silently degrading retrieval to word-overlap. Point at another host with {\"api\":\"ollama\",\"model\":\"embeddinggemma\",\"url\":\"http://10.0.0.5:11434\"}.",
     "conversation_examples": [
         [
             {
@@ -44,5 +44,11 @@
     },
     "//model": "Back on Haiku. Sonnet was switched to on the theory that caching would make it cheaper; measured, its effective input rate at the real 57% cache rate is $1.46/1M against Haiku's $1.00/1M uncached, so it was never going to win. Haiku WITH caching is $0.23/1M — by far the cheapest option — which needs the cacheable prefix over Haiku 4.5's measured 4096-token floor. Once cached, prefix size is nearly free (0.1x), so a larger prefix that caches beats a smaller one that does not.",
     "//tiers": "No tiers block: everything is Haiku. Add {\"plan\":\"claude-sonnet-5\"} if goal and plan quality needs it — that tier is a couple of calls per goal, so it barely moves the bill.",
-    "//embedding_example": "ollama/embeddinggemma"
+    "embedding": "ollama/embeddinggemma",
+    "memory": {
+        "retrieval_k": 3,
+        "half_life_hours": 24,
+        "reflection_threshold": 8
+    },
+    "//memory": "retrieval_k is deliberately 3, not the default 5: retrieved memories are substituted into $MEMORY, which sits AFTER the cache boundary, so every one of them is billed at full input price on every call for the life of the run. Raise it once you have seen what it costs, not before."
 }
