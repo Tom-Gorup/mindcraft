@@ -319,6 +319,7 @@ export class CognitionLoop {
             project_id: project.id,          // links the goal back to the project
             milestone: milestone.text,
         };
+        project.noteAttempt();
         this.notifyEvent('project milestone started');
         this.monitor.reset();
         this.monitor.startStep();
@@ -854,6 +855,8 @@ export class CognitionLoop {
                 progress: this.projects.active.progress,
                 milestones: this.projects.active.milestones,
                 next: this.projects.active.nextMilestone?.text ?? null,
+                attempts: this.projects.active.nextMilestone?.attempts ?? 0,
+                stalled: !!this.projects.active.stalledMilestone,
                 outstanding: this.projects.active.outstanding,
                 active_ms: this.projects.active.active_ms,
                 sessions: this.projects.active.sessions,

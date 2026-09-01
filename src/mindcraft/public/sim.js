@@ -146,7 +146,8 @@
             + (p.sessions ? ` · ${p.sessions + 1} sessions` : '') + '</span></div>'
             + `<div class="sim-goal">${esc(p.intent)}</div>`
             + bar
-            + (p.next ? `<div class="sim-step">Next: ${esc(p.next)}</div>` : '')
+            + (p.next ? `<div class="sim-step${p.stalled ? ' sim-stalled' : ''}">Next: ${esc(p.next)}`
+                + (p.attempts > 1 ? ` — attempt ${p.attempts}` : '') + '</div>' : '')
             + (short ? `<div class="sim-step">Still needs: ${esc(short)}</div>` : '')
             + '</div>';
     }

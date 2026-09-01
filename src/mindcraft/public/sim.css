@@ -590,3 +590,7 @@
 }
 .sim-project .sim-goal { font-size: 14.5px; font-weight: 600; }
 .sim-project .sim-progress i.done { background: var(--series-4); }
+
+/* a milestone being retried over and over is the failure mode of an overnight
+   run: it looks identical to steady progress unless the count is visible */
+.sim-step.sim-stalled { color: var(--warning); }

@@ -142,3 +142,29 @@ test('history is bounded so the store cannot grow without limit', () => {
     }
     assert.ok(s.projects.length <= 3 + 1, `bounded, got ${s.projects.length}`);
 });
+
+// An overnight run stuck on milestone 1 looks identical to one making steady
+// progress unless attempts are counted.
+test('milestone attempts are counted and surface a stall', () => {
+    const s = new ProjectStore();
+    const p = s.start('watchtower', ['gather 40 logs', 'raise the base'], { now: 1 });
+    assert.equal(p.nextMilestone.attempts, 0);
+    for (let i = 0; i < 5; i++) p.noteAttempt();
+    assert.equal(p.nextMilestone.attempts, 5);
+    assert.equal(p.stalledMilestone, null, 'five is not yet a stall');
+    p.noteAttempt();
+    assert.ok(p.stalledMilestone, 'six is');
+    assert.match(p.describe(), /attempted this 6 times/);
+});
+
+test('attempts reset with the milestone and survive persistence', () => {
+    const s = new ProjectStore();
+    const p = s.start('watchtower', ['a', 'b'], { now: 1 });
+    p.noteAttempt(); p.noteAttempt();
+    p.completeNextMilestone();
+    assert.equal(p.nextMilestone.text, 'b');
+    assert.equal(p.nextMilestone.attempts, 0, 'the next milestone starts fresh');
+
+    const revived = new ProjectStore(JSON.parse(JSON.stringify(s.toJSON())));
+    assert.equal(revived.active.milestones[0].attempts, 2, 'history is kept');
+});

@@ -37,8 +37,11 @@ export class Project {
         this.active_ms = data.active_ms ?? 0;
         this.site = data.site ?? null;              // {x,y,z} once chosen
         this.status = data.status ?? 'active';      // active | complete | abandoned
+        // attempts is what makes an overnight run diagnosable: a project stuck
+        // on milestone 1 for eight hours looks identical to one making steady
+        // progress unless you count how many times it has been tried.
         this.milestones = (data.milestones ?? []).slice(0, MAX_MILESTONES)
-            .map(m => ({ text: clampStr(m.text, 160), done: !!m.done }));
+            .map(m => ({ text: clampStr(m.text, 160), done: !!m.done, attempts: m.attempts ?? 0 }));
         // What the agent has decided it needs, and what it has actually put in.
         // Counts are cumulative contributions, not current inventory — a project
         // should not un-build itself because the agent spent its logs elsewhere.
@@ -46,6 +49,7 @@ export class Project {
             contributed: { ...(data.materials?.contributed ?? {}) } };
         this.notes = (data.notes ?? []).slice(-MAX_NOTES);
         this.sessions = data.sessions ?? 0;         // how many agent lifetimes it has spanned
+        this.stall_attempts = data.stall_attempts ?? 6;
     }
 
     get nextMilestone() {
@@ -60,6 +64,19 @@ export class Project {
     get isFinished() {
         return this.status !== 'active'
             || (this.milestones.length > 0 && this.milestones.every(m => m.done));
+    }
+
+    noteAttempt() {
+        const m = this.nextMilestone;
+        if (m) m.attempts = (m.attempts ?? 0) + 1;
+    }
+
+    // A milestone attempted many times without completing is the signal that
+    // the plan is wrong rather than the work being slow. The taste/revision
+    // layer will act on this; for now it is reported so a human can see it.
+    get stalledMilestone() {
+        const m = this.nextMilestone;
+        return m && (m.attempts ?? 0) >= this.stall_attempts ? m : null;
     }
 
     completeNextMilestone(note = '') {
@@ -103,7 +120,14 @@ export class Project {
         if (this.sessions > 0) text += `, worked across ${this.sessions + 1} sessions`;
         text += '\n';
         const next = this.nextMilestone;
-        if (next) text += `Next: ${next.text}\n`;
+        if (next) {
+            text += `Next: ${next.text}`;
+            // Tell the model plainly when it is going in circles, so the plan
+            // can change rather than repeating.
+            if ((next.attempts ?? 0) >= 2)
+                text += ` (you have attempted this ${next.attempts} times without finishing it — try a different approach, or a smaller version of it)`;
+            text += '\n';
+        }
         const short = this.outstanding;
         const keys = Object.keys(short);
         if (keys.length)
@@ -118,7 +142,7 @@ export class Project {
             id: this.id, intent: this.intent, drive: this.drive,
             created_at: this.created_at, last_worked_at: this.last_worked_at,
             active_ms: this.active_ms, site: this.site, status: this.status,
-            milestones: this.milestones, materials: this.materials,
+            milestones: this.milestones, materials: this.materials, stall_attempts: this.stall_attempts,
             notes: this.notes, sessions: this.sessions,
         };
     }
