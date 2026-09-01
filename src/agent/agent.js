@@ -720,6 +720,13 @@ export class Agent {
         // unguarded call threw and the process then never exited at all.
         try { this.bot?.chat?.(code > 1 ? 'Restarting.' : 'Exiting.'); } catch { /* not logged in yet */ }
 
+        // Record WHY before going. Exit code 1 makes the parent restart, and
+        // without this the only trace was "Agent process exited with code 1" in
+        // the journal and a drop to zero on the call-rate chart — the reason
+        // (stuck, action loop, deliberate smelt restart) was lost entirely.
+        try { this.memory?.record('session', `Shutting down: ${msg}`, { code }); }
+        catch { /* memory may not be up yet */ }
+
         const flush = () => {
             try { this.history.save(); } catch (err) { console.error('Failed to save history on shutdown:', err); }
             try { if (settings.use_cognition) this.cognition?.persist(); } catch (err) { console.error('Failed to persist cognition state on shutdown:', err); }
