@@ -49,6 +49,13 @@ export class CognitionLoop {
         // how much the motivating drive must ease before a goal is re-decided
         this.goal_relief_margin = opts.goal_relief_margin ?? 0.25;
         this.goal_max_active_ms = opts.goal_max_active_ms ?? 12 * 60000;
+        // A need and an ambition are not the same size of job. Twelve minutes
+        // is generous for "eat something" and absurd for "lay a stone
+        // foundation" — the run of 2026-09-01 spent nine attempts on one
+        // milestone, each cut off at twelve minutes. The budget follows the
+        // kind of work, with an explicit per-drive override for tuning.
+        this.aspiration_goal_max_active_ms = opts.aspiration_goal_max_active_ms ?? 45 * 60000;
+        this.goal_budget_ms = opts.goal_budget_ms ?? {};
         // A new goal gets a grace period before it can be preempted. Sensor
         // drives are noisy — safety is capped hard whenever a hostile is within
         // 16 blocks, so a wandering mob flips it — and without this the arbiter
@@ -292,9 +299,10 @@ export class CognitionLoop {
             }
             project = this.projects.start(proposal.intent, proposal.milestones,
                 { drive, now: Date.now(), needed: proposal.materials });
-            this._safeRecordMemory('discovery',
+            this._safeRecordMemory('project_started',
                 `Decided on a project: ${project.intent}. Milestones: ${project.milestones.map(m => m.text).join('; ')}`,
-                { project: project.id, intent: project.intent });
+                { project: project.id, intent: project.intent, drive,
+                    milestones: project.milestones.length });
             console.log(`Cognition: new PROJECT (${drive}): ${project.intent}`);
         }
 
@@ -320,6 +328,12 @@ export class CognitionLoop {
             milestone: milestone.text,
         };
         project.noteAttempt();
+        // Attempt count is the point: a milestone tried nine times without
+        // finishing is a planning failure, and it reads as steady progress
+        // unless the number is recorded.
+        this._safeRecordMemory('milestone_started',
+            `Working milestone "${milestone.text}" (attempt ${milestone.attempts}) of project "${project.intent}"`,
+            { project: project.id, milestone: milestone.text, attempt: milestone.attempts });
         this.notifyEvent('project milestone started');
         this.monitor.reset();
         this.monitor.startStep();
@@ -388,6 +402,16 @@ export class CognitionLoop {
     }
 
     // Two cheap, arithmetic-only reasons to stop pursuing a goal. Neither costs
+    // How long a goal for this drive may run before it counts as stuck.
+    // Explicit override wins; otherwise aspirations get the longer runway.
+    _budgetFor(drive) {
+        const override = this.goal_budget_ms[drive];
+        if (typeof override === 'number') return override;
+        return this.drive_state.drives[drive]?.aspiration
+            ? this.aspiration_goal_max_active_ms
+            : this.goal_max_active_ms;
+    }
+
     // an LLM call, which matters because this runs every preempt_check_ms.
     _goalNoLongerWarranted() {
         const a = this.active;
@@ -401,7 +425,8 @@ export class CognitionLoop {
             return `${a.drive} has eased (${a.urgency_at_start.toFixed(2)} → ${now_urgency.toFixed(2)})`;
         // 2. Backstop: any goal worked this long without finishing is stuck,
         //    whatever the drives say.
-        if (this.goal_max_active_ms > 0 && (a.active_ms ?? 0) > this.goal_max_active_ms)
+        const budget = this._budgetFor(a.drive);
+        if (budget > 0 && (a.active_ms ?? 0) > budget)
             return `no progress after ${Math.round(a.active_ms / 60000)} minutes`;
         return null;
     }
@@ -558,11 +583,16 @@ export class CognitionLoop {
         if (active.project_id) {
             const project = this.projects.active;
             if (project && project.id === active.project_id && project.nextMilestone?.text === active.milestone) {
+                const attempts = project.nextMilestone?.attempts ?? 0;
                 project.completeNextMilestone();
+                this._safeRecordMemory('milestone_completed',
+                    `Finished milestone "${active.milestone}" of "${project.intent}" on attempt ${attempts}`,
+                    { project: project.id, milestone: active.milestone, attempt: attempts });
                 if (project.status === 'complete') {
-                    this._safeRecordMemory('discovery',
+                    this._safeRecordMemory('project_completed',
                         `Finished my project: ${project.intent}. It took ${Math.round(project.active_ms / 60000)} minutes of work across ${project.sessions + 1} sessions.`,
-                        { project: project.id, intent: project.intent });
+                        { project: project.id, intent: project.intent,
+                            minutes: Math.round(project.active_ms / 60000) });
                     console.log(`Cognition: PROJECT COMPLETE — ${project.intent}`);
                 }
             }

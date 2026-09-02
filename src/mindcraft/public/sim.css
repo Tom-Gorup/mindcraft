@@ -603,3 +603,8 @@
 .rp-barcell { width: 40%; }
 .rp-bar { display: block; height: 8px; border-radius: 4px; background: var(--series-1); min-width: 2px; }
 a.neutral-btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* Retried-without-finishing: the count is the finding, so it leads. */
+.rp-stalls { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
+.rp-stalls li { margin-bottom: 2px; }
+.rp-stall { color: var(--warning); font-variant-numeric: tabular-nums; font-weight: 600; }

@@ -284,6 +284,14 @@
                 "step": 30000,
                 "default": 240000,
                 "description": "How long the memory of dying keeps safety urgent. Respawning restores full health, so without this the drive system forgets the death immediately."
+            },
+            "aspiration_goal_max_active_ms": {
+                "type": "number",
+                "min": 60000,
+                "max": 7200000,
+                "step": 60000,
+                "default": 2700000,
+                "description": "How long a goal serving an aspiration may run before it counts as stuck. Ambitious building needs far longer than a need does \u2014 12 minutes is generous for eating and absurd for laying a foundation."
             }
         }
     },

@@ -232,6 +232,34 @@
             + '<div class="rp-goals">' + blocks + '</div></div>';
     }
 
+    // Long work. Milestones completed is the honest measure; attempts on an
+    // unfinished milestone is the warning.
+    function renderProjects(rep) {
+        const entries = Object.entries(rep.project_outcomes || {}).filter(
+            ([, r]) => r.started || r.milestone_attempts);
+        if (!entries.length) return '';
+        const blocks = entries.map(([agent, r]) => {
+            const rows = (r.projects || []).map(p =>
+                '<tr><td>' + esc(p.intent || '—') + '</td><td>' + esc(p.status)
+                + (p.minutes != null ? ' (' + p.minutes + ' min)' : '') + '</td></tr>').join('');
+            const stalled = (r.stalled || []).map(sm =>
+                '<li><span class="rp-stall">&times;' + sm.attempts + '</span> '
+                + esc(sm.milestone) + '</li>').join('');
+            return '<div class="rp-goal-block">'
+                + '<div class="rp-goal-head"><strong>' + esc(agent) + '</strong>'
+                + '<span class="rp-dim">' + r.milestones_completed + ' of '
+                + r.milestone_attempts + ' milestone attempts finished</span></div>'
+                + (rows ? '<div class="rp-table-wrap"><table class="rp-table">'
+                    + '<thead><tr><th>project</th><th>status</th></tr></thead>'
+                    + '<tbody>' + rows + '</tbody></table></div>' : '')
+                + (stalled ? '<p class="rp-note">Retried without finishing:</p>'
+                    + '<ul class="rp-stalls">' + stalled + '</ul>' : '')
+                + '</div>';
+        }).join('');
+        return '<div class="sim-section"><div class="heading">Long work</div>'
+            + '<div class="rp-goals">' + blocks + '</div></div>';
+    }
+
     function renderResources(rep) {
         const rows = Object.entries(rep.resources || {}).flatMap(([agent, items]) =>
             Object.entries(items).sort((a, b) => b[1] - a[1]).slice(0, 8)
@@ -268,6 +296,7 @@
             + renderAgents(report)
             + renderMatrix(report)
             + renderGoals(report)
+            + renderProjects(report)
             + renderResources(report)
             + renderBeliefs(report);
         if (report._export_path)

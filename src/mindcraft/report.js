@@ -22,6 +22,11 @@ export const CATEGORY = {
     goal_completed: 'goal',
     goal_abandoned: 'goal',
     plan_revised: 'goal',
+    project_started: 'project',
+    project_completed: 'project',
+    project_abandoned: 'project',
+    milestone_started: 'project',
+    milestone_completed: 'project',
     interruption: 'interruption',
     belief: 'belief',
     social: 'social',
@@ -251,6 +256,61 @@ export function normalizeReason(reason) {
     return r.substring(0, 60);
 }
 
+// Long work.
+//
+// "Did anything actually get built?" is the question Phase 9 exists to answer,
+// and goal counts cannot answer it: a project advances across many goals and
+// many sessions. The run of 2026-09-01 looked busy — twelve milestone attempts
+// — while finishing nothing, because nine of those attempts were the SAME
+// milestone. Attempts per milestone is the number that distinguishes progress
+// from a treadmill.
+export function projectOutcomes(events) {
+    const out = Object.create(null);
+    const agent = (name) => (out[name] ||= {
+        started: 0, completed: 0, abandoned: 0,
+        milestones_completed: 0, milestone_attempts: 0,
+        projects: [], stalled: [],
+    });
+    const attempts = Object.create(null);   // "agent::milestone" -> highest attempt seen
+
+    for (const ev of events) {
+        const t = ev.type;
+        if (!t || !t.startsWith('project_') && !t.startsWith('milestone_')) continue;
+        const a = agent(ev.agent);
+        const d = ev.data || {};
+
+        if (t === 'project_started') {
+            a.started++;
+            a.projects.push({ ts: ev.ts, intent: d.intent ?? null, status: 'active' });
+        } else if (t === 'project_completed' || t === 'project_abandoned') {
+            const done = t === 'project_completed';
+            done ? a.completed++ : a.abandoned++;
+            const rec = a.projects.find(p => p.intent === d.intent) ?? null;
+            if (rec) { rec.status = done ? 'complete' : 'abandoned'; rec.minutes = d.minutes ?? null; }
+            else a.projects.push({ ts: ev.ts, intent: d.intent ?? null,
+                status: done ? 'complete' : 'abandoned', minutes: d.minutes ?? null });
+        } else if (t === 'milestone_started') {
+            a.milestone_attempts++;
+            const key = `${ev.agent}::${d.milestone ?? ev.content}`;
+            attempts[key] = Math.max(attempts[key] ?? 0, Number(d.attempt) || 1);
+        } else if (t === 'milestone_completed') {
+            a.milestones_completed++;
+        }
+    }
+
+    // A milestone tried repeatedly without completing is the actionable signal.
+    for (const [key, n] of Object.entries(attempts)) {
+        if (n < 3) continue;
+        const [who, milestone] = key.split('::');
+        agent(who).stalled.push({ milestone, attempts: n });
+    }
+    for (const a of Object.values(out)) {
+        a.stalled.sort((x, y) => y.attempts - x.attempts);
+        a.projects = a.projects.slice(-10);
+    }
+    return out;
+}
+
 // The full report.
 export function buildReport(all_events, scope = {}) {
     const events = filterEvents(all_events, scope).sort((a, b) => a.ts - b.ts);
@@ -319,5 +379,6 @@ export function buildReport(all_events, scope = {}) {
         timeline: timeline(events, scope.buckets ?? 60, span_from, span_to),
         believed_vs_observed: believedVsObserved(events),
         goal_outcomes: goalOutcomes(events),
+        project_outcomes: projectOutcomes(events),
     };
 }

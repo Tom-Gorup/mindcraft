@@ -19,6 +19,14 @@ export const EVENT_TYPES = {
     goal_completed: { importance: 0.7,  embed: true },
     goal_abandoned: { importance: 0.7,  embed: true },
     plan_revised:   { importance: 0.5,  embed: true },
+    // Ambition that outlives a goal (Phase 9). Typed rather than folded into
+    // discovery/goal_started so a report can answer "did it finish anything?"
+    // without pattern-matching prose.
+    project_started:   { importance: 0.8, embed: true },
+    project_completed: { importance: 0.9, embed: true },
+    project_abandoned: { importance: 0.7, embed: true },
+    milestone_started:   { importance: 0.5, embed: false },
+    milestone_completed: { importance: 0.75, embed: true },
     place:          { importance: 0.6,  embed: true },   // remembered location
     discovery:      { importance: 0.6,  embed: true },
     code:           { importance: 0.5,  embed: true },   // successful generated program

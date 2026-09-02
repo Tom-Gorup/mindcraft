@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReport, filterEvents, categoryOf, commandKind, interactionMatrix, timeline, parseGoalContent, goalOutcomes } from '../../src/mindcraft/report.js';
+import { buildReport, filterEvents, categoryOf, commandKind, interactionMatrix, timeline, parseGoalContent, goalOutcomes, projectOutcomes } from '../../src/mindcraft/report.js';
 
 const T0 = 1_700_000_000_000;
 function ev(agent, type, dt, extra = {}) {
@@ -184,4 +184,44 @@ test('unparseable content degrades to unspecified rather than inventing a reason
     const { goal_outcomes } = buildReport([goalEv('X', 'goal_abandoned', 'something else entirely')]);
     assert.equal(goal_outcomes.X.by_reason.unspecified, 1);
     assert.deepEqual(goal_outcomes.X.by_drive, { unknown: { completed: 0, abandoned: 1 } });
+});
+
+// ---- long work ----
+//
+// Run of 2026-09-01: twelve milestone attempts, zero finished, because nine of
+// them were the same milestone. Goal counts cannot show that.
+const projEv = (agent, type, data, ts = 1) => ({ agent, type, ts, content: '', data });
+
+test('project outcomes distinguish progress from a treadmill', () => {
+    const { project_outcomes } = buildReport([
+        projEv('Wilbur', 'project_started', { intent: 'a lighthouse tower', milestones: 4 }),
+        projEv('Wilbur', 'milestone_started', { milestone: 'gather 200 cobblestone', attempt: 1 }),
+        projEv('Wilbur', 'milestone_started', { milestone: 'gather 200 cobblestone', attempt: 2 }),
+        projEv('Wilbur', 'milestone_started', { milestone: 'gather 200 cobblestone', attempt: 9 }),
+        projEv('Wilbur', 'milestone_started', { milestone: 'clear the site', attempt: 1 }),
+        projEv('Wilbur', 'milestone_completed', { milestone: 'clear the site', attempt: 1 }),
+    ]);
+    const w = project_outcomes.Wilbur;
+    assert.equal(w.started, 1);
+    assert.equal(w.milestone_attempts, 4, 'four starts; the completion is not an attempt');
+    assert.equal(w.milestones_completed, 1);
+    assert.deepEqual(w.stalled, [{ milestone: 'gather 200 cobblestone', attempts: 9 }],
+        'the repeatedly-retried milestone is the finding');
+    assert.equal(w.projects[0].status, 'active');
+});
+
+test('a finished project is recorded as finished, with its cost', () => {
+    const { project_outcomes } = buildReport([
+        projEv('Greta', 'project_started', { intent: 'a logging camp' }),
+        projEv('Greta', 'project_completed', { intent: 'a logging camp', minutes: 140 }),
+    ]);
+    const g = project_outcomes.Greta;
+    assert.equal(g.completed, 1);
+    assert.equal(g.projects[0].status, 'complete');
+    assert.equal(g.projects[0].minutes, 140);
+});
+
+test('project events carry their own category, not "other"', () => {
+    assert.equal(categoryOf('project_started'), 'project');
+    assert.equal(categoryOf('milestone_completed'), 'project');
 });

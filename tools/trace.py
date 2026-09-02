@@ -112,6 +112,7 @@ KIND_COLOR = {
     "narration":  "#3d4a55",   # deliberately dim: this is noise
     "death":      "#e05a4f",
     "session":    "#8a97a3",
+    "project":    "#7a9e5c",   # olive: long work, distinct from build actions
     "other":      "#4a5560",
 }
 
@@ -224,6 +225,9 @@ def parse_events_jsonl(path):
         "death": "death", "damage": "combat", "session": "session",
         "goal_started": "goal", "goal_completed": "goal",
         "goal_abandoned": "goal", "plan_revised": "goal",
+        "project_started": "project", "project_completed": "project",
+        "project_abandoned": "project", "milestone_started": "project",
+        "milestone_completed": "project",
         "belief": "belief", "social": "social", "gossip": "social",
         "interruption": "interruption",
         "place": "discovery", "discovery": "discovery",
