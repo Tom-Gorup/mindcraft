@@ -3,7 +3,7 @@ import settings from './settings.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { readFileSync } from 'fs';
-import { loadProfile } from './src/mindcraft/profile_overlay.js';
+import { loadProfile, applySettingsOverlay } from './src/mindcraft/profile_overlay.js';
 
 function parseArguments() {
     return yargs(hideBin(process.argv))
@@ -86,8 +86,11 @@ for (const profile of settings.profiles) {
         failures.push(`${profile}: could not be read or is not valid JSON (${err.message})`);
         continue;
     }
-    settings.profile = profile_json;
-    const result = await Mindcraft.createAgent(settings);
+    // A NEW object per agent: applySettingsOverlay must not mutate the shared
+    // settings, or one agent's overrides would leak into the next in this loop.
+    const agent_settings = applySettingsOverlay(profile_json.name, settings);
+    agent_settings.profile = profile_json;
+    const result = await Mindcraft.createAgent(agent_settings);
     if (!result?.success)
         failures.push(`${profile}: ${result?.error || 'unknown error'}`);
 }

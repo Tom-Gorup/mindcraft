@@ -7,7 +7,10 @@ import * as mindcraft from './mindcraft.js';
 import { readFileSync, createReadStream } from 'fs';
 import { RunRegistry } from './runs.js';
 import { buildReport } from './report.js';
-import { writeOverlay } from './profile_overlay.js';
+import { writeOverlay, writeSettingsOverlay } from './profile_overlay.js';
+// The on-disk global settings, used as the baseline a per-agent overlay diffs
+// against. Imported directly because the mindserver runs in the parent process.
+import global_settings from '../../settings.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Mindserver is:
@@ -466,9 +469,21 @@ export function createMindServer(host_public = false, port = 8080) {
                 if (!Object.hasOwn(settings_spec, key))
                     delete new_settings[key];
             }
+            const name = agent.settings?.profile?.name;
             if (new_settings.profile)
-                sanitizeProfile(new_settings.profile, agent.settings?.profile?.name);
+                sanitizeProfile(new_settings.profile, name);
             agent.setSettings(new_settings);
+
+            // Persist, or every checkbox in this dialog is a claim about
+            // durability that is not true — the reason a disabled use_cognition
+            // came back on after a restart.
+            try {
+                const saved = writeSettingsOverlay(name, global_settings, new_settings);
+                if (saved.keys.length)
+                    console.log(`Saved settings for ${name}: ${saved.keys.join(', ')}`);
+            } catch (err) {
+                console.error(`Could not save settings for ${name}:`, err.message || err);
+            }
             agent.socket?.emit('restart-agent');
         });
 

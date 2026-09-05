@@ -34,6 +34,15 @@ export function overlayPath(name) {
     return path.join(OVERLAY_DIR, `${name}.json`);
 }
 
+// Runtime settings are a separate file from the profile: they answer a
+// different question (how the process runs, vs who the agent is), they are
+// edited from a different dialog, and mixing them would make either one hard
+// to read by hand.
+export function settingsOverlayPath(name) {
+    if (!SAFE_NAME.test(String(name ?? ''))) return null;
+    return path.join(OVERLAY_DIR, `${name}.settings.json`);
+}
+
 function isPlainObject(v) {
     return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
@@ -90,6 +99,78 @@ export function writeOverlay(name, base, edited) {
     writeFileSync(tmp, JSON.stringify(body, null, 4) + '\n');
     renameSync(tmp, p);
     return { path: p, keys: Object.keys(diff) };
+}
+
+// ---- runtime settings overlay -------------------------------------------
+//
+// set-agent-settings had exactly the same defect as set-profile: it updated the
+// agent in memory and restarted the process without writing anything, so every
+// checkbox in the Settings dialog was a claim about durability that was not
+// true. This is the same diff-and-merge, pointed at settings.
+
+// Never stored: these are structural rather than per-agent preferences, and an
+// overlay that pinned them would quietly override the operator's own files.
+const SETTINGS_NEVER_STORE = new Set(['profile', 'profiles']);
+
+export function diffSettings(base, edited) {
+    const out = {};
+    if (!isPlainObject(edited)) return out;
+    for (const [k, v] of Object.entries(edited)) {
+        if (SETTINGS_NEVER_STORE.has(k)) continue;
+        if (!sameValue(v, base?.[k])) out[k] = v;
+    }
+    return out;
+}
+
+export function readSettingsOverlay(name) {
+    const p = settingsOverlayPath(name);
+    if (!p || !existsSync(p)) return null;
+    try {
+        const parsed = JSON.parse(readFileSync(p, 'utf8'));
+        return isPlainObject(parsed) ? parsed : null;
+    } catch (err) {
+        console.error(`Settings overlay ${p} could not be read: ${err.message}`);
+        console.error('Ignoring it and using the global settings. Fix the JSON and restart.');
+        return null;
+    }
+}
+
+export function writeSettingsOverlay(name, base, edited) {
+    const p = settingsOverlayPath(name);
+    if (!p) throw new Error(`Refusing to write a settings overlay for unsafe agent name: ${name}`);
+    const diff = diffSettings(base, edited);
+    if (Object.keys(diff).length === 0) {
+        if (existsSync(p)) unlinkSync(p);
+        return { path: p, keys: [] };
+    }
+    mkdirSync(OVERLAY_DIR, { recursive: true });
+    const body = {
+        '//': `Runtime settings for ${name}, written by the dashboard. Gitignored. `
+            + 'Only keys that differ from the global settings are stored. Delete this file to revert.',
+        ...diff,
+    };
+    const tmp = `${p}.tmp`;
+    writeFileSync(tmp, JSON.stringify(body, null, 4) + '\n');
+    renameSync(tmp, p);
+    return { path: p, keys: Object.keys(diff) };
+}
+
+// Apply an agent's settings overlay over the global settings. Returns a NEW
+// object: the caller reuses one settings object across agents in a loop, and
+// mutating it would leak one agent's overrides into the next.
+export function applySettingsOverlay(name, base) {
+    const overlay = readSettingsOverlay(name);
+    if (!overlay) return { ...base };
+    const merged = { ...base };
+    const applied = [];
+    for (const [k, v] of Object.entries(overlay)) {
+        if (k.startsWith('//') || SETTINGS_NEVER_STORE.has(k)) continue;
+        merged[k] = v;
+        applied.push(k);
+    }
+    if (applied.length)
+        console.log(`Settings overlay for ${name}: ${applied.join(', ')}`);
+    return merged;
 }
 
 // Read a tracked profile and apply its overlay. Returns the merged profile.
