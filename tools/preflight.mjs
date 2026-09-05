@@ -92,6 +92,40 @@ for (const keyName of needed) {
 }
 if (needed.size === 0) ok('API key', 'no keyed provider in use (local models only)');
 
+// ---- tier routing: what will actually serve each kind of call ----
+//
+// The question this answers is "will it use my GPU?", and until now the only
+// ways to find out were to enable log_routing (a line per call) or to watch the
+// local-share tile move — both of which require having already paid for calls.
+{
+    const prof = JSON.parse(readFileSync(settings.profiles[0], 'utf8'));
+    const tiers = prof.tiers || null;
+    const TIER_NAMES = ['reflex', 'chat', 'plan', 'reflect', 'code', 'vision'];
+    if (!tiers) {
+        warn('Tier routing', `${prof.name}: no "tiers" block — every tier uses ${prof.model?.model ?? prof.model}`,
+            'Local models are configured per tier. Without this block nothing runs on Ollama\n'
+            + '     except embeddings. Add "tiers" to the profile, or use Configure in the dashboard.');
+    } else {
+        const localTiers = TIER_NAMES.filter(t => String(tiers[t] ?? '').startsWith('ollama'));
+        for (const t of TIER_NAMES) {
+            const spec = tiers[t];
+            if (!spec) continue;
+            const isLocal = String(spec).startsWith('ollama');
+            ok('Tier routing', `${t.padEnd(7)} ${isLocal ? 'LOCAL' : ' api '}  ${spec}`);
+        }
+        if (localTiers.length === 0)
+            warn('Tier routing', 'no tier is set to a local model', 'Every call will be billed.');
+        else
+            ok('Tier routing', `${localTiers.length} tier(s) on Ollama: ${localTiers.join(', ')}`);
+    }
+    const emb = prof.embedding;
+    if (String(emb).startsWith('ollama'))
+        ok('Embeddings', `${emb} (local)`);
+    else
+        warn('Embeddings', `${emb ?? 'unset'} — not local`,
+            'Embeddings are the highest-volume call. "ollama/embeddinggemma" is the cheap win.');
+}
+
 // ---- Ollama reachability, if any local model is in use ----
 //
 // A wrong address or an unpulled model currently surfaces as a failed call

@@ -48,6 +48,25 @@ export class ModelRouter {
         // A hung provider must surface as an error, not as a wedged tier.
         this.call_timeout_ms = opts.call_timeout_ms ?? 120000;
         this._resolveTiers();
+        if (opts.announce !== false) this.announce();
+    }
+
+    // Say what every tier actually resolved to, once, at boot.
+    //
+    // "Is it using my GPU?" was previously answerable only by enabling
+    // log_routing (a line per call, far too noisy to leave on) or by waiting
+    // for the local-share tile to move — both of which require already having
+    // spent money. Resolution is known before the first call, so it is printed
+    // before the first call.
+    announce() {
+        const desc = this.describe();
+        const rows = Object.entries(desc);
+        const localCount = rows.filter(([, e]) => e.local).length;
+        console.log('Model routing:');
+        for (const [tier, e] of rows)
+            console.log(`  ${tier.padEnd(8)} ${e.local ? 'LOCAL ' : '  api '} ${e.api}/${e.model ?? '(default)'}`);
+        console.log(`  ${localCount} of ${rows.length} tiers run locally`
+            + (localCount === 0 ? ' — every call is billed' : ''));
     }
 
     _resolveTiers() {
