@@ -367,10 +367,10 @@ DEFAULT_DRIVES), so this is mostly design, not plumbing. Candidates: `legacy`
 it good, not just functional). These decay slowly — over hours — so they press
 persistently without ever spiking, which is exactly the shape "ambition" has and
 "hunger" does not.
-- [ ] Aspiration drives with slow decay and a satisfaction source that is a
+- [x] Aspiration drives with slow decay and a satisfaction source that is a
       *judgement about the world* ("does something I made still stand?") rather
       than a sensor reading.
-- [ ] The arbiter must let a low-urgency-but-persistent drive win sometimes.
+- [x] The arbiter must let a low-urgency-but-persistent drive win sometimes.
       Today the most urgent always wins, so a slow drive is starved forever by
       the churn of hunger and safety. Possibly an accumulated-neglect term.
 
@@ -408,12 +408,12 @@ agents optimise. The interesting version is closer to reputation — contextual,
 contested, and revisable — which is what the trust/grudge model already is.
 
 **2. Projects — state that outlives a goal.**
-- [ ] A project record: intent, design, materials ledger, site, progress,
+- [x] A project record: intent, design, materials ledger, site, progress,
       persisted per agent. Goals become *steps toward* a project rather than the
       unit of ambition.
-- [ ] The arbiter can resume an existing project instead of generating a new
+- [x] The arbiter can resume an existing project instead of generating a new
       goal, so being interrupted by nightfall is a pause and not an abandonment.
-- [ ] Projects survive restarts. Wilbur already resumes a goal from
+- [x] Projects survive restarts. Wilbur already resumes a goal from
       cognition.json; this is the same idea one level up.
 
 **3. Invented blueprints — the agent designs, we do not.**

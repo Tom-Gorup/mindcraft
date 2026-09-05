@@ -1161,3 +1161,71 @@ double as local configuration.
   emit `!stepDone`. Watch for goals ending on timeout rather than completion.
 - Trend history is in-memory; `systemctl restart` clears it.
 - The `runs/` archive grows unbounded and needs manual pruning.
+
+## Session 17 — Phase 9 live, local inference, and the execution wall (2026-09-05)
+
+Three recorded runs, each one diagnosing the next. The theme throughout: the
+agents decide well and could not finish anything.
+
+### What changed
+
+**Death survives the respawn.** `safety` is `health/20`, and respawn restores
+health to 20/20 — so the sensor reported perfect safety moments after each death
+and urgency fell to zero. The agent walked straight back out to its watchtower,
+36 times in one 9.3h run, each death wiping the inventory the goal needed. A
+decaying alarm now applies *after* the sensor and persists.
+
+**Ambition yields to needs.** A fully-neglected aspiration outranked being at
+half health. Aspirations forfeit their neglect claim while any real need is
+pressing (`needs_gate`). Greta wrote the requirement herself: "Don't abandon
+urgent needs for legacy goals when starving."
+
+**`unstuck` was fighting the work.** It infers stuckness from position, and
+gathering 64 logs means standing in a 2-block radius for minutes while
+`targetDigBlock` is briefly null between blocks. `moveAway(5)` pulled the bot off
+the job — nine of fourteen interruptions, and the reason gathering wood timed out
+in *every* run. Breaking a block now counts as progress. Wilbur diagnosed this
+himself before I found it.
+
+**Work counts for what it achieves.** Greta completed "Deposit my 55 spruce logs
+into the chest" under `wealth` while her milestone was "Gather 64 spruce logs" —
+the project stayed at 0%. Any completed goal now credits the project's materials
+ledger, and a gathering milestone closes when its materials are in hand.
+
+**Local inference.** `settings.ollama_url` points every `ollama/...` model at a
+machine on the LAN, so no address ever reaches a tracked file. Tiers, routing and
+reachability are reported by preflight and at boot, before the first billed call.
+
+**The UI stopped discarding input.** Both `set-profile` and `set-agent-settings`
+updated memory only and wrote nothing, so every browser edit died at the next
+restart — this is where a configured `legacy: 0.9` went. Gitignored per-agent
+overlays under `profiles/local/` now store the diff from the tracked file.
+
+### Where it got to
+
+| | baseline | round 1 | round 3 |
+|---|---|---|---|
+| goal completion | 5% | 12% | **42%** |
+| timeouts | 5.7/h | 2.6/h | **1.4/h** |
+| deaths | 3.86/h | 2.57/h | 4.15/h (small sample) |
+
+### Next
+
+1. **Does a milestone complete?** Zero across all three runs. `milestones_completed
+   > 0` in the Long-work report is the gate — until then "build a village" is the
+   same unfinished problem repeated.
+2. **`chat` to Ollama.** It is ~80% of call volume and the difference between
+   $9.19/day and $2.70/day; a multi-day run needs it. Watch the
+   `stepDone`/`stepFailed` ratio, which was 318:91 on Haiku.
+3. **Phase 9 slice 3** — taste and invented blueprints. Needs a completed project
+   to operate on, so it waits on (1).
+
+### Known issues
+
+- Reflection must stay on the API. The beliefs are the most valuable output this
+  system produces and a 7B model will not write "the self_defense and unstuck
+  reflexes are triggering during block collection".
+- Deaths rose in round 3 and two beliefs flag nighttime danger; there is no
+  sleep-or-shelter response.
+- `runs/` still grows unbounded.
+- Trend history is in-memory; `systemctl restart` clears it.
