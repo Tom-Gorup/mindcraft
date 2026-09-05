@@ -829,7 +829,7 @@ export class CognitionLoop {
         this.drive_state.noteAttention(delta, this.active?.drive ?? null);
         if (this.active?.project_id && this.projects.active?.id === this.active.project_id)
             this.projects.noteWork(delta, Date.now());
-        this.drive_state.update(delta, this.sensor_levels);
+        this.drive_state.update(delta, this.sensor_levels, this.active?.drive ?? null);
     }
 
     _currentStep() {

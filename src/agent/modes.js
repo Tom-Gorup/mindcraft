@@ -110,6 +110,14 @@ const modes_list = [
         // and it is why gathering wood timed out in every run before it.
         last_dig_ms: 0,
         progress_grace_ms: 8000,
+        // Digging must not be an unlimited excuse. A bot that has dug itself
+        // underground and cannot path back out keeps digging, so the grace
+        // above would suppress the rescue forever. This anchor is independent
+        // of digging: if the bot has not moved out of a small radius for this
+        // long, it is stuck whatever it is doing.
+        anchor: null,
+        anchor_ms: 0,
+        hard_stuck_time: 150,
         _wired: false,
         update: async function (agent) {
             if (!this._wired) {
@@ -122,11 +130,33 @@ const modes_list = [
                 return; // don't get stuck when idle
             }
             const bot = agent.bot;
-            if (Date.now() - this.last_dig_ms < this.progress_grace_ms) {
+            // Independent of everything below: have we actually gone anywhere?
+            const now = Date.now();
+            if (!this.anchor || this.anchor.distanceTo(bot.entity.position) > this.distance * 2) {
+                this.anchor = bot.entity.position.clone();
+                this.anchor_ms = now;
+            } else if ((now - this.anchor_ms) / 1000 > this.hard_stuck_time) {
+                this.anchor = null;
+                this.stuck_time = 0;
+                this.prev_location = null;
+                this.last_time = now;
+                say(agent, 'I\'ve gone nowhere for a while — digging myself out.');
+                execute(this, agent, async () => {
+                    const crashTimeout = setTimeout(() => { agent.cleanKill('Stuck in place and could not get out'); }, 10000);
+                    try {
+                        await skills.moveAway(bot, 8);
+                    } finally {
+                        clearTimeout(crashTimeout);
+                    }
+                });
+                return;
+            }
+
+            if (now - this.last_dig_ms < this.progress_grace_ms) {
                 // Mining something down is not being stuck, however still you stand.
                 this.stuck_time = 0;
                 this.prev_location = bot.entity.position.clone();
-                this.last_time = Date.now();
+                this.last_time = now;
                 return;
             }
             const cur_dig_block = bot.targetDigBlock;

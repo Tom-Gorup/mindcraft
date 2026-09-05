@@ -96,7 +96,16 @@ export class DriveState {
         return this.drives[name] != null;
     }
 
-    update(delta_ms, sensor_levels = {}) {
+    // active_drive: the drive currently being acted on, if any. Its alarm does
+    // NOT fade while it is being addressed.
+    //
+    // Otherwise the alarm cancels the goal it created: a death raises safety to
+    // ~0.9, a shelter goal starts, the alarm halves inside four minutes, and
+    // _goalNoLongerWarranted reads the drop as "the danger passed" and abandons
+    // the goal — before any shelter exists. Wilbur died nine times in one hour
+    // that way on 2026-09-05, his safety goals lasting 2 and 5.6 minutes. An
+    // alarm means stay alarmed until you have actually done something about it.
+    update(delta_ms, sensor_levels = {}, active_drive = null) {
         const fade = Math.pow(0.5, delta_ms / this.alarm_half_life_ms);
         for (const d of Object.values(this.drives)) {
             if (sensor_levels[d.name] !== undefined)
@@ -109,9 +118,11 @@ export class DriveState {
             // perfect safety and erases the evidence that you just died. A
             // sensor has no memory; this is the memory.
             if (d.alarm > 0) {
-                d.alarm *= fade;
-                if (d.alarm < 0.01) d.alarm = 0;
-                else d.level = Math.min(d.level, 1 - d.alarm);
+                if (d.name !== active_drive) {
+                    d.alarm *= fade;
+                    if (d.alarm < 0.01) d.alarm = 0;
+                }
+                if (d.alarm > 0) d.level = Math.min(d.level, 1 - d.alarm);
             }
         }
     }

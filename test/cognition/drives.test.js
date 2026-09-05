@@ -225,3 +225,38 @@ test('project progress relieves an aspiration short of finishing it', () => {
     d.satisfy('legacy', 0.25);               // one milestone's worth of progress
     assert.ok(d.urgency('legacy') < 0.55, `progress must ease it, got ${d.urgency('legacy')}`);
 });
+
+// The alarm must not cancel the goal it created.
+//
+// Run of 2026-09-05: a death raised safety to ~0.9, a shelter goal started, the
+// alarm halved within four minutes, and the drop was read as "the danger
+// passed" — so the goal was abandoned before any shelter existed. Wilbur died
+// nine times in one hour that way, his safety goals lasting 2.0 and 5.6 min.
+test('an alarm holds while its own drive is being addressed', () => {
+    const d = new DriveState({}, { alarm_half_life_ms: 60000 });
+    d.raiseAlarm('safety', 0.9);
+    const atStart = d.urgency('safety');
+
+    for (let i = 0; i < 6; i++) d.update(60000, { safety: 1.0 }, 'safety');
+    assert.ok(Math.abs(d.urgency('safety') - atStart) < 0.01,
+        `six minutes of pursuing safety must not relieve it, got ${d.urgency('safety')}`);
+});
+
+test('but it fades once the agent moves on to something else', () => {
+    const d = new DriveState({}, { alarm_half_life_ms: 60000 });
+    d.raiseAlarm('safety', 0.9);
+    d.update(60000, { safety: 1.0 }, 'safety');       // addressing it: held
+    assert.ok(d.urgency('safety') > 0.85);
+
+    for (let i = 0; i < 6; i++) d.update(60000, { safety: 1.0 }, 'legacy');
+    assert.ok(d.urgency('safety') < 0.1, 'not addressing it: fades as before');
+});
+
+test('one drive being addressed does not freeze another drive alarm', () => {
+    const d = new DriveState({}, { alarm_half_life_ms: 60000 });
+    d.raiseAlarm('safety', 0.9);
+    d.raiseAlarm('food', 0.8);
+    for (let i = 0; i < 5; i++) d.update(60000, { safety: 1.0, food: 1.0 }, 'safety');
+    assert.ok(d.urgency('safety') > 0.85, 'safety held');
+    assert.ok(d.urgency('food') < 0.1, 'food faded');
+});
