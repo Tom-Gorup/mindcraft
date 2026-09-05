@@ -92,6 +92,44 @@ for (const keyName of needed) {
 }
 if (needed.size === 0) ok('API key', 'no keyed provider in use (local models only)');
 
+// ---- Ollama reachability, if any local model is in use ----
+//
+// A wrong address or an unpulled model currently surfaces as a failed call
+// mid-run, after the agent has already joined the world. Ask the server up
+// front instead: it answers in milliseconds and lists exactly what it has.
+const localModels = [...models].filter(m => providerOf(m) === 'ollama')
+    .map(m => String(m).includes('/') ? String(m).split('/').slice(1).join('/') : null)
+    .filter(Boolean);
+const ollamaUrl = settings.ollama_url || 'http://127.0.0.1:11434';
+
+if (localModels.length || String(settings.profiles?.[0] ?? '').includes('homelab')) {
+    try {
+        const ctl = AbortSignal.timeout(4000);
+        const res = await fetch(`${ollamaUrl}/api/tags`, { signal: ctl });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json();
+        const have = (body.models ?? []).map(m => m.name);
+        ok('Ollama', `reachable at ${ollamaUrl} (${have.length} model${have.length === 1 ? '' : 's'})`);
+
+        for (const want of localModels) {
+            // Ollama reports "qwen2.5:7b"; a profile may say "qwen2.5" and get
+            // the latest tag, so match on the base name too.
+            const base = want.split(':')[0];
+            const hit = have.find(h => h === want || h.split(':')[0] === base);
+            if (hit) ok('Ollama model', `"${want}" is pulled (${hit})`);
+            else fail('Ollama model', `"${want}" is not on ${ollamaUrl}`,
+                `Pull it there:  ollama pull ${want}\n     Available: ${have.join(', ') || '(none)'}`);
+        }
+    } catch (err) {
+        const why = err.name === 'TimeoutError' ? 'timed out' : (err.message || err);
+        fail('Ollama', `cannot reach ${ollamaUrl} (${why})`,
+            'Check the address in settings.local.json, that Ollama is running, and that it\n'
+            + '     listens on the network rather than loopback:\n'
+            + '       OLLAMA_HOST=0.0.0.0:11434 ollama serve\n'
+            + '     (a default install binds 127.0.0.1 and refuses LAN connections)');
+    }
+}
+
 // ---- pricing coverage, so the cost readout is not silently zero ----
 const { priceFor } = await import('../src/models/metering.js');
 for (const m of models) {

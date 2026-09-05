@@ -188,5 +188,10 @@
         "type": "boolean",
         "default": true,
         "description": "Start agents automatically when the server boots. Leave on: a crashed agent should come back. Agents you stop from the dashboard are recorded as deliberately stopped and stay down across restarts either way."
+    },
+    "ollama_url": {
+        "type": "string",
+        "default": "http://127.0.0.1:11434",
+        "description": "Base URL of your Ollama server. Point this at another machine on your LAN to use its GPU. Applies to every ollama/... model and to embeddings."
     }
 }

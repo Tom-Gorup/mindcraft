@@ -27,6 +27,14 @@ const settings = {
     // Set false to bring the server and dashboard up with nothing joining.
     "autostart_agents": true,
 
+    // Where Ollama lives. Default is this machine; point it at another box on
+    // your LAN to use its GPU. Applies to every "ollama/..." model and to
+    // embeddings, so one value moves all local inference at once.
+    //
+    // PUT YOUR REAL ADDRESS IN settings.local.json, NOT HERE — this file is
+    // tracked by git, and a LAN address committed to a public repo is a leak.
+    "ollama_url": "http://127.0.0.1:11434",
+
     "profiles": [
         "./profiles/first_run.json", // one Haiku agent, no feature flags — start here
         // "./andy.json",
@@ -104,6 +112,26 @@ if (existsSync(LOCAL_SETTINGS)) {
         // Loud, not silent: a typo here changes which server the bots join.
         console.error(`\n${LOCAL_SETTINGS} exists but could not be read: ${err.message}`);
         console.error('Falling back to the defaults in settings.js. Fix the JSON and restart.\n');
+    }
+}
+
+// The env layer was documented in deploy/README.md and in the comment above but
+// never actually implemented. It is the only way to override settings for a
+// single run without editing a file, which is what a systemd drop-in or a
+// one-off test needs.
+if (process.env.SETTINGS_JSON) {
+    try {
+        const env = JSON.parse(process.env.SETTINGS_JSON);
+        for (const [k, v] of Object.entries(env)) {
+            if (k.startsWith('//')) continue;
+            settings[k] = v;
+        }
+        console.log(`Applied SETTINGS_JSON overrides: ${Object.keys(env).filter(k => !k.startsWith('//')).join(', ')}`);
+    } catch (err) {
+        // Loud: this silently changing nothing is how you end up debugging the
+        // wrong configuration for an hour.
+        console.error(`\nSETTINGS_JSON is set but is not valid JSON: ${err.message}`);
+        console.error('Ignoring it. Fix the value and restart.\n');
     }
 }
 

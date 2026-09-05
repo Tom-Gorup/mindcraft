@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import settings from '../agent/settings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,6 +76,22 @@ export function selectAPI(profile) {
     return profile;
 }
 
+// Providers whose endpoint is a machine on your network rather than a vendor's
+// API. Their base URL belongs in settings (per-machine, gitignored), never in a
+// profile — profiles are tracked, and a LAN address committed to a public repo
+// is exactly the leak we have had before.
+//
+// Deliberately NOT applied to keyed providers: a url on one of those redirects
+// your API key and every prompt to that host, which must stay an explicit,
+// per-profile decision.
+const LOCAL_APIS = new Set(['ollama']);
+
+export function baseUrlFor(api, explicit_url) {
+    if (explicit_url) return explicit_url;                 // a profile may still override
+    if (!LOCAL_APIS.has(api)) return undefined;
+    return settings.ollama_url || undefined;               // provider default if unset
+}
+
 export function createModel(profile) {
     if (apiMap[profile.model]) {
         // if the model value is an api (instead of a specific model name)
@@ -84,6 +101,7 @@ export function createModel(profile) {
     if (!apiMap[profile.api]) {
         throw new Error('Unknown api:', profile.api);
     }
-    const model = new apiMap[profile.api](profile.model, profile.url, profile.params);
+    const url = baseUrlFor(profile.api, profile.url);
+    const model = new apiMap[profile.api](profile.model, url, profile.params);
     return model;
 }
