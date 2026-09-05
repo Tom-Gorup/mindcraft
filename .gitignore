@@ -34,3 +34,7 @@ runs/
 
 # per-machine config: host, ports, feature flags (see settings.local.example.json)
 settings.local.json
+
+# Per-machine profile overrides written by the dashboard's Configure button.
+# Tracked profiles stay pristine; your tuning lives here and survives a pull.
+profiles/local/

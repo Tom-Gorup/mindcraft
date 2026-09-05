@@ -3,6 +3,7 @@ import settings from './settings.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { readFileSync } from 'fs';
+import { loadProfile } from './src/mindcraft/profile_overlay.js';
 
 function parseArguments() {
     return yargs(hideBin(process.argv))
@@ -80,7 +81,7 @@ const failures = [];
 for (const profile of settings.profiles) {
     let profile_json;
     try {
-        profile_json = JSON.parse(readFileSync(profile, 'utf8'));
+        profile_json = loadProfile(profile);
     } catch (err) {
         failures.push(`${profile}: could not be read or is not valid JSON (${err.message})`);
         continue;

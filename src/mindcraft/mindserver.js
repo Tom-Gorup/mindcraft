@@ -7,6 +7,7 @@ import * as mindcraft from './mindcraft.js';
 import { readFileSync, createReadStream } from 'fs';
 import { RunRegistry } from './runs.js';
 import { buildReport } from './report.js';
+import { writeOverlay } from './profile_overlay.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Mindserver is:
@@ -72,6 +73,23 @@ function thin(rows, max) {
 // all reach the same sinks in the child process, so the filtering has to live
 // in one place — several of these nested blocks carry filesystem paths that
 // are internal test seams, not user config.
+
+// The tracked profile this agent was started from, so the overlay can store
+// only what differs. Falls back to an empty base — a full overlay still works,
+// it just stops tracking upstream improvements to that profile.
+function findTrackedProfile(name, agent_settings) {
+    // Read from DISK, never from agent.settings.profile: that one already has
+    // the overlay merged in, so diffing against it would report "no change" for
+    // everything already overridden and shrink the overlay on every save.
+    for (const p of (agent_settings?.profiles || [])) {
+        try {
+            const parsed = JSON.parse(readFileSync(p, 'utf8'));
+            if (parsed?.name === name) return parsed;
+        } catch { /* a broken profile is reported at boot, not here */ }
+    }
+    return {};
+}
+
 function sanitizeProfile(profile, pinned_name) {
     if (!profile || typeof profile !== 'object') return profile;
     if (pinned_name) profile.name = pinned_name;
@@ -362,10 +380,26 @@ export function createMindServer(host_public = false, port = 8080) {
             if (!profile || typeof profile !== 'object') return done({ success: false, error: 'Invalid profile' });
             // the name is a filesystem path in the child process — never let
             // the editor change it out from under a running agent
-            sanitizeProfile(profile, agent.settings.profile.name);
+            const name = agent.settings.profile.name;
+            sanitizeProfile(profile, name);
             agent.setSettings({ ...agent.settings, profile });
+
+            // Persist, or the edit is lost on the next restart — which is what
+            // used to happen to every change made in this editor. Written as a
+            // gitignored overlay rather than back into the tracked profile, so
+            // it neither conflicts on pull nor leaks machine specifics.
+            let saved = null;
+            try {
+                const tracked = findTrackedProfile(name, agent.settings);
+                saved = writeOverlay(name, tracked, profile);
+            } catch (err) {
+                console.error(`Could not save profile overlay for ${name}:`, err.message || err);
+                agent.socket?.emit('restart-agent');
+                return done({ success: true, persisted: false,
+                    warning: `Applied to the running agent, but could not be saved: ${err.message || err}. It will be lost on restart.` });
+            }
             agent.socket?.emit('restart-agent');
-            done({ success: true });
+            done({ success: true, persisted: true, saved_keys: saved.keys });
         });
 
         socket.on('get-settings', (agentName, callback) => {

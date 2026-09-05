@@ -256,8 +256,21 @@
             return;
         }
         sock().emit('set-profile', agentName, edited, (res) => {
-            if (res?.success) window.closeProfileEditor();
-            else if (err) err.textContent = res?.error || 'Save failed';
+            if (!res?.success) {
+                if (err) err.textContent = res?.error || 'Save failed';
+                return;
+            }
+            window.closeProfileEditor();
+            // Say whether it was actually written. These edits used to apply to
+            // the running agent and vanish on the next restart, with nothing in
+            // the UI to suggest they had not been kept.
+            if (res.persisted === false)
+                window.toast?.('Applied but not saved',
+                    res.warning || 'It will be lost on the next restart.', 'warning');
+            else if (res.saved_keys?.length)
+                window.toast?.('Saved', `${res.saved_keys.join(', ')} — kept across restarts.`, 'good');
+            else
+                window.toast?.('Back to profile defaults', 'No local overrides remain.', 'good');
         });
     };
 })();
