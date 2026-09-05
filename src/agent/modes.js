@@ -101,13 +101,34 @@ const modes_list = [
         last_time: Date.now(),
         max_stuck_time: 20,
         prev_dig_block: null,
+        // Breaking blocks IS progress, and it is the signal position cannot
+        // give you. Gathering 64 logs from one tree cluster means standing
+        // inside a 2-block radius for minutes at a time, and between two blocks
+        // targetDigBlock is briefly null — which used to look identical to
+        // being wedged in terrain. moveAway(5) then yanked the bot off the job.
+        // Nine of fourteen interruptions in the run of 2026-09-05 were this,
+        // and it is why gathering wood timed out in every run before it.
+        last_dig_ms: 0,
+        progress_grace_ms: 8000,
+        _wired: false,
         update: async function (agent) {
+            if (!this._wired) {
+                this._wired = true;
+                agent.bot.on('diggingCompleted', () => { this.last_dig_ms = Date.now(); });
+            }
             if (agent.isIdle()) { 
                 this.prev_location = null;
                 this.stuck_time = 0;
                 return; // don't get stuck when idle
             }
             const bot = agent.bot;
+            if (Date.now() - this.last_dig_ms < this.progress_grace_ms) {
+                // Mining something down is not being stuck, however still you stand.
+                this.stuck_time = 0;
+                this.prev_location = bot.entity.position.clone();
+                this.last_time = Date.now();
+                return;
+            }
             const cur_dig_block = bot.targetDigBlock;
             if (cur_dig_block && !this.prev_dig_block) {
                 this.prev_dig_block = cur_dig_block;

@@ -34,7 +34,7 @@
     "cognition": {
         "min_urgency": 0.2,
         "switch_margin": 0.1,
-        "step_cooldown_ms": 10000,
+        "step_cooldown_ms": 20000,
         "max_step_responses": 1,
         "step_timeout_ms": 180000,
         "heartbeat_ms": 45000

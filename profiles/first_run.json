@@ -37,7 +37,7 @@
     ],
     "//cognition": "Tuned for a PAID api. The engine defaults (step_cooldown_ms 2000, max_step_responses 5) assume a free local model and let the act tier prompt as fast as it is allowed — measured at 1,398 calls/hr and $118/day on Haiku. Raise the cooldown back down only when the bulk of traffic is local.",
     "cognition": {
-        "step_cooldown_ms": 10000,
+        "step_cooldown_ms": 20000,
         "max_step_responses": 1,
         "step_timeout_ms": 180000,
         "heartbeat_ms": 45000

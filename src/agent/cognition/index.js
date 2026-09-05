@@ -8,6 +8,7 @@ import { ProjectStore } from './projects.js';
 import { Planner, formatPlan } from './planner.js';
 import { readSensors } from './sensors.js';
 import { Blackboard } from './blackboard.js';
+import * as world from '../library/world.js';
 
 // The cognitive core: arbitrate drives -> generate a goal -> plan steps ->
 // drive the existing handleMessage/command machinery -> observe -> replan.
@@ -576,6 +577,13 @@ export class CognitionLoop {
         // sensor drives can't hold a satisfy() (the sensor overwrites it next
         // tick) — the success cooldown is what stops instant goal re-fire
         this.drive_state.setCooldown(active.drive, Date.now() + this.success_cooldown_ms);
+        // Any completed goal can advance the project, not only one launched as
+        // a milestone. In the run of 2026-09-05 Greta completed "Chop down the
+        // 3-4 nearest spruce trees" and "Deposit my 55 spruce logs into the
+        // chest" under `wealth` while her milestone was "Gather 64 spruce
+        // logs" — she did the work and the project stayed at 0%. Work counts
+        // for what it achieves, not for the drive that happened to motivate it.
+        this._creditProject();
         this._recordOutcome(active, 'completed', null);
         this.last_thought = `Completed: ${active.goal}`;
         console.log(`Cognition: goal complete (${active.drive}): ${active.goal}`);
@@ -663,6 +671,50 @@ export class CognitionLoop {
         if (!settings.use_cognition) return;
         this.notifyEvent('someone spoke to me');
         this.drive_state.satisfy('social', 0.15);
+    }
+
+    // Sync the project's materials ledger from what the agent actually holds,
+    // and let real progress ease the aspiration.
+    //
+    // Without this, `legacy` decays to zero satisfaction and stays pinned at
+    // maximum urgency forever, because only whole-goal completion satisfies it
+    // and project goals rarely complete. A drive stuck at its ceiling stops
+    // carrying information — it wins every arbitration regardless of context.
+    _creditProject() {
+        const project = this.projects.active;
+        if (!project) return;
+        let credited = false;
+        try {
+            const counts = world.getInventoryCounts(this.agent.bot) || {};
+            for (const item of Object.keys(project.materials.needed)) {
+                const held = counts[item] ?? 0;
+                const already = project.materials.contributed[item] ?? 0;
+                // Cumulative, so spending the logs later does not un-build the
+                // project — contribute() only ever adds.
+                if (held > already) {
+                    project.contribute(item, held - already);
+                    credited = true;
+                }
+            }
+        } catch (err) {
+            // Best-effort, but say so — swallowing this silently is how a
+            // project sits at 0% while the agent is visibly doing the work.
+            console.warn('Cognition: could not credit project materials:', err.message || err);
+        }
+        if (!credited) return;
+
+        // A gathering milestone is finished when its materials are in hand.
+        if (Object.keys(project.outstanding).length === 0 && project.nextMilestone) {
+            const finished = project.nextMilestone.text;
+            const attempts = project.nextMilestone.attempts ?? 0;
+            project.completeNextMilestone();
+            this._safeRecordMemory('milestone_completed',
+                `Finished milestone "${finished}" of "${project.intent}" — the materials are gathered`,
+                { project: project.id, milestone: finished, attempt: attempts });
+        }
+        // Progress relieves the aspiration whether or not a milestone closed.
+        this.drive_state.satisfy(project.drive, 0.25);
+        this.persist();
     }
 
     onDeath() {

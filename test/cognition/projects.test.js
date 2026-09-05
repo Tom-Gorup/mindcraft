@@ -168,3 +168,39 @@ test('attempts reset with the milestone and survive persistence', () => {
     const revived = new ProjectStore(JSON.parse(JSON.stringify(s.toJSON())));
     assert.equal(revived.active.milestones[0].attempts, 2, 'history is kept');
 });
+
+// ---- work counts for what it achieves ----
+//
+// Run of 2026-09-05: Greta completed "Chop down the 3-4 nearest spruce trees"
+// and "Deposit my 55 spruce logs into the chest" under the wealth drive while
+// her active milestone was "Gather 64 spruce logs". She did the work; the
+// project stayed at 0% because the goal had not been launched as a milestone.
+
+test('a gathering milestone closes once its materials are in hand', () => {
+    const s = new ProjectStore();
+    const p = s.start('a lighthouse', ['gather 64 spruce logs', 'lay the foundation'],
+        { now: 1, needed: { spruce_log: 64 } });
+
+    p.contribute('spruce_log', 55);
+    assert.deepEqual(p.outstanding, { spruce_log: 9 }, 'not yet');
+    assert.equal(p.nextMilestone.text, 'gather 64 spruce logs');
+
+    p.contribute('spruce_log', 9);
+    assert.deepEqual(p.outstanding, {}, 'materials met');
+    p.completeNextMilestone();
+    assert.equal(p.nextMilestone.text, 'lay the foundation', 'the project advances');
+    assert.ok(p.progress > 0, 'and progress is no longer zero');
+});
+
+// Cumulative, so spending the logs later does not un-build the project.
+test('crediting from inventory never goes backwards', () => {
+    const p = new Project({ intent: 'x', materials: { needed: { stone: 64 } } });
+    const credit = (held) => {
+        const already = p.materials.contributed.stone ?? 0;
+        if (held > already) p.contribute('stone', held - already);
+    };
+    credit(30); credit(64);
+    assert.deepEqual(p.outstanding, {});
+    credit(0);   // spent it all on something else
+    assert.deepEqual(p.outstanding, {}, 'the project stays built');
+});

@@ -211,3 +211,17 @@ test('one aspiration cannot suppress another', () => {
     assert.ok(d.effectiveUrgency('legacy') > d.urgency('legacy'),
         'an urgent aspiration is not a "need" and must not gate other aspirations');
 });
+
+// An aspiration only satisfied by whole-goal completion decays to zero and sits
+// at maximum urgency forever. A drive pinned at its ceiling carries no
+// information — it wins every arbitration regardless of context.
+test('project progress relieves an aspiration short of finishing it', () => {
+    const d = new DriveState({ legacy: { weight: 0.7 } });
+    d.update(60 * 60000 * 12, {});           // twelve hours: fully decayed
+    assert.ok(d.urgency('legacy') > 0.65, 'pinned near its ceiling');
+    assert.ok(d.urgency('legacy') >= d.urgency('safety'),
+        'and outranking safety, which is the problem');
+
+    d.satisfy('legacy', 0.25);               // one milestone's worth of progress
+    assert.ok(d.urgency('legacy') < 0.55, `progress must ease it, got ${d.urgency('legacy')}`);
+});
