@@ -4,7 +4,7 @@ import convoManager from '../conversation.js';
 import { DriveState } from './drives.js';
 import { selectDrive } from './arbiter.js';
 import { ExecutionMonitor } from './monitor.js';
-import { ProjectStore } from './projects.js';
+import { ProjectStore, milestoneRequirement } from './projects.js';
 import { Planner, formatPlan } from './planner.js';
 import { readSensors } from './sensors.js';
 import { Blackboard } from './blackboard.js';
@@ -701,9 +701,35 @@ export class CognitionLoop {
             // project sits at 0% while the agent is visibly doing the work.
             console.warn('Cognition: could not credit project materials:', err.message || err);
         }
+        // A gathering milestone is finished when ITS OWN requirement is met.
+        // The project ledger is project-wide, so checking that instead means
+        // the whole build's materials must be in hand before the first
+        // gathering step can close — Greta held 37 spruce logs against a
+        // "Gather 32 spruce logs" milestone and it stayed open three attempts.
+        const need = project.nextMilestone
+            ? milestoneRequirement(project.nextMilestone.text) : null;
+        if (need) {
+            let held = 0;
+            try {
+                const counts = world.getInventoryCounts(this.agent.bot) || {};
+                for (const name of need.names) held = Math.max(held, counts[name] ?? 0);
+            } catch { /* reported above */ }
+            if (held >= need.qty) {
+                const finished = project.nextMilestone.text;
+                const attempts = project.nextMilestone.attempts ?? 0;
+                project.completeNextMilestone();
+                this._safeRecordMemory('milestone_completed',
+                    `Finished milestone "${finished}" — I have ${held} of the ${need.qty} needed`,
+                    { project: project.id, milestone: finished, attempt: attempts });
+                this.drive_state.satisfy(project.drive, 0.35);
+                this.persist();
+                return;
+            }
+        }
+
         if (!credited) return;
 
-        // A gathering milestone is finished when its materials are in hand.
+        // Whole-project fallback: everything the project asked for is in hand.
         if (Object.keys(project.outstanding).length === 0 && project.nextMilestone) {
             const finished = project.nextMilestone.text;
             const attempts = project.nextMilestone.attempts ?? 0;

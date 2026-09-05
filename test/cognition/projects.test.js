@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Project, ProjectStore } from '../../src/agent/cognition/projects.js';
+import { Project, ProjectStore, milestoneRequirement } from '../../src/agent/cognition/projects.js';
 
 const MILESTONES = ['gather 64 stone', 'lay the foundation', 'raise the walls'];
 
@@ -203,4 +203,40 @@ test('crediting from inventory never goes backwards', () => {
     assert.deepEqual(p.outstanding, {});
     credit(0);   // spent it all on something else
     assert.deepEqual(p.outstanding, {}, 'the project stays built');
+});
+
+// ---- what a gathering milestone actually asks for ----
+//
+// Run of 2026-09-05: Greta completed a goal literally named "Organize and
+// secure my 37 spruce logs" while her milestone was "Gather 32 spruce logs",
+// and it stayed open for three attempts. The old check tested the PROJECT
+// ledger, so the whole shrine's logs, planks, torches and railings all had to
+// be in hand before the first gathering step could close.
+
+test('a gathering milestone yields its own requirement', () => {
+    assert.deepEqual(milestoneRequirement('Gather 32 spruce logs by felling nearby trees'),
+        { qty: 32, names: ['spruce_logs', 'spruce_log'] });
+    // Minecraft ids are inconsistent about plurals (spruce_log, spruce_planks),
+    // so both forms are offered and the caller matches the inventory.
+    assert.ok(milestoneRequirement('Gather 60 spruce planks').names.includes('spruce_planks'));
+    // "10 stone blocks" means ten stone
+    assert.deepEqual(milestoneRequirement('Collect 10 stone blocks by mining').names[0], 'stone');
+});
+
+// Conservative by design: only gathering milestones are eligible, so a
+// dimension is never mistaken for a material.
+test('build and clear milestones are never auto-closed', () => {
+    for (const text of [
+        'Build a wooden pillar 16 blocks tall at the center',
+        'Clear and level a circular foundation 12 blocks wide',
+        'Clear and level a 10x10 base in the nearby flat ground',
+        'Construct a platform at the top with railings',
+        'Add a torch beacon at the summit',
+    ])
+        assert.equal(milestoneRequirement(text), null, `must not match: ${text}`);
+});
+
+test('a gathering milestone with no count is not auto-closed either', () => {
+    assert.equal(milestoneRequirement('Fell and limb a stand of spruce trees'), null);
+    assert.equal(milestoneRequirement('Gather 0 logs'), null);
 });

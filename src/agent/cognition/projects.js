@@ -27,6 +27,51 @@ function clampStr(v, n) {
     return String(v ?? '').trim().substring(0, n);
 }
 
+// What a gathering milestone actually asks for.
+//
+// "Gather 32 spruce logs by felling nearby trees" -> { qty: 32, names: [...] }
+//
+// This exists because a project's materials ledger is project-WIDE: checking it
+// means the whole shrine's logs, planks, torches and railings must be in hand
+// before the first gathering milestone can close. Greta held 37 spruce logs
+// against a "Gather 32 spruce logs" milestone on 2026-09-05 and it stayed open.
+//
+// Deliberately conservative. Only milestones that open with a gathering verb
+// are eligible, so "Build a wooden pillar 16 blocks tall" is never auto-closed
+// by holding 16 of something.
+const GATHER_VERB = /^\s*(gather|collect|fell|chop|mine|harvest|acquire|stockpile|obtain)\b/i;
+
+// Counting words, not materials.
+const NOT_A_MATERIAL = new Set([
+    'block', 'blocks', 'time', 'times', 'more', 'total', 'piece', 'pieces',
+    'unit', 'units', 'stack', 'stacks', 'item', 'items',
+]);
+
+export function milestoneRequirement(text) {
+    const raw = String(text ?? '');
+    if (!GATHER_VERB.test(raw)) return null;
+    // first "<count> <one to three words>" that is not a counting word
+    const m = /\b(\d{1,4})\s+([a-z]+(?:\s+[a-z]+){0,2})/i.exec(raw);
+    if (!m) return null;
+    const qty = Number(m[1]);
+    if (!Number.isFinite(qty) || qty <= 0) return null;
+
+    const words = m[2].toLowerCase().split(/\s+/)
+        // trailing connectives swept up by the greedy word match
+        .filter(w => !['by', 'from', 'for', 'to', 'and', 'in', 'at', 'with', 'using', 'of', 'the'].includes(w));
+    // "10 stone blocks" means ten stone. Safe to drop here because the
+    // gathering verb has already excluded "12 blocks wide" and its kin.
+    while (words.length && NOT_A_MATERIAL.has(words[words.length - 1])) words.pop();
+    if (!words.length) return null;
+
+    const base = words.join('_');
+    // Minecraft ids are inconsistent about plurals — spruce_log but
+    // spruce_planks — so offer both and let the caller match the inventory.
+    const singular = base.replace(/s$/, '');
+    const names = [...new Set([base, singular, `${singular}s`])];
+    return { qty, names };
+}
+
 export class Project {
     constructor(data = {}) {
         this.id = data.id ?? `p${Math.round(data.created_at ?? 0)}`;
