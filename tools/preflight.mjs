@@ -82,6 +82,14 @@ for (const path of settings.profiles) {
         const keyName = PREFIX_TO_KEY[prov];
         if (keyName) needed.add(keyName);
     }
+
+    // The embedding model counts as a model in use, but NOT as a key
+    // requirement: an embedding failure degrades to word-overlap retrieval
+    // rather than stopping the agent, so a missing key here is not a blocker.
+    // It was omitted entirely before, which meant the Ollama reachability check
+    // was skipped in the commonest setup of all — an API chat model with local
+    // embeddings, where the embedding is the only local model there is.
+    if (p.embedding) models.add(typeof p.embedding === 'string' ? p.embedding : p.embedding.model);
 }
 
 for (const keyName of needed) {
