@@ -40,6 +40,14 @@
         "heartbeat_ms": 45000
     },
     "embedding": "ollama/embeddinggemma",
+    "//tiers": "Which model serves which kind of call. Local models resolve against settings.ollama_url, so no address belongs here. Starting conservative: reflex and code on the local GPU, chat/plan/reflect on Haiku. chat is ~80% of call volume and must emit valid !command syntax — move it locally only after watching the stepDone/stepFailed ratio hold.",
+    "tiers": {
+        "reflex": "ollama/qwen2.5:7b",
+        "code": "ollama/qwen2.5:7b",
+        "chat": "claude-haiku-4-5-20251001",
+        "plan": "claude-haiku-4-5-20251001",
+        "reflect": "claude-haiku-4-5-20251001"
+    },
     "memory": {
         "retrieval_k": 3,
         "half_life_hours": 24,

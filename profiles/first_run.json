@@ -43,8 +43,15 @@
         "heartbeat_ms": 45000
     },
     "//model": "Back on Haiku. Sonnet was switched to on the theory that caching would make it cheaper; measured, its effective input rate at the real 57% cache rate is $1.46/1M against Haiku's $1.00/1M uncached, so it was never going to win. Haiku WITH caching is $0.23/1M — by far the cheapest option — which needs the cacheable prefix over Haiku 4.5's measured 4096-token floor. Once cached, prefix size is nearly free (0.1x), so a larger prefix that caches beats a smaller one that does not.",
-    "//tiers": "No tiers block: everything is Haiku. Add {\"plan\":\"claude-sonnet-5\"} if goal and plan quality needs it — that tier is a couple of calls per goal, so it barely moves the bill.",
+    "//tiers": "Which model serves which kind of call. Local models resolve against settings.ollama_url, so no address belongs here. Starting conservative: reflex and code on the local GPU, chat/plan/reflect on Haiku. chat is ~80% of call volume and must emit valid !command syntax — move it locally only after watching the stepDone/stepFailed ratio hold.",
     "embedding": "ollama/embeddinggemma",
+    "tiers": {
+        "reflex": "ollama/qwen2.5:7b",
+        "code": "ollama/qwen2.5:7b",
+        "chat": "claude-haiku-4-5-20251001",
+        "plan": "claude-haiku-4-5-20251001",
+        "reflect": "claude-haiku-4-5-20251001"
+    },
     "memory": {
         "retrieval_k": 3,
         "half_life_hours": 24,
