@@ -156,6 +156,15 @@ export function sendEventToServer(agentName, event) {
             goal: typeof d.goal === 'string' ? d.goal.substring(0, 200) : undefined,
             reason: typeof d.reason === 'string' ? d.reason.substring(0, 200) : undefined,
             preempted_by: typeof d.preempted_by === 'string' ? d.preempted_by.substring(0, 24) : undefined,
+            // Long work. Without these the Long-work report cannot name a
+            // project or count milestone attempts — it showed intent: null and
+            // an empty stall list for a run that plainly had both.
+            project: typeof d.project === 'string' ? d.project.substring(0, 40) : undefined,
+            intent: typeof d.intent === 'string' ? d.intent.substring(0, 200) : undefined,
+            milestone: typeof d.milestone === 'string' ? d.milestone.substring(0, 200) : undefined,
+            attempt: Number.isFinite(d.attempt) ? d.attempt : undefined,
+            milestones: Number.isFinite(d.milestones) ? d.milestones : undefined,
+            minutes: Number.isFinite(d.minutes) ? d.minutes : undefined,
         } : undefined;
         serverProxy.getSocket()?.emit('agent-event', {
             agent: agentName,
