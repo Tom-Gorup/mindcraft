@@ -3,6 +3,7 @@
 // interesting math stays in drives.js where it's unit-tested.
 import * as world from '../library/world.js';
 import * as mc from '../../utils/mcdata.js';
+import { readSituation } from './situation.js';
 
 const FOOD_ITEMS = [
     'bread', 'apple', 'golden_apple', 'carrot', 'potato', 'baked_potato', 'beetroot',
@@ -28,14 +29,25 @@ const ITEM_VALUES = {
 export function readSensors(agent) {
     const bot = agent.bot;
     const sensors = {};
+    // Shared with the prompt and the dashboard: read once per tick.
+    const situation = readSituation(bot);
+    agent.situation = situation;
 
-    // safety: health fraction, capped down by nearby hostiles and recent damage
+    // safety: health, what is around you, and how close nightfall is.
+    //
+    // The old version capped to 0.4 for ANY hostile within 16 blocks, so one
+    // zombie and five were the same number, and had no time input at all — so
+    // night arrived as a surprise every time. Being outnumbered and being about
+    // to be caught in the dark are now both representable.
     let safety = (bot.health ?? 20) / 20;
-    const hostile = world.getNearestEntityWhere(bot, entity => mc.isHostile(entity), 16);
-    if (hostile)
-        safety = Math.min(safety, 0.4);
+    safety = Math.min(safety, 1 - situation.threat);
     if (bot.lastDamageTime && Date.now() - bot.lastDamageTime < 10000)
         safety = Math.min(safety, 0.3);
+    // Darkness only threatens you if you are out in it. Shelter is the answer
+    // to nightfall, so having it should relieve the pressure rather than the
+    // clock alone deciding.
+    const exposure = situation.night_pressure * (1 - situation.shelter);
+    safety = Math.min(safety, 1 - exposure * 0.75);
     sensors.safety = safety;
 
     // food: mostly current hunger, partly whether we carry spare food

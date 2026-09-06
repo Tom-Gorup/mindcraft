@@ -165,6 +165,11 @@ export function sendEventToServer(agentName, event) {
             attempt: Number.isFinite(d.attempt) ? d.attempt : undefined,
             milestones: Number.isFinite(d.milestones) ? d.milestones : undefined,
             minutes: Number.isFinite(d.minutes) ? d.minutes : undefined,
+            // Situation at the moment of death — what the survival report needs.
+            phase: typeof d.phase === 'string' ? d.phase.substring(0, 12) : undefined,
+            shelter: Number.isFinite(d.shelter) ? d.shelter : undefined,
+            hostile_count: Number.isFinite(d.hostile_count) ? d.hostile_count : undefined,
+            threat: Number.isFinite(d.threat) ? d.threat : undefined,
         } : undefined;
         serverProxy.getSocket()?.emit('agent-event', {
             agent: agentName,

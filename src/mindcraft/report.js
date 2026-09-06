@@ -311,6 +311,48 @@ export function projectOutcomes(events) {
     return out;
 }
 
+// Survival, in the terms Phase 10 is trying to change.
+//
+// "65 deaths" is a number; "died at night, in the open, outnumbered" is a
+// finding. Deaths are the cheapest signal this system produces and the report
+// was reducing them to a count.
+export function survival(events) {
+    const out = Object.create(null);
+    const rec = (name) => (out[name] ||= {
+        deaths: 0, by_cause: {}, at_night: 0, exposed: 0, outnumbered: 0,
+        blocks_placed: 0, shelter_built: 0,
+    });
+
+    for (const ev of events) {
+        const a = rec(ev.agent);
+        if (ev.type === 'death') {
+            a.deaths++;
+            const cause = causeOfDeath(ev.content);
+            a.by_cause[cause] = (a.by_cause[cause] || 0) + 1;
+            // Recorded on the event when the situation layer is present.
+            if (ev.data?.phase === 'night' || ev.data?.phase === 'dusk') a.at_night++;
+            if (typeof ev.data?.shelter === 'number' && ev.data.shelter < 0.6) a.exposed++;
+            if ((ev.data?.hostile_count ?? 0) >= 3) a.outnumbered++;
+        } else if (ev.data?.command === '!placeHere') {
+            a.blocks_placed++;
+        }
+    }
+    return out;
+}
+
+// "Wilbur was slain by Zombie" -> zombie. Grouping by killer is what tells you
+// whether the answer is armour, light, or simply being indoors.
+export function causeOfDeath(content) {
+    const t = String(content ?? '').toLowerCase();
+    const m = /(?:slain by|shot by|blown up by|killed by|pricked to death by|squashed by)\s+([a-z_ ]+)/.exec(t);
+    if (m) return m[1].trim().replace(/\s+/g, '_');
+    if (t.includes('drown')) return 'drowning';
+    if (t.includes('fell') || t.includes('fall')) return 'falling';
+    if (t.includes('burn') || t.includes('lava') || t.includes('fire')) return 'fire';
+    if (t.includes('starv')) return 'starvation';
+    return 'other';
+}
+
 // The full report.
 export function buildReport(all_events, scope = {}) {
     const events = filterEvents(all_events, scope).sort((a, b) => a.ts - b.ts);
@@ -380,5 +422,6 @@ export function buildReport(all_events, scope = {}) {
         believed_vs_observed: believedVsObserved(events),
         goal_outcomes: goalOutcomes(events),
         project_outcomes: projectOutcomes(events),
+        survival: survival(events),
     };
 }

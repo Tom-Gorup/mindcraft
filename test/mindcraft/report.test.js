@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReport, filterEvents, categoryOf, commandKind, interactionMatrix, timeline, parseGoalContent, goalOutcomes, projectOutcomes } from '../../src/mindcraft/report.js';
+import {
+    buildReport,
+    filterEvents,
+    categoryOf,
+    commandKind,
+    interactionMatrix,
+    timeline,
+    parseGoalContent,
+    goalOutcomes,
+    projectOutcomes,
+    survival,
+    causeOfDeath,
+} from '../../src/mindcraft/report.js';
 
 const T0 = 1_700_000_000_000;
 function ev(agent, type, dt, extra = {}) {
@@ -224,4 +236,36 @@ test('a finished project is recorded as finished, with its cost', () => {
 test('project events carry their own category, not "other"', () => {
     assert.equal(categoryOf('project_started'), 'project');
     assert.equal(categoryOf('milestone_completed'), 'project');
+});
+
+// ---- survival ----
+//
+// "65 deaths" is a number; "died at night, in the open, outnumbered" is a
+// finding, and it is what says whether the answer is armour, light, or simply
+// being indoors.
+
+test('deaths are grouped by killer and by circumstance', () => {
+    const die = (agent, content, data) => ({ agent, type: 'death', ts: 1, content, data });
+    const { survival } = buildReport([
+        die('Wilbur', 'Wilbur was slain by Zombie', { phase: 'night', shelter: 0, hostile_count: 5 }),
+        die('Wilbur', 'Wilbur was shot by Skeleton', { phase: 'night', shelter: 0.2, hostile_count: 1 }),
+        die('Wilbur', 'Wilbur was blown up by Creeper', { phase: 'afternoon', shelter: 0.9, hostile_count: 1 }),
+        { agent: 'Wilbur', type: 'command', ts: 1, content: '', data: { command: '!placeHere' } },
+    ]);
+    const w = survival.Wilbur;
+    assert.equal(w.deaths, 3);
+    assert.deepEqual(w.by_cause, { zombie: 1, skeleton: 1, creeper: 1 });
+    assert.equal(w.at_night, 2, 'two of the three were after dark');
+    assert.equal(w.exposed, 2, 'and two were with inadequate shelter');
+    assert.equal(w.outnumbered, 1, 'one was against a crowd');
+    assert.equal(w.blocks_placed, 1, 'building throughput is the other half of the story');
+});
+
+test('a death with no situation data still counts', () => {
+    const { survival } = buildReport([
+        { agent: 'Greta', type: 'death', ts: 1, content: 'Greta drowned' },
+    ]);
+    assert.equal(survival.Greta.deaths, 1);
+    assert.equal(survival.Greta.by_cause.drowning, 1);
+    assert.equal(survival.Greta.at_night, 0, 'absent data is not counted as night');
 });

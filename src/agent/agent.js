@@ -627,7 +627,14 @@ export class Agent {
                 }
                 let dimention = this.bot.game.dimension;
                 this.cognition.onDeath();
-                this.memory.record('death', `Died in the ${dimention} dimension at ${death_pos_text || 'unknown position'}: ${message}`);
+                // Carry the situation onto the death. "65 deaths" is a number;
+                // "died at night, in the open, outnumbered" is a finding, and
+                // it is what tells you whether the answer is armour, light, or
+                // simply being indoors.
+                const sit = this.situation || {};
+                this.memory.record('death', `Died in the ${dimention} dimension at ${death_pos_text || 'unknown position'}: ${message}`,
+                    { phase: sit.phase, shelter: sit.shelter,
+                        hostile_count: sit.hostile_count, threat: sit.threat });
                 // "<name> was slain by X" — a killer who is a player/bot earns a grudge
                 // NOTE: a mob name-tagged with a player's username can spoof
                 // this line, so it is deliberately the only grudge source that

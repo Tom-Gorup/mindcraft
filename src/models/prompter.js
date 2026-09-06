@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { selectAPI, createModel } from './_model_map.js';
 import { ModelRouter } from './router.js';
 import { CACHE_BOUNDARY, stripBoundary } from './cache.js';
+import { describeSituation } from '../agent/cognition/describe.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -202,6 +203,9 @@ export class Prompter {
     async replaceStrings(prompt, messages, examples=null, to_summarize=[], last_goals=null) {
         prompt = prompt.replaceAll('$NAME', this.agent.name);
 
+        if (prompt.includes('$SITUATION')) {
+            prompt = prompt.replaceAll('$SITUATION', () => describeSituation(this.agent));
+        }
         if (prompt.includes('$STATS')) {
             let stats = await getCommand('!stats').perform(this.agent) + '\n';
             stats += await getCommand('!entities').perform(this.agent) + '\n';
