@@ -598,3 +598,95 @@ than merely legible, and they are the ones that serve pillar 7.
 - Long-horizon settlements: shared building projects, economy
 - Voice (TTS already supported) tied to personality
 - Cross-run experiments: same personalities, different worlds/seeds; statistical comparison of outcomes
+
+---
+
+## Phase 10 — Competence: knowing how the world works
+
+**Goal:** agents that accumulate working knowledge instead of rediscovering the
+same facts until they die of them. Over 12 hours on 2026-09-06 two agents died
+65 times, placed 119 blocks, and finished zero milestones — while forming 525
+beliefs, many of them near-duplicates of "nighttime is dangerous".
+
+**The diagnosis.** The cognition layer decides well. The intents are the agents'
+own, the milestones are properly ordered, and reflection is genuinely sharp —
+Wilbur diagnosed a bug in the `unstuck` reflex before I found it. What is missing
+is on both sides of the decision: the agent does not *know* things, and cannot
+*act* at the scale of its ambitions. Tuning drives cannot fix either.
+
+### The reframe that shapes this phase
+
+**Separate what should be given from what must be earned.** Minecraft's tool
+tiers, crafting trees, mob hostility and day length are fixed rules of the world
+and already sit in `utils/mcdata.js` — `getBlockTool()` will name the tool for a
+block right now, and nothing asks it. Making an agent rediscover by dying that
+iron needs a stone pickaxe is not emergence, it is waste. A human reads the wiki
+once and then gets on with the interesting part.
+
+The interesting part — where emergence actually lives — is *strategy*: what to
+build, where, with whom, in what order, whose word is good, what is worth
+defending. Give the facts; earn the strategy.
+
+### The pieces
+
+**1. Competence: tell it what it could already be told.**
+- [ ] A `daylight` sensor. `bot.time.timeOfDay` exists and `sensors.js` has no
+      time input at all — the drive system is blind to the cycle. Safety must
+      rise *before* dusk, not when the first skeleton arrives.
+- [ ] Hostile *count* and distance, not a boolean. `safety` currently caps to
+      0.4 for any hostile within 16 blocks, so one zombie and five are the same
+      number. Being outnumbered has to be representable.
+- [ ] A `shelter` sensor: enclosed, roofed, lit, or exposed. Nothing in the
+      system currently knows whether the agent has walls.
+- [ ] Tool and material requirements injected from `mcdata` at planning time,
+      so "mine iron" arrives with "needs a stone pickaxe" already attached.
+- [ ] Navigation with a cost sense — a distance ceiling and a preference for
+      going around. 111 `goToPlayer` calls in 12 hours, one of them tunnelling
+      through a mountain.
+
+**2. Learning: the things mcdata cannot tell you.**
+- [ ] A knowledge store distinct from the belief stream: typed, structured
+      claims with confidence and provenance, queryable at decision time.
+      Beliefs are prose for a prompt; knowledge is a fact with a count behind it.
+- [ ] Rules learned from outcomes. A failed command already carries a
+      structured reason ("missing crafting table", "no stone to place"); that is
+      a candidate rule, not just a log line.
+- [ ] Regularities over time. Night recurs; mobs burn at dawn; a route that
+      failed twice is probably not passable. Periodicity is learnable and the
+      day cycle is the obvious first case.
+- [ ] Local knowledge — this terrain, this seed, these neighbours. That is
+      exactly what a wiki cannot supply and where the agent's own experience is
+      the only source.
+
+**3. Consolidation: 525 beliefs is not knowledge, it is noise.**
+- [ ] Reflection must merge near-duplicates into a stronger general claim with
+      higher confidence, and prune what is superseded. Twelve separate
+      observations that night is dangerous should become one belief the agent
+      is certain of.
+- [ ] Confidence should rise with corroboration and fall with contradiction.
+
+**4. Beliefs that constrain, not decorate.**
+- [ ] A belief must be able to act as a hard constraint on goal generation and
+      planning, not merely appear in a prompt. The agents correctly concluded
+      "pathfinding fails in this terrain, build near my current position" and
+      then could not act on their own conclusion. A diagnosis that changes
+      nothing is not learning.
+
+**5. Capability: the gap between intent and blocks.**
+- [ ] `!placeHere` places one block per model call. At the observed 9.8
+      blocks/hour a 600-block watchtower is 61 hours of uninterrupted work, and
+      the agents never got 11 minutes. The tower was never physically reachable.
+- [ ] Either turn on the skill library (`use_skill_library` +
+      `allow_insecure_coding`, containerised) so `!newAction` can write code
+      that loops — this is Pillar 3, already built and switched off — or add a
+      parameterised `buildShape(kind, dims, material)` primitive. The first is
+      the version where the agent invents its own methods.
+- [ ] Skills learned in service of a project get recorded against it.
+
+### How we will know it worked
+
+- A project completes end to end.
+- Deaths per hour fall below one, and the agent is inside something at night.
+- Belief count stops growing linearly with time; confidence grows instead.
+- The agent states a constraint learned in hour one and still honours it in
+  hour ten.
