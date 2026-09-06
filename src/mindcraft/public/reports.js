@@ -260,6 +260,38 @@
             + '<div class="rp-goals">' + blocks + '</div></div>';
     }
 
+    // Survival and learning: the two Phase 10 outcomes.
+    function renderSurvival(rep) {
+        const entries = Object.entries(rep.survival || {}).filter(([, r]) => r.deaths || r.blocks_placed);
+        if (!entries.length) return '';
+        const blocks = entries.map(([agent, r]) => {
+            const causes = Object.entries(r.by_cause).sort((a, b) => b[1] - a[1]);
+            const rows = causes.map(([c, n]) =>
+                '<tr><td>' + esc(c.replace(/_/g, ' ')) + '</td><td class="num">' + n + '</td></tr>').join('');
+            const learn = (rep.learning || {})[agent] || {};
+            return '<div class="rp-goal-block">'
+                + '<div class="rp-goal-head"><strong>' + esc(agent) + '</strong>'
+                + '<span class="rp-dim">' + r.deaths + ' deaths &middot; '
+                + r.blocks_placed + ' blocks placed</span></div>'
+                + (r.deaths ? '<p class="rp-note">' + r.at_night + ' after dark &middot; '
+                    + r.exposed + ' with no shelter &middot; ' + r.outnumbered + ' outnumbered</p>' : '')
+                + (rows ? '<div class="rp-table-wrap"><table class="rp-table">'
+                    + '<thead><tr><th>killed by</th><th class="num">n</th></tr></thead>'
+                    + '<tbody>' + rows + '</tbody></table></div>' : '')
+                + '<p class="rp-note">' + (learn.facts_learned || 0) + ' facts learned from '
+                + (learn.beliefs || 0) + ' beliefs'
+                + (learn.beliefs_per_fact ? ' (' + learn.beliefs_per_fact + ' beliefs per fact)' : '')
+                + '</p>'
+                + ((learn.learned || []).length
+                    ? '<ul class="rp-stalls">' + learn.learned.slice(-5).map(l =>
+                        '<li><span class="rp-dim">' + esc(l.kind) + '</span> ' + esc(l.claim) + '</li>').join('') + '</ul>'
+                    : '')
+                + '</div>';
+        }).join('');
+        return '<div class="sim-section"><div class="heading">Survival &amp; learning</div>'
+            + '<div class="rp-goals">' + blocks + '</div></div>';
+    }
+
     function renderResources(rep) {
         const rows = Object.entries(rep.resources || {}).flatMap(([agent, items]) =>
             Object.entries(items).sort((a, b) => b[1] - a[1]).slice(0, 8)
@@ -297,6 +329,7 @@
             + renderMatrix(report)
             + renderGoals(report)
             + renderProjects(report)
+            + renderSurvival(report)
             + renderResources(report)
             + renderBeliefs(report);
         if (report._export_path)

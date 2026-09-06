@@ -61,7 +61,7 @@
     },
     "use_skill_library": {
         "type": "boolean",
-        "description": "Whether to learn, reuse, and compose successful newAction code. Requires allow_insecure_coding. Experimental.",
+        "description": "Whether to learn, reuse, and compose successful newAction code. Requires allow_insecure_coding. Experimental. Pillar 3: successful !newAction programs are saved with a docstring and embedding, then retrieved and composed. This is what makes building at scale possible \u2014 a loop that places 80 blocks is one action, where !placeHere is one block per model call.",
         "default": false
     },
     "use_social": {
@@ -166,7 +166,7 @@
     },
     "allow_insecure_coding": {
         "type": "boolean",
-        "description": "Whether to allow newAction command that let's LLM write/run code on host computer. Despite sandboxxing, it is potentially insecure.",
+        "description": "Whether to allow newAction command that let's LLM write/run code on host computer. Despite sandboxxing, it is potentially insecure. Executes model-written JavaScript. Required for !newAction and therefore for building anything larger than a hut. Keep it containerised and keep the bots on your own LAN.",
         "default": false
     },
     "code_timeout_mins": {

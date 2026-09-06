@@ -5,6 +5,8 @@ import { DriveState } from './drives.js';
 import { selectDrive } from './arbiter.js';
 import { ExecutionMonitor } from './monitor.js';
 import { ProjectStore, milestoneRequirement } from './projects.js';
+import { Knowledge } from '../knowledge/index.js';
+import { factFromFailure, factFromSuccess } from '../knowledge/learn.js';
 import { Planner, formatPlan } from './planner.js';
 import { readSensors } from './sensors.js';
 import { Blackboard } from './blackboard.js';
@@ -29,6 +31,10 @@ export class CognitionLoop {
         this.drive_state = new DriveState(profile.drives || {}, opts);
         // Phase 9: ambition that outlives a goal. Loaded from cognition.json.
         this.projects = new ProjectStore({}, opts);
+        // Phase 10: what this agent has worked out about THIS world. Distinct
+        // from the belief stream, which is prose for a prompt; these are claims
+        // with a count behind them that the planner can be handed.
+        this.knowledge = new Knowledge({}, opts);
         this.monitor = new ExecutionMonitor(opts);
         this.planner = new Planner(agent);
 
@@ -673,6 +679,25 @@ export class CognitionLoop {
         this.drive_state.satisfy('social', 0.15);
     }
 
+    // Turn an outcome into knowledge. Narrow by construction: only a small set
+    // of failure shapes Minecraft actually produces become facts, because a
+    // constraint drawn from a misreading is worse than no constraint at all.
+    _learnFrom(reason, action, succeeded = false) {
+        try {
+            const cand = succeeded ? factFromSuccess(action) : factFromFailure(reason, { action });
+            if (!cand) return;
+            const fact = this.knowledge.observe(cand.kind, cand.subject, cand.claim, { now: Date.now() });
+            // Only announce a fact when it first becomes something the agent
+            // would act on — otherwise the event stream fills with noise, which
+            // is exactly what happened to the belief stream.
+            if (fact && fact.confidence >= 0.7 && fact.support === Math.ceil(1 / this.knowledge.step))
+                this._safeRecordMemory('discovery', `Learned: ${fact.claim}`,
+                    { kind: fact.kind, subject: fact.subject, confidence: fact.confidence });
+        } catch (err) {
+            console.warn('Cognition: could not record knowledge:', err.message || err);
+        }
+    }
+
     // Sync the project's materials ledger from what the agent actually holds,
     // and let real progress ease the aspiration.
     //
@@ -776,6 +801,10 @@ export class CognitionLoop {
 
     _onFailure(reason) {
         this.last_failure = reason;
+        // Phase 10: a failure with a reason is a candidate rule, not a log
+        // line. "Greta not found" occurred 41 times in twelve hours and nothing
+        // ever changed because nothing was accumulating it.
+        this._learnFrom(reason, this._currentStep());
         // A step failure is often the agent establishing a real fact about the
         // world — "brown mushrooms cannot be cooked or smelted in Minecraft"
         // was worked out over six calls and then discarded, because only
@@ -988,6 +1017,7 @@ export class CognitionLoop {
                 monitor: this.active ? { replans: this.monitor.replans } : null,
                 recent_outcomes: this.recent_outcomes,
                 projects: this.projects.toJSON(),
+                knowledge: this.knowledge.toJSON(),
                 visited_chunks: [...this.visited_chunks].slice(-4000),
             };
             const tmp = this.state_fp + '.tmp';
@@ -1007,6 +1037,8 @@ export class CognitionLoop {
             if (!existsSync(this.state_fp)) return;
             const data = JSON.parse(readFileSync(this.state_fp, 'utf8'));
             this.drive_state.loadJson(data.drives);
+            // Knowledge that does not survive a restart is not knowledge.
+            if (data.knowledge) this.knowledge = new Knowledge(data.knowledge, this.agent.prompter.profile.cognition || {});
             this.recent_outcomes = data.recent_outcomes || [];
             this.projects = new ProjectStore(data.projects || {}, {});
             // A restart is a new session for whatever was in flight; counting

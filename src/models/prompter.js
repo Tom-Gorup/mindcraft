@@ -206,6 +206,19 @@ export class Prompter {
         if (prompt.includes('$SITUATION')) {
             prompt = prompt.replaceAll('$SITUATION', () => describeSituation(this.agent));
         }
+        if (prompt.includes('$KNOWLEDGE')) {
+            // Confident claims only. A planner acting on a coin-flip is worse
+            // than one acting on nothing.
+            const k = this.agent.cognition?.knowledge;
+            prompt = prompt.replaceAll('$KNOWLEDGE', () => (k ? k.describe() : ''));
+        }
+        if (prompt.includes('$CONSTRAINTS')) {
+            const k = this.agent.cognition?.knowledge;
+            const list = k ? k.constraints() : [];
+            prompt = prompt.replaceAll('$CONSTRAINTS', () => (list.length
+                ? `Hard constraints from experience — a plan that violates one of these will fail:\n${list.map(c => `- ${c}`).join('\n')}`
+                : ''));
+        }
         if (prompt.includes('$STATS')) {
             let stats = await getCommand('!stats').perform(this.agent) + '\n';
             stats += await getCommand('!entities').perform(this.agent) + '\n';

@@ -353,6 +353,33 @@ export function causeOfDeath(content) {
     return 'other';
 }
 
+// Is it learning, or just accumulating?
+//
+// The success criterion for Phase 10 is that belief count stops growing
+// linearly with time while confidence grows instead. 525 beliefs in twelve
+// hours was accumulation; this is what distinguishes the two.
+export function learning(events) {
+    const out = Object.create(null);
+    const rec = (name) => (out[name] ||= { beliefs: 0, facts_learned: 0, by_kind: {}, learned: [] });
+    for (const ev of events) {
+        const a = rec(ev.agent);
+        if (ev.type === 'belief') a.beliefs++;
+        // Emitted the first time a fact becomes something the agent would act on.
+        if (ev.type === 'discovery' && /^Learned: /.test(String(ev.content ?? ''))) {
+            a.facts_learned++;
+            const kind = ev.data?.kind ?? 'note';
+            a.by_kind[kind] = (a.by_kind[kind] || 0) + 1;
+            a.learned.push({ ts: ev.ts, kind, claim: String(ev.content).replace(/^Learned: /, '') });
+        }
+    }
+    for (const a of Object.values(out)) {
+        // A learning agent converts many observations into few durable claims.
+        a.beliefs_per_fact = a.facts_learned ? Number((a.beliefs / a.facts_learned).toFixed(1)) : null;
+        a.learned = a.learned.slice(-15);
+    }
+    return out;
+}
+
 // The full report.
 export function buildReport(all_events, scope = {}) {
     const events = filterEvents(all_events, scope).sort((a, b) => a.ts - b.ts);
@@ -423,5 +450,6 @@ export function buildReport(all_events, scope = {}) {
         goal_outcomes: goalOutcomes(events),
         project_outcomes: projectOutcomes(events),
         survival: survival(events),
+        learning: learning(events),
     };
 }
