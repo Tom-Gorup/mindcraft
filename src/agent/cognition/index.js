@@ -686,13 +686,15 @@ export class CognitionLoop {
         try {
             const cand = succeeded ? factFromSuccess(action) : factFromFailure(reason, { action });
             if (!cand) return;
-            const fact = this.knowledge.observe(cand.kind, cand.subject, cand.claim, { now: Date.now() });
-            // Only announce a fact when it first becomes something the agent
-            // would act on — otherwise the event stream fills with noise, which
-            // is exactly what happened to the belief stream.
-            if (fact && fact.confidence >= 0.7 && fact.support === Math.ceil(1 / this.knowledge.step))
-                this._safeRecordMemory('discovery', `Learned: ${fact.claim}`,
-                    { kind: fact.kind, subject: fact.subject, confidence: fact.confidence });
+            this.knowledge.observe(cand.kind, cand.subject, cand.claim, { now: Date.now() });
+            // Announce a fact once, the first time it becomes something the
+            // agent would act on. Testing an exact support count was brittle —
+            // run 10 reported zero facts learned because nothing landed on the
+            // magic number, not because nothing was learned.
+            const fresh = this.knowledge.takeAnnouncement();
+            if (fresh)
+                this._safeRecordMemory('discovery', `Learned: ${fresh.claim}`,
+                    { kind: fresh.kind, subject: fresh.subject, confidence: fresh.confidence });
         } catch (err) {
             console.warn('Cognition: could not record knowledge:', err.message || err);
         }

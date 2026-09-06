@@ -121,6 +121,9 @@ kbd {
 .status-badge.online { color: var(--good); border-color: color-mix(in srgb, var(--good) 34%, var(--hairline)); }
 .status-badge.online::before { animation: pulse-dot 2.4s var(--ease) infinite; }
 .status-badge.offline { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 34%, var(--hairline)); }
+/* Partly working: some agents in world, or none created. Distinct from green,
+   because "connected" and "everything is fine" are different claims. */
+.status-badge.warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 34%, var(--hairline)); }
 
 @keyframes pulse-dot {
     0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 55%, transparent); }

@@ -233,16 +233,39 @@
         }
 
         const statusEl = document.getElementById('msStatus');
+        // What this used to report was only whether the BROWSER had a socket to
+        // the mindserver — literally true while the Minecraft server was down
+        // and every agent was stranded, which is exactly when you look at it.
+        // A green light has to mean the thing you came to check is working.
+        let msConnected = false;
         function updateStatus(connected) {
+            if (typeof connected === 'boolean') msConnected = connected;
             if (!statusEl) return;
-            if (connected) {
-                statusEl.textContent = 'MindServer online';
-                statusEl.classList.remove('offline');
-                statusEl.classList.add('online');
-            } else {
+
+            if (!msConnected) {
                 statusEl.textContent = 'MindServer offline';
-                statusEl.classList.remove('online');
-                statusEl.classList.add('offline');
+                statusEl.className = 'status-badge offline';
+                return;
+            }
+            const agents = window.currentAgents || [];
+            const inWorld = agents.filter(a => a.in_game).length;
+            const joining = agents.filter(a => a.socket_connected && !a.in_game).length;
+
+            if (agents.length === 0) {
+                statusEl.textContent = 'MindServer online \u00b7 no agents';
+                statusEl.className = 'status-badge warn';
+            } else if (inWorld === agents.length) {
+                statusEl.textContent = `Connected \u00b7 ${inWorld}/${agents.length} in world`;
+                statusEl.className = 'status-badge online';
+            } else if (inWorld === 0) {
+                // The case that prompted this: Minecraft is down or restarting.
+                statusEl.textContent = joining
+                    ? `No agents in world \u00b7 ${joining} waiting to spawn`
+                    : 'No agents in world';
+                statusEl.className = 'status-badge offline';
+            } else {
+                statusEl.textContent = `Partial \u00b7 ${inWorld}/${agents.length} in world`;
+                statusEl.className = 'status-badge warn';
             }
         }
         function subscribeToState() {
@@ -854,6 +877,11 @@
         }
 
         socket.on('agents-status', async (agents) => {
+            // The pill reads agent state, so it has to be refreshed whenever
+            // that state changes — otherwise it stays green through a Minecraft
+            // restart, which is the whole complaint.
+            window.currentAgents = agents;
+            updateStatus();
             const needSettings = agents.filter(a => !agentSettings[a.name]);
             if (needSettings.length > 0) {
                 await Promise.all(needSettings.map(async (a) => {

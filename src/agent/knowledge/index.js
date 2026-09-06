@@ -46,6 +46,7 @@ export class Knowledge {
                 subject: clampStr(f.subject, 64),
                 claim: clampStr(f.claim, 200),
                 confidence: clamp01(f.confidence ?? 0.5),
+                announced: !!f.announced,
                 support: Math.max(0, f.support | 0),
                 contradiction: Math.max(0, f.contradiction | 0),
                 first_seen: f.first_seen ?? 0,
@@ -68,7 +69,7 @@ export class Knowledge {
         if (!f) {
             f = {
                 kind: clampStr(kind, 32), subject: clampStr(subject, 64),
-                claim: clampStr(claim, 200), confidence: 0.5,
+                claim: clampStr(claim, 200), confidence: 0.5, announced: false,
                 support: 0, contradiction: 0, first_seen: now, last_seen: now,
             };
             this.facts.set(key, f);
@@ -84,6 +85,33 @@ export class Knowledge {
         }
         this._trim();
         return f;
+    }
+
+    // True exactly once, the first time a fact becomes something the agent
+    // would act on. The caller used to test `support === ceil(1/step)`, which
+    // is brittle: a fact loaded from disk mid-build, or one that gained support
+    // twice in a tick, would skip the number and never be announced at all.
+    // Run 10 reported zero facts learned for precisely that reason.
+    takeAnnouncement(threshold = 0.7) {
+        for (const f of this.facts.values()) {
+            if (!f.announced && f.confidence >= threshold) {
+                f.announced = true;
+                return f;
+            }
+        }
+        return null;
+    }
+
+    // What the report needs: the store itself, not a count of announcements.
+    stats(threshold = 0.7) {
+        const by_kind = {};
+        let confident = 0;
+        for (const f of this.facts.values()) {
+            by_kind[f.kind] = (by_kind[f.kind] || 0) + 1;
+            if (f.confidence >= threshold) confident++;
+        }
+        return { total: this.facts.size, confident, by_kind,
+            constraints: this.constraints().length };
     }
 
     get(kind, subject) {
