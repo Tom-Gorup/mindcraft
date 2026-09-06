@@ -5,7 +5,7 @@
 //
 // Exits non-zero if anything is a hard blocker. Read-only: it opens a TCP
 // connection to the Minecraft server and touches nothing else.
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, statSync } from 'fs';
 import net from 'net';
 import settings from '../settings.js';
 import { getCommandDocs } from '../src/agent/commands/index.js';
@@ -99,6 +99,36 @@ for (const keyName of needed) {
         `Put it in keys.json, or export ${keyName}=... . Without it the agent fails at boot.`);
 }
 if (needed.size === 0) ok('API key', 'no keyed provider in use (local models only)');
+
+// ---- code execution ----
+//
+// Worth stating once, plainly, at the moment it is switched on rather than
+// buried in a doc. The SES compartment is a namespace boundary, not a security
+// boundary: generated code is handed host functions and can reach the primal
+// realm through them, which means process, require and the filesystem. The
+// container is the real isolation.
+if (settings.allow_insecure_coding) {
+    ok('Code execution', 'allow_insecure_coding is ON — !newAction can run model-written JS');
+    if (!settings.use_skill_library)
+        warn('Code execution', 'allow_insecure_coding is on but use_skill_library is off',
+            'Programs will run but never be saved or reused, so nothing compounds.');
+
+    const chatGate = settings.only_chat_with;
+    if (!Array.isArray(chatGate) || chatGate.length === 0)
+        warn('Code execution', 'only_chat_with is empty — any player on the server can trigger !newAction',
+            'Fine on a private LAN server with only you on it. Set only_chat_with to your\n'
+            + '     username to close it if that ever changes.');
+
+    try {
+        const mode = statSync('./keys.json').mode & 0o777;
+        if (mode & 0o077)
+            warn('Code execution', `keys.json is mode ${mode.toString(8)} — readable by other users`,
+                'chmod 600 keys.json. Generated code runs as you and can reach the filesystem,\n'
+                + '     so treat the API key as being within its reach and rotate it if anything looks odd.');
+        else
+            ok('Code execution', 'keys.json is not world-readable');
+    } catch { /* no keys.json: env vars in use */ }
+}
 
 // ---- tier routing: what will actually serve each kind of call ----
 //

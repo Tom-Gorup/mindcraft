@@ -47,7 +47,7 @@
     "embedding": "ollama/embeddinggemma",
     "tiers": {
         "reflex": "ollama/qwen2.5:7b",
-        "code": "ollama/qwen2.5:7b",
+        "code": "claude-haiku-4-5-20251001",
         "chat": "claude-haiku-4-5-20251001",
         "plan": "claude-haiku-4-5-20251001",
         "reflect": "claude-haiku-4-5-20251001"

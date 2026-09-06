@@ -58,7 +58,7 @@ const settings = {
 
     "use_cognition": true, // autonomous drive-based cognition loop (drives -> goals -> plans). experimental
     "use_memory": false, // long-term event memory with retrieval and reflection. experimental
-    "use_skill_library": false, // learn/reuse/compose successful newAction code. requires allow_insecure_coding. experimental
+    "use_skill_library": true, // learn/reuse/compose successful newAction code. requires allow_insecure_coding. experimental
     "use_social": false, // per-peer relationships, gossip, and trade. experimental
     "load_memory": false, // load memory from previous session
     "init_message": "Respond with hello world and your name", // sends to all on spawn
@@ -74,7 +74,7 @@ const settings = {
     "language": "en", // translate to/from this language. Supports these language names: https://cloud.google.com/translate/docs/languages
     "render_bot_view": false, // show bot's view in browser at localhost:3000, 3001...
 
-    "allow_insecure_coding": false, // allows newAction command and model can write/run code on your computer. enable at own risk
+    "allow_insecure_coding": true, // allows newAction command and model can write/run code on your computer. enable at own risk
     "allow_vision": false, // allows vision model to interpret screenshots as inputs
     "blocked_actions" : ["!checkBlueprint", "!checkBlueprintLevel", "!getBlueprint", "!getBlueprintLevel",
         // !restart kills the agent process. It exists for a human to trigger, but it is in the

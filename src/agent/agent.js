@@ -537,6 +537,12 @@ export class Agent {
         // let generated text start one.
         if (message.startsWith('/')) message = ' ' + message;
 
+        // The dashboard feed is observability, not in-game speech: it must not
+        // depend on WHO the bot is allowed to talk to. Setting only_chat_with
+        // used to take the whole feed silent along with public chat, so the
+        // dashboard looked dead while the agents were talking normally.
+        sendOutputToServer(this.name, message);
+
         if (settings.only_chat_with.length > 0) {
             for (let username of settings.only_chat_with) {
                 this.bot.whisper(username, message);
@@ -547,7 +553,6 @@ export class Agent {
                 speak(to_translate, this.prompter.profile.speak_model);
             }
             if (settings.chat_ingame) {this.bot.chat(message);}
-            sendOutputToServer(this.name, message);
         }
     }
 
