@@ -69,6 +69,11 @@ export class CognitionLoop {
         // ping-pongs, burning two plan-tier calls per goal and never making
         // progress. Observed live: goals living 10-22 seconds each.
         this.min_goal_commit_ms = opts.min_goal_commit_ms ?? 60000;
+        // A need counts as met below this, not merely improved. The sensors
+        // added in Phase 10 move fast — a mob wandering off, a roof half
+        // placed — and a relative-drop test reads every one of those as "the
+        // problem is solved".
+        this.goal_satisfied_below = opts.goal_satisfied_below ?? 0.25;
         this.commit_margin_multiplier = opts.commit_margin_multiplier ?? 3;
         this.max_step_responses = opts.max_step_responses ?? 5;
         this.arbiter_opts = {
@@ -426,9 +431,18 @@ export class CognitionLoop {
         // 1. The need that motivated it has substantially eased. The goal was
         //    written for a situation that no longer obtains, so re-deciding
         //    beats grinding through a plan aimed at a solved problem.
+        //    A drop is not enough: the need must actually be MET. Otherwise
+        //    progress on a goal destroys the goal — building the first blocks
+        //    of a roof raises the shelter reading, which eases safety, which
+        //    cancels the goal that was building the roof. Wilbur lost a goal
+        //    after ELEVEN SECONDS that way on 2026-09-06, and completed nothing
+        //    in 82 minutes. Every abandonment that run ended between 0.32 and
+        //    0.42 urgency — still plainly unsafe.
         const now_urgency = this.drive_state.urgency(a.drive);
         if (typeof a.urgency_at_start === 'number'
-            && a.urgency_at_start - now_urgency >= this.goal_relief_margin)
+            && a.urgency_at_start - now_urgency >= this.goal_relief_margin
+            && now_urgency <= this.goal_satisfied_below
+            && (a.active_ms ?? 0) >= this.min_goal_commit_ms)
             return `${a.drive} has eased (${a.urgency_at_start.toFixed(2)} → ${now_urgency.toFixed(2)})`;
         // 2. Backstop: any goal worked this long without finishing is stuck,
         //    whatever the drives say.

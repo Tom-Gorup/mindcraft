@@ -75,18 +75,43 @@ test('cognition is dormant and does not resurrect goals when the flag is off', (
 // used to survive as long as its own drive stayed on top. Observed live: a
 // "deal with the nearby skeleton" goal persisted long after the skeleton left,
 // because safety is fed by health as well as by hostiles.
-test('a goal is dropped once its motivating drive has eased', () => {
+test('a goal is dropped once its motivating drive is actually MET', () => {
     const { cog: loop } = makeCog();
     loop.goal_relief_margin = 0.25;
     loop.active = { drive: 'safety', goal: 'deal with the skeleton', steps: ['a'], step_index: 0,
-        urgency_at_start: 0.80, active_ms: 0 };
+        urgency_at_start: 0.80, active_ms: 120000 };
     loop.drive_state.urgency = () => 0.78;                 // barely moved
     assert.equal(loop._goalNoLongerWarranted(), null, 'a small change must not drop the goal');
 
-    loop.drive_state.urgency = () => 0.50;                 // threat resolved
+    // Improved but still plainly unsafe. Dropping here is what left Wilbur
+    // half-sheltered and starting over, again and again.
+    loop.drive_state.urgency = () => 0.50;
+    assert.equal(loop._goalNoLongerWarranted(), null,
+        'a half-solved problem is not a solved one');
+
+    loop.drive_state.urgency = () => 0.10;                 // genuinely safe now
     const reason = loop._goalNoLongerWarranted();
-    assert.ok(reason, 'an eased drive should retire its goal');
+    assert.ok(reason, 'a met need should retire its goal');
     assert.match(reason, /safety has eased/);
+});
+
+// Run 12, 2026-09-06: Wilbur started "Build a roof on the 3x3 shelter" and
+// abandoned it ELEVEN SECONDS later to "safety has eased". Placing the first
+// roof blocks raised the shelter reading, which eased safety, which cancelled
+// the goal that was building the roof. He completed nothing in 82 minutes and
+// placed three blocks.
+test('progress on a goal cannot cancel that goal', () => {
+    const { cog: loop } = makeCog();
+    loop.goal_relief_margin = 0.25;
+    loop.active = { drive: 'safety', goal: 'build a roof', steps: ['a'], step_index: 0,
+        urgency_at_start: 0.72, active_ms: 11000 };       // eleven seconds in
+    loop.drive_state.urgency = () => 0.20;                 // the roof is going up
+
+    assert.equal(loop._goalNoLongerWarranted(), null,
+        'inside the commitment window, partial progress must not retire the goal');
+
+    loop.active.active_ms = 120000;
+    assert.ok(loop._goalNoLongerWarranted(), 'once committed and genuinely safe, it retires');
 });
 
 test('a goal that never finishes is dropped by the backstop', () => {

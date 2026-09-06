@@ -292,6 +292,14 @@
                 "step": 60000,
                 "default": 2700000,
                 "description": "How long a goal serving an aspiration may run before it counts as stuck. Ambitious building needs far longer than a need does \u2014 12 minutes is generous for eating and absurd for laying a foundation."
+            },
+            "goal_satisfied_below": {
+                "type": "number",
+                "min": 0,
+                "max": 1,
+                "step": 0.05,
+                "default": 0.25,
+                "description": "Urgency below which a need counts as MET rather than merely improved. A goal is only retired when its drive drops below this \u2014 otherwise progress on a goal cancels the goal, because placing the first roof blocks eases safety."
             }
         }
     },
