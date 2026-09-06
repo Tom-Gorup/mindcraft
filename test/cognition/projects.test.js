@@ -240,3 +240,15 @@ test('a gathering milestone with no count is not auto-closed either', () => {
     assert.equal(milestoneRequirement('Fell and limb a stand of spruce trees'), null);
     assert.equal(milestoneRequirement('Gather 0 logs'), null);
 });
+
+// Run 7's real milestone text. The old parser filtered connectives out of the
+// word list instead of stopping at one, so "2-3 spruce trees into logs and
+// planks" became "spruce_trees_into" — a name nothing can ever match, which
+// reads like a real answer and silently never fires.
+test('parsing stops at a connective rather than swallowing it', () => {
+    const r = milestoneRequirement('Fell and process 2-3 spruce trees into logs and planks');
+    assert.deepEqual(r.names, ['spruce_trees', 'spruce_tree']);
+    assert.ok(!r.names.some(n => n.includes('into')), 'no connective may reach a material name');
+    assert.deepEqual(milestoneRequirement('Gather 64 spruce logs and stack them').names,
+        ['spruce_logs', 'spruce_log']);
+});

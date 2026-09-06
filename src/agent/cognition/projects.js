@@ -56,9 +56,16 @@ export function milestoneRequirement(text) {
     const qty = Number(m[1]);
     if (!Number.isFinite(qty) || qty <= 0) return null;
 
-    const words = m[2].toLowerCase().split(/\s+/)
-        // trailing connectives swept up by the greedy word match
-        .filter(w => !['by', 'from', 'for', 'to', 'and', 'in', 'at', 'with', 'using', 'of', 'the'].includes(w));
+    // Stop at the first connective rather than filtering them out. Filtering
+    // let "2-3 spruce trees into logs and planks" become "spruce_trees_into",
+    // a name nothing can ever match — garbage that reads like a real answer.
+    const STOP = new Set(['by', 'from', 'for', 'to', 'and', 'in', 'at', 'with',
+        'using', 'of', 'the', 'into', 'onto', 'near', 'around', 'then', 'a', 'an']);
+    const words = [];
+    for (const w of m[2].toLowerCase().split(/\s+/)) {
+        if (STOP.has(w)) break;
+        words.push(w);
+    }
     // "10 stone blocks" means ten stone. Safe to drop here because the
     // gathering verb has already excluded "12 blocks wide" and its kin.
     while (words.length && NOT_A_MATERIAL.has(words[words.length - 1])) words.pop();
