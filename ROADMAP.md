@@ -630,53 +630,53 @@ defending. Give the facts; earn the strategy.
 ### The pieces
 
 **1. Competence: tell it what it could already be told.**
-- [ ] A `daylight` sensor. `bot.time.timeOfDay` exists and `sensors.js` has no
+- [x] A `daylight` sensor. `bot.time.timeOfDay` exists and `sensors.js` has no
       time input at all — the drive system is blind to the cycle. Safety must
       rise *before* dusk, not when the first skeleton arrives.
-- [ ] Hostile *count* and distance, not a boolean. `safety` currently caps to
+- [x] Hostile *count* and distance, not a boolean. `safety` currently caps to
       0.4 for any hostile within 16 blocks, so one zombie and five are the same
       number. Being outnumbered has to be representable.
-- [ ] A `shelter` sensor: enclosed, roofed, lit, or exposed. Nothing in the
+- [x] A `shelter` sensor: enclosed, roofed, lit, or exposed. Nothing in the
       system currently knows whether the agent has walls.
-- [ ] Tool and material requirements injected from `mcdata` at planning time,
+- [x] Tool and material requirements injected from `mcdata` at planning time,
       so "mine iron" arrives with "needs a stone pickaxe" already attached.
 - [ ] Navigation with a cost sense — a distance ceiling and a preference for
       going around. 111 `goToPlayer` calls in 12 hours, one of them tunnelling
       through a mountain.
 
 **2. Learning: the things mcdata cannot tell you.**
-- [ ] A knowledge store distinct from the belief stream: typed, structured
+- [x] A knowledge store distinct from the belief stream: typed, structured
       claims with confidence and provenance, queryable at decision time.
       Beliefs are prose for a prompt; knowledge is a fact with a count behind it.
-- [ ] Rules learned from outcomes. A failed command already carries a
+- [x] Rules learned from outcomes. A failed command already carries a
       structured reason ("missing crafting table", "no stone to place"); that is
       a candidate rule, not just a log line.
 - [ ] Regularities over time. Night recurs; mobs burn at dawn; a route that
       failed twice is probably not passable. Periodicity is learnable and the
       day cycle is the obvious first case.
-- [ ] Local knowledge — this terrain, this seed, these neighbours. That is
+- [x] Local knowledge — this terrain, this seed, these neighbours. That is
       exactly what a wiki cannot supply and where the agent's own experience is
       the only source.
 
 **3. Consolidation: 525 beliefs is not knowledge, it is noise.**
-- [ ] Reflection must merge near-duplicates into a stronger general claim with
+- [x] Reflection must merge near-duplicates into a stronger general claim with
       higher confidence, and prune what is superseded. Twelve separate
       observations that night is dangerous should become one belief the agent
       is certain of.
-- [ ] Confidence should rise with corroboration and fall with contradiction.
+- [x] Confidence should rise with corroboration and fall with contradiction.
 
 **4. Beliefs that constrain, not decorate.**
-- [ ] A belief must be able to act as a hard constraint on goal generation and
+- [x] A belief must be able to act as a hard constraint on goal generation and
       planning, not merely appear in a prompt. The agents correctly concluded
       "pathfinding fails in this terrain, build near my current position" and
       then could not act on their own conclusion. A diagnosis that changes
       nothing is not learning.
 
 **5. Capability: the gap between intent and blocks.**
-- [ ] `!placeHere` places one block per model call. At the observed 9.8
+- [x] `!placeHere` places one block per model call. At the observed 9.8
       blocks/hour a 600-block watchtower is 61 hours of uninterrupted work, and
       the agents never got 11 minutes. The tower was never physically reachable.
-- [ ] Either turn on the skill library (`use_skill_library` +
+- [x] Either turn on the skill library (`use_skill_library` +
       `allow_insecure_coding`, containerised) so `!newAction` can write code
       that loops — this is Pillar 3, already built and switched off — or add a
       parameterised `buildShape(kind, dims, material)` primitive. The first is

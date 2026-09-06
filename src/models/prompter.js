@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import { selectAPI, createModel } from './_model_map.js';
 import { ModelRouter } from './router.js';
 import { CACHE_BOUNDARY, stripBoundary } from './cache.js';
-import { describeSituation } from '../agent/cognition/describe.js';
+import { describeSituation, describeRequirements } from '../agent/cognition/describe.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -211,6 +211,13 @@ export class Prompter {
             // than one acting on nothing.
             const k = this.agent.cognition?.knowledge;
             prompt = prompt.replaceAll('$KNOWLEDGE', () => (k ? k.describe() : ''));
+        }
+        if (prompt.includes('$REQUIREMENTS')) {
+            // Free facts. mcdata has known the tool for every block all along;
+            // making the agent rediscover by dying that iron needs a stone
+            // pickaxe is waste, not emergence.
+            const goal = this.agent.cognition?.active?.goal || '';
+            prompt = prompt.replaceAll('$REQUIREMENTS', () => describeRequirements(goal));
         }
         if (prompt.includes('$CONSTRAINTS')) {
             const k = this.agent.cognition?.knowledge;

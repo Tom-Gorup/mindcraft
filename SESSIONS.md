@@ -1229,3 +1229,63 @@ overlays under `profiles/local/` now store the diff from the tracked file.
   sleep-or-shelter response.
 - `runs/` still grows unbounded.
 - Trend history is in-memory; `systemctl restart` clears it.
+
+## Session 18 — Phase 10: competence and learning (2026-09-06)
+
+Prompted by an overnight run: 65 deaths in 12 hours, 119 blocks placed, zero
+milestones, 525 beliefs. Tom's read was that there was no intelligence visible.
+He was right, and the reason was not the cognition layer.
+
+### The two diagnoses
+
+**Intelligence had nowhere to express itself.** `!placeHere` puts down one block
+per model call. At the observed 9.8 blocks/hour, the 600-block watchtower those
+agents kept planning was 61 hours of uninterrupted work, and they never got 11
+minutes between deaths. The tower was never physically reachable. Two days of
+fixes to milestone bookkeeping and drive relaxation were real but marginal — I
+was tuning the layer that already worked.
+
+**It was not learning.** 525 beliefs, many near-duplicates of "nighttime is
+dangerous". "Greta not found" occurred 41 times and changed nothing. Beliefs
+were prose for a prompt; nothing accumulated, consolidated, or constrained.
+
+### The reframe
+
+Separate what should be GIVEN from what must be EARNED. Tool tiers and crafting
+trees are fixed rules already in `mcdata` — `getBlockTool()` has always known
+that iron needs a stone pickaxe and nothing ever asked it. Rediscovering that by
+dying is waste. The interesting emergence is strategy: what to build, where,
+with whom. Give the facts; earn the strategy.
+
+### What shipped
+
+- `cognition/situation.js` — nightfall pressure that rises BEFORE dusk, a threat
+  level that knows five zombies from one, and a shelter reading that relieves
+  the night pressure it answers.
+- `knowledge/` — facts with a subject, a support count and a confidence that
+  moves. Repeat observations consolidate; contradiction retires a claim;
+  confident facts become hard planning constraints. Run 8's 525 beliefs reduce
+  to 3 durable facts under this.
+- `knowledge/learn.js` — a narrow set of failure shapes becomes candidate rules.
+  Unrecognised failures produce nothing, deliberately.
+- The coding prompt now says plainly that code is how you build, and asks for
+  reusable functions of their dimensions rather than one-offs.
+- Reports: survival (deaths by killer, and how many after dark, unsheltered or
+  outnumbered) and learning (beliefs per durable fact).
+
+### Next
+
+1. **Run it.** Nothing here has been seen live. The gate: deaths below 1/hour,
+   the agent inside something at night, and beliefs-per-fact falling.
+2. **`use_skill_library` + `allow_insecure_coding`** in the container. Piece 5 is
+   only half done — the prompt asks for bulk building, but the flags that let
+   `!newAction` run are still off, so nothing can act on it yet.
+3. Navigation still has no cost sense; 111 `goToPlayer` calls in 12 hours, one
+   through a mountain.
+
+### Known issues
+
+- Reflection consolidation is not implemented in reflection itself; the
+  knowledge store consolidates, the belief stream still grows linearly.
+- `runs/` grows unbounded.
+
