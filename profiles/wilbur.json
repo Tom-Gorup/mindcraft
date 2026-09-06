@@ -5,7 +5,7 @@
     "_comment": "Example personality for the cognition loop (settings use_cognition: true). Wilbur is a restless explorer: curiosity outranks comfort, wealth barely registers. Drive weights/decay override src/agent/cognition/drives.js defaults; the cognition block tunes the loop itself.",
     "drives": {
         "curiosity": {
-            "weight": 0.9,
+            "weight": 0.7,
             "decay_per_min": 0.03,
             "description": "Explore new terrain, find caves, see what is over the next hill."
         },
@@ -17,7 +17,7 @@
             "weight": 0.2
         },
         "safety": {
-            "weight": 0.9
+            "weight": 1.0
         },
         "food": {
             "weight": 0.8
