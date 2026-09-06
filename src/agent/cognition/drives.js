@@ -187,7 +187,10 @@ export class DriveState {
     }
 
     setOutdoorDamping(factor) {
-        this.outdoor_damping = Math.max(0, Math.min(1, Number(factor) ?? 1));
+        // Number() yields NaN rather than nullish, so `?? 1` would be dead and
+        // a NaN would propagate into every outdoor drive's urgency at once.
+        const n = Number(factor);
+        this.outdoor_damping = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
     }
 
     // Called each tick with the drive currently being acted on (or null).

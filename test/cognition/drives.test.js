@@ -288,3 +288,14 @@ test('damping is bounded and reversible', () => {
     d.setOutdoorDamping(-5);
     assert.equal(d.effectiveUrgency('curiosity'), 0, 'clamped, never negative');
 });
+
+test('a bad damping value cannot poison every outdoor drive', () => {
+    const d = new DriveState();
+    d.update(60 * 60000, {});
+    const normal = d.effectiveUrgency('curiosity');
+    for (const bad of [undefined, null, NaN, 'nonsense', {}]) {
+        d.setOutdoorDamping(bad);
+        assert.equal(d.effectiveUrgency('curiosity'), normal,
+            `${String(bad)} must fall back to no damping, not NaN`);
+    }
+});
