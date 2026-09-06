@@ -187,10 +187,14 @@ export class DriveState {
     }
 
     setOutdoorDamping(factor) {
-        // Number() yields NaN rather than nullish, so `?? 1` would be dead and
-        // a NaN would propagate into every outdoor drive's urgency at once.
-        const n = Number(factor);
-        this.outdoor_damping = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
+        // Only a real number counts. Number() coerces too eagerly to be a
+        // guard here: Number(null) is 0, which is finite and would silence
+        // every outdoor drive completely — the same poisoning as NaN, by a
+        // different route. Anything that is not already a finite number means
+        // "no damping".
+        this.outdoor_damping = (typeof factor === 'number' && Number.isFinite(factor))
+            ? Math.max(0, Math.min(1, factor))
+            : 1;
     }
 
     // Called each tick with the drive currently being acted on (or null).
