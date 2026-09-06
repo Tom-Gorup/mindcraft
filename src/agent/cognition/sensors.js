@@ -47,8 +47,15 @@ export function readSensors(agent) {
     // to nightfall, so having it should relieve the pressure rather than the
     // clock alone deciding.
     const exposure = situation.night_pressure * (1 - situation.shelter);
-    safety = Math.min(safety, 1 - exposure * 0.75);
+    safety = Math.min(safety, 1 - exposure * 0.85);
     sensors.safety = safety;
+
+    // Night does not merely make exploring less safe, it makes it a bad idea.
+    // Without this an agent that has correctly built a shelter still finds
+    // curiosity on top and walks straight back out of it into the dark.
+    // Damping the outdoor drives is more honest than inflating safety further:
+    // the agent is not in danger, it simply has nothing worth doing out there.
+    agent.night_damping = 1 - 0.6 * situation.night_pressure;
 
     // food: mostly current hunger, partly whether we carry spare food
     const inventory = world.getInventoryCounts(bot);

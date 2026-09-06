@@ -31,12 +31,15 @@ const TICKS_PER_MINUTE = DAY_TICKS / 20;
 
 // How dark it is about to get, in [0,1]. Rises BEFORE dusk so an agent can act
 // on it while there is still time to build something.
-export function nightPressure(timeOfDay, lead_ticks = 3000) {
+// The lead window is generous and the ramp steep on purpose. Shelter takes
+// minutes to build, so a signal that only arrives at dusk arrives too late —
+// and being caught outside at nightfall is how these agents died 65 times.
+export function nightPressure(timeOfDay, lead_ticks = 4000) {
     const t = ((Number(timeOfDay) || 0) % DAY_TICKS + DAY_TICKS) % DAY_TICKS;
     if (t >= NIGHT_TICK && t < DAWN_TICK) return 1;          // it is night now
-    if (t >= DUSK_TICK && t < NIGHT_TICK) return 0.8;        // dusk: mobs imminent
+    if (t >= DUSK_TICK && t < NIGHT_TICK) return 0.9;        // dusk: mobs imminent
     const until = DUSK_TICK - t;
-    if (until > 0 && until <= lead_ticks) return 0.3 + 0.5 * (1 - until / lead_ticks);
+    if (until > 0 && until <= lead_ticks) return 0.4 + 0.55 * (1 - until / lead_ticks);
     return 0;                                                 // broad daylight
 }
 

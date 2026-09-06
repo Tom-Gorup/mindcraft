@@ -18,6 +18,7 @@ export const DEFAULT_DRIVES = {
     curiosity: {
         weight: 0.6,
         type: 'decay',
+        outdoor: true,      // wants you out in the world, which at night is a bad idea
         decay_per_min: 0.015,
         initial_level: 0.5, // agents spawn curious, not sated
         description: 'Explore new places, discover resources, try new things.',
@@ -32,6 +33,7 @@ export const DEFAULT_DRIVES = {
     wealth: {
         weight: 0.4,
         type: 'sensor',
+        outdoor: true,
         description: 'Accumulate valuable resources, tools, and equipment.',
     },
     // ---- aspiration drives (Phase 9) ----
@@ -46,6 +48,7 @@ export const DEFAULT_DRIVES = {
         decay_per_min: 0.0015,   // ~11 hours from sated to fully unsatisfied
         initial_level: 0.6,
         aspiration: true,
+        outdoor: true,
         description: 'Build something permanent and worth remembering. Satisfied by lasting work, '
             + 'not by gathering or surviving. Never urgent, never absent.',
     },
@@ -72,6 +75,12 @@ export class DriveState {
         // How fast an alarm fades. Half-life, not a hard window: the drive
         // should ease back rather than switch off.
         this.alarm_half_life_ms = opts.alarm_half_life_ms ?? 4 * 60000;
+        // Multiplies the urgency of drives that want the agent outdoors. Set
+        // from night pressure each tick. Without it an agent that correctly
+        // built a shelter still finds curiosity on top and walks straight back
+        // out into the dark — it is not in danger inside, it simply has nothing
+        // worth doing out there, and that is the honest way to say it.
+        this.outdoor_damping = 1;
         this.drives = {};
         const names = new Set([...Object.keys(DEFAULT_DRIVES), ...Object.keys(config)]);
         for (const name of names) {
@@ -81,6 +90,7 @@ export class DriveState {
                 name,
                 weight: cfg.weight ?? def.weight ?? 0.5,
                 aspiration: cfg.aspiration ?? def.aspiration ?? false,
+                outdoor: cfg.outdoor ?? def.outdoor ?? false,
                 neglect_ms: 0,
                 type: cfg.type ?? def.type ?? 'decay',
                 decay_per_min: cfg.decay_per_min ?? def.decay_per_min ?? 0.01,
@@ -159,7 +169,7 @@ export class DriveState {
     effectiveUrgency(name) {
         const d = this.drives[name];
         if (!d) return 0;
-        const raw = this.urgency(name);
+        const raw = this.urgency(name) * (d.outdoor ? this.outdoor_damping : 1);
         if (!this.neglect_bonus_max || !d.aspiration) return raw;
         if (this.needsArePressing()) return raw;
         const share = Math.min(1, (d.neglect_ms || 0) / this.neglect_full_ms);
@@ -174,6 +184,10 @@ export class DriveState {
             if (this.urgency(d.name) >= this.needs_gate) return true;
         }
         return false;
+    }
+
+    setOutdoorDamping(factor) {
+        this.outdoor_damping = Math.max(0, Math.min(1, Number(factor) ?? 1));
     }
 
     // Called each tick with the drive currently being acted on (or null).

@@ -260,3 +260,31 @@ test('one drive being addressed does not freeze another drive alarm', () => {
     assert.ok(d.urgency('safety') > 0.85, 'safety held');
     assert.ok(d.urgency('food') < 0.1, 'food faded');
 });
+
+// An agent that correctly built a shelter used to find curiosity on top and
+// walk straight back out into the dark. Night does not merely make outdoor work
+// dangerous — it makes it a bad idea, and damping the drives that want you
+// outside is more honest than inflating safety until it drowns them.
+test('night damps the drives that want you outdoors, and only those', () => {
+    const d = new DriveState();
+    d.update(60 * 60000, {});                 // let the decay drives drift up
+    d.update(1000, { safety: 1, food: 0.5, wealth: 0.2 });
+
+    const before = { curiosity: d.effectiveUrgency('curiosity'), food: d.effectiveUrgency('food') };
+    d.setOutdoorDamping(0.4);                 // full night
+    assert.ok(d.effectiveUrgency('curiosity') < before.curiosity * 0.5,
+        'exploring at night should lose most of its pull');
+    assert.equal(d.effectiveUrgency('food'), before.food,
+        'being hungry indoors is exactly as urgent as being hungry outdoors');
+});
+
+test('damping is bounded and reversible', () => {
+    const d = new DriveState();
+    d.update(60 * 60000, {});
+    const daylight = d.effectiveUrgency('curiosity');
+    d.setOutdoorDamping(0.4);
+    d.setOutdoorDamping(1);
+    assert.equal(d.effectiveUrgency('curiosity'), daylight, 'dawn restores it');
+    d.setOutdoorDamping(-5);
+    assert.equal(d.effectiveUrgency('curiosity'), 0, 'clamped, never negative');
+});

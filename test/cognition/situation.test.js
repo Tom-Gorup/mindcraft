@@ -16,9 +16,9 @@ import {
 test('night pressure rises before dusk, not when the first skeleton arrives', () => {
     assert.equal(nightPressure(0), 0, 'dawn: no pressure');
     assert.equal(nightPressure(6000), 0, 'midday: no pressure');
-    assert.ok(nightPressure(10000) > 0, 'an hour out: it starts to matter');
+    assert.ok(nightPressure(10000) > 0.5, 'minutes out: already pressing, because shelter takes time to build');
     assert.ok(nightPressure(11500) > nightPressure(10000), 'and grows as dusk nears');
-    assert.equal(nightPressure(DUSK_TICK + 100), 0.8, 'dusk: mobs imminent');
+    assert.equal(nightPressure(DUSK_TICK + 100), 0.9, 'dusk: mobs imminent');
     assert.equal(nightPressure(NIGHT_TICK + 1000), 1, 'night: full');
 });
 

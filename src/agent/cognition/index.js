@@ -885,6 +885,8 @@ export class CognitionLoop {
         if (this.active?.project_id && this.projects.active?.id === this.active.project_id)
             this.projects.noteWork(delta, Date.now());
         this.drive_state.update(delta, this.sensor_levels, this.active?.drive ?? null);
+        // Night makes outdoor work a bad idea, not merely a dangerous one.
+        this.drive_state.setOutdoorDamping(this.agent.night_damping ?? 1);
     }
 
     _currentStep() {
