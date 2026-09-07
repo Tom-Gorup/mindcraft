@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import * as mindcraft from './mindcraft.js';
 import { readFileSync, createReadStream } from 'fs';
 import { RunRegistry } from './runs.js';
+import { serverInfo } from './mcserver.js';
 import { buildReport } from './report.js';
 import { writeOverlay, writeSettingsOverlay } from './profile_overlay.js';
 // The on-disk global settings, used as the baseline a per-agent overlay diffs
@@ -554,6 +555,12 @@ export function createMindServer(host_public = false, port = 8080) {
         });
 
         // ---- research runs ----
+        socket.emit('minecraft-status', mcStatus);
+
+        socket.on('get-minecraft-status', (callback) => {
+            if (typeof callback === 'function') callback(mcStatus);
+        });
+
         socket.on('list-runs', (callback) => {
             if (typeof callback === 'function')
                 callback({ runs: runs.list(), active: runs.active });
@@ -622,6 +629,7 @@ export function createMindServer(host_public = false, port = 8080) {
         console.log(`MindServer running on port ${port} on host ${host}`);
         // independent of any browser being connected
         startTrendSampling();
+        startMinecraftPolling();
     });
 
     return server;
@@ -676,6 +684,64 @@ function pollAgentStates() {
 // "last 24 hours" showed only the minutes you happened to be looking.
 let trendInterval = null;
 let trend_polling = false;
+
+// ---- Minecraft server reachability ------------------------------------------
+//
+// The dashboard could only infer this from whether agents were in-game, which
+// conflates three different situations: Minecraft is down, the agents are
+// deliberately stopped, and the agents are crashing. Asking the server directly
+// separates them. mc.ping is cheap and answers in milliseconds.
+let mcStatus = { reachable: null, players: null, version: null, motd: null, checked_at: 0, host: null };
+let mcInterval = null;
+
+function mcTarget() {
+    // Agents carry their own host/port, so several worlds can run under one
+    // mindserver. The first registered agent's is the one to report.
+    for (const name in agent_connections) {
+        const st = agent_connections[name].settings;
+        if (st?.host) return { host: st.host, port: st.port ?? 25565 };
+    }
+    return null;
+}
+
+async function pollMinecraft() {
+    const target = mcTarget();
+    if (!target) {
+        mcStatus = { ...mcStatus, reachable: null, checked_at: Date.now(), host: null };
+        return;
+    }
+    let info = null;
+    try {
+        info = await serverInfo(target.host, target.port, 2000, false);
+    } catch { /* serverInfo resolves null on failure; this is belt and braces */ }
+    mcStatus = {
+        reachable: !!info,
+        players: info?.players ?? null,
+        version: info?.version ?? null,
+        motd: info?.motd ?? null,
+        checked_at: Date.now(),
+        // Deliberately NOT the address: the dashboard is shared over a tunnel
+        // and a LAN address has leaked from this project once already.
+        host: null,
+        port: target.port,
+    };
+    io.emit('minecraft-status', mcStatus);
+}
+
+export function startMinecraftPolling(interval_ms = 10000) {
+    if (mcInterval) return;
+    // Fire-and-forget, so it must carry its own rejection: an unhandled one
+    // terminates the process on Node 18+, and a status pill is not worth the
+    // mindserver going down.
+    const tick = () => {
+        pollMinecraft().catch(err =>
+            console.warn('Minecraft status poll failed:', err?.message || err));
+    };
+    tick();
+    mcInterval = setInterval(tick, interval_ms);
+    if (mcInterval.unref) mcInterval.unref();
+}
+
 export function startTrendSampling() {
     if (trendInterval) return;
     trendInterval = setInterval(() => {

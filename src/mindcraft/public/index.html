@@ -31,6 +31,7 @@
             <span class="brand-name">Mindcraft</span>
         </div>
         <span id="msStatus" class="status-badge offline">connecting</span>
+        <span id="mcStatus" class="status-badge" data-tip="The Minecraft server itself, pinged directly every 10s — independent of whether any agent has joined it">Minecraft: checking</span>
 
         <div class="spacer"></div>
 
@@ -875,6 +876,34 @@
             const head = document.getElementById('agentCount');
             if (head) head.textContent = `${agents.filter(a => a.in_game).length} of ${agents.length} in game`;
         }
+
+        // The Minecraft server, asked directly. Separate from the agent pill
+        // because "Minecraft is down", "the agents are stopped" and "the agents
+        // are crashing" look identical when you can only see agent state.
+        const mcEl = document.getElementById('mcStatus');
+        socket.on('minecraft-status', (st) => {
+            if (!mcEl) return;
+            if (!st || st.reachable === null) {
+                mcEl.textContent = 'Minecraft: no agent configured';
+                mcEl.className = 'status-badge warn';
+                mcEl.setAttribute('data-tip', 'No agent is registered, so there is no host to ping.');
+                return;
+            }
+            if (st.reachable) {
+                const online = st.players?.online;
+                mcEl.textContent = `Minecraft: up${typeof online === 'number' ? ` \u00b7 ${online} online` : ''}`;
+                mcEl.className = 'status-badge online';
+                mcEl.setAttribute('data-tip',
+                    `Answered a status ping${st.version?.name ? ` \u00b7 ${st.version.name}` : ''}.`
+                    + ' Checked every 10 seconds.');
+            } else {
+                mcEl.textContent = 'Minecraft: unreachable';
+                mcEl.className = 'status-badge offline';
+                mcEl.setAttribute('data-tip',
+                    'The server did not answer a status ping. It may be restarting, still generating'
+                    + ' a new world, or stopped. Agents cannot join until this clears.');
+            }
+        });
 
         socket.on('agents-status', async (agents) => {
             // The pill reads agent state, so it has to be refreshed whenever
