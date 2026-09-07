@@ -110,8 +110,12 @@ if (needed.size === 0) ok('API key', 'no keyed provider in use (local models onl
 if (settings.allow_insecure_coding) {
     ok('Code execution', 'allow_insecure_coding is ON — !newAction can run model-written JS');
     if (!settings.use_skill_library)
-        warn('Code execution', 'allow_insecure_coding is on but use_skill_library is off',
-            'Programs will run but never be saved or reused, so nothing compounds.');
+        fail('Code execution', 'allow_insecure_coding is ON but use_skill_library is OFF',
+            'Generated programs will run, work, and then be thrown away — nothing compounds,\n'
+            + '     and SKILLS LEARNED stays at 0 no matter how well the code does.\n'
+            + '     settings.local.json OVERRIDES settings.js, so check there first:\n'
+            + '       grep use_skill_library settings.local.json\n'
+            + '     Set it true, or delete the line to inherit settings.js.');
 
     const chatGate = settings.only_chat_with;
     if (!Array.isArray(chatGate) || chatGate.length === 0)

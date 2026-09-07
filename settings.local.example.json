@@ -13,5 +13,6 @@
     "use_cognition": true,
     "use_memory": false,
     "use_social": false,
-    "use_skill_library": false
+    "//use_skill_library": "A value here OVERRIDES settings.js. Leaving this false while settings.js says true silently disables the skill library: programs still run and work, and are then thrown away, so nothing compounds. Delete the line to inherit settings.js.",
+    "use_skill_library": true
 }
