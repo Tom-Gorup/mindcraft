@@ -252,3 +252,26 @@ test('parsing stops at a connective rather than swallowing it', () => {
     assert.deepEqual(milestoneRequirement('Gather 64 spruce logs and stack them').names,
         ['spruce_logs', 'spruce_log']);
 });
+
+// A project needs a PLACE. site was declared, persisted and printed, but
+// nothing ever set it — so every resumption built wherever the agent happened
+// to stand. Watching it live: start a tower, wander off, start another tower.
+test('a project with a site says so, and says to go back to it', () => {
+    const s = new ProjectStore();
+    const p = s.start('a watchtower', ['lay the foundation'], { now: 1 });
+    assert.equal(p.site, null, 'no site until one is chosen');
+    assert.ok(!/Site:/.test(p.describe()), 'and nothing is claimed about one');
+
+    p.site = { x: -12, y: 96, z: -15 };
+    const d = p.describe();
+    assert.match(d, /x-12 y96 z-15/);
+    assert.match(d, /do not start again somewhere else/i,
+        'the instruction is the point — coordinates alone did not stop it wandering');
+});
+
+test('the site survives a restart, or the project loses its place', () => {
+    const s = new ProjectStore();
+    s.start('a watchtower', ['a'], { now: 1 }).site = { x: 5, y: 70, z: -3 };
+    const revived = new ProjectStore(JSON.parse(JSON.stringify(s.toJSON())));
+    assert.deepEqual(revived.active.site, { x: 5, y: 70, z: -3 });
+});

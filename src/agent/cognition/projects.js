@@ -184,7 +184,11 @@ export class Project {
         const keys = Object.keys(short);
         if (keys.length)
             text += `Still needed: ${keys.slice(0, 6).map(k => `${short[k]} ${k}`).join(', ')}\n`;
-        if (this.site) text += `Site: x${this.site.x} y${this.site.y} z${this.site.z}\n`;
+        if (this.site) {
+            text += `Site: x${this.site.x} y${this.site.y} z${this.site.z} — `
+                + 'this is WHERE the project is being built. Go back to it to work on it; '
+                + 'do not start again somewhere else.\n';
+        }
         if (this.notes.length) text += `Learned so far: ${this.notes.slice(-3).join(' | ')}\n`;
         return text.trim();
     }

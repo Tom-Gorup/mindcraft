@@ -311,6 +311,16 @@ export class CognitionLoop {
             }
             project = this.projects.start(proposal.intent, proposal.milestones,
                 { drive, now: Date.now(), needed: proposal.materials });
+            // A project needs a PLACE. site was declared, persisted and printed
+            // but never set by anything, so every resumption built wherever the
+            // agent happened to be standing — you would watch it start a tower,
+            // wander off, and start another one elsewhere. Where it stood when
+            // it decided is not a perfect site, but it is a real one, and one
+            // place beats none.
+            try {
+                const p = this.agent.bot.entity.position;
+                project.site = { x: Math.round(p.x), y: Math.round(p.y), z: Math.round(p.z) };
+            } catch { /* position is unavailable only if the bot is gone */ }
             this._safeRecordMemory('project_started',
                 `Decided on a project: ${project.intent}. Milestones: ${project.milestones.map(m => m.text).join('; ')}`,
                 { project: project.id, intent: project.intent, drive,
