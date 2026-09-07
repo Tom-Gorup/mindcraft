@@ -142,12 +142,14 @@ const modes_list = [
                 this.last_time = now;
                 say(agent, 'I\'ve gone nowhere for a while — digging myself out.');
                 execute(this, agent, async () => {
-                    const crashTimeout = setTimeout(() => { agent.cleanKill('Stuck in place and could not get out'); }, 10000);
-                    try {
+                    // Do NOT kill the process here. The commonest way to end up
+                    // stuck in place is having dug straight down, and moveAway
+                    // cannot path out of a one-block shaft — so the old
+                    // behaviour was to give up and restart the agent, which is
+                    // what "stuck, exits, comes back, digs again" looked like
+                    // from outside. Going UP is the answer to being in a hole.
+                    if (!await skills.goToSurface(bot))
                         await skills.moveAway(bot, 8);
-                    } finally {
-                        clearTimeout(crashTimeout);
-                    }
                 });
                 return;
             }

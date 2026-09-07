@@ -10,6 +10,7 @@ import {
     nightPressure, minutesUntilDark, phaseOfDay, threatLevel, shelterLevel,
     DUSK_TICK, NIGHT_TICK,
 } from '../../src/agent/cognition/situation.js';
+import { describeSituation } from '../../src/agent/cognition/describe.js';
 
 // ---- nightfall -------------------------------------------------------------
 
@@ -104,4 +105,38 @@ test('a sheltered agent at night is safer than an exposed one', () => {
     assert.equal(exposure(1, 0), 1, 'outside at night: full exposure');
     assert.ok(exposure(1, 0.85) < exposure(0.8, 0),
         'a good hut at night beats being caught out at dusk');
+});
+
+// ---- knowing you are in a hole ----
+//
+// Watched live on 2026-09-06: Wilbur dug straight down to reach stone with no
+// thought about getting back up, then reported being stuck. That is a
+// perception failure before it is a planning one — nothing represented "I am at
+// the bottom of a shaft", and a roof overhead reads identically whether it is a
+// shelter you built or seven metres of dirt you dug through.
+
+test('a shelter and a shaft are not the same situation', () => {
+    const shelter = { depth: 2, enclosed: true, roofed: true, walls: 4, shelter: 1,
+        phase: 'night', minutes_until_dark: 0, threat: 0, hostile_count: 0 };
+    const shaft = { depth: 9, enclosed: true, roofed: true, walls: 4, shelter: 0.5,
+        phase: 'afternoon', minutes_until_dark: 8, threat: 0, hostile_count: 0 };
+
+    assert.ok(!/UNDERGROUND/.test(describeSituation({ situation: shelter })),
+        'a hut you built is not a warning');
+    assert.match(describeSituation({ situation: shaft }), /UNDERGROUND/);
+    assert.match(describeSituation({ situation: shaft }), /Never dig straight down/);
+});
+
+test('being underground is reported with how deep, so the way out is thinkable', () => {
+    const text = describeSituation({ situation: { depth: 12, enclosed: true, roofed: true,
+        walls: 4, shelter: 0.5, phase: 'afternoon', minutes_until_dark: 8, threat: 0, hostile_count: 0 } });
+    assert.match(text, /12 blocks of cover/);
+    assert.match(text, /stairs|pillar up/);
+});
+
+test('the surface says nothing about depth at all', () => {
+    const text = describeSituation({ situation: { depth: 0, enclosed: false, can_see_sky: true,
+        roofed: false, walls: 0, shelter: 0, phase: 'morning', minutes_until_dark: 9,
+        threat: 0, hostile_count: 0 } });
+    assert.ok(!/UNDERGROUND|below the open air/.test(text));
 });

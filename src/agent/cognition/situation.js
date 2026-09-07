@@ -105,6 +105,7 @@ export function readSituation(bot) {
         phase: 'day', night_pressure: 0, minutes_until_dark: 20,
         threat: 0, hostile_count: 0, nearest_hostile: null,
         shelter: 0, roofed: false, walls: 0, lit: false,
+        depth: 0, enclosed: false, can_see_sky: true,
     };
     if (!bot) return out;
 
@@ -137,9 +138,39 @@ export function readSituation(bot) {
     try {
         Object.assign(out, readShelter(bot));
         out.shelter = shelterLevel(out);
+        Object.assign(out, readEnclosure(bot));
     } catch { /* block reads can fail mid-chunk-load */ }
 
     return out;
+}
+
+// Am I in a hole, and is there a way out?
+//
+// Watching it live: dig straight down to reach stone, with no thought about
+// getting back up. That is not a planning failure so much as a perception one —
+// nothing in the system represented "I am at the bottom of a shaft". A roof
+// overhead reads identically whether it is a shelter you built or seven metres
+// of dirt you dug through.
+function readEnclosure(bot) {
+    const at = bot.entity.position.floored();
+    const solid = (dx, dy, dz) => {
+        const b = bot.blockAt(at.offset(dx, dy, dz));
+        return !!b && b.boundingBox === 'block';
+    };
+
+    // How far up before open air: the difference between a roof and being buried.
+    let depth = 0;
+    for (let dy = 2; dy <= 24; dy++) {
+        if (solid(0, dy, 0)) depth = dy;
+        else if (depth > 0) break;                 // found the top of the cover
+    }
+    // Walled in on all four sides at head height AND covered.
+    const boxedIn = [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dz]) => solid(dx, 1, dz));
+    return {
+        depth,
+        enclosed: boxedIn && depth > 0,
+        can_see_sky: depth === 0,
+    };
 }
 
 // Is there something over my head, and anything around me?

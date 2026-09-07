@@ -42,6 +42,18 @@ export function describeSituation(agent) {
             lines.push('Manageable, but do not let more gather. Deal with it or leave.');
     }
 
+    // Where you are vertically, so "I am in a hole" is representable at all.
+    // A roof overhead reads identically whether it is a shelter you built or
+    // seven metres of dirt you dug through, and the difference matters.
+    if (s.depth >= 3) {
+        lines.push(`You are UNDERGROUND — roughly ${s.depth} blocks of cover above you`
+            + `${s.enclosed ? ', walled in on all sides' : ''}. `
+            + 'You cannot see the sky. Before you dig further, know how you are getting back up: '
+            + 'cut stairs as you go, or pillar up. Never dig straight down.');
+    } else if (s.depth > 0 && !s.roofed) {
+        lines.push(`You are ${s.depth} blocks below the open air.`);
+    }
+
     // Shelter, stated plainly so "do I have walls" is answerable.
     if (s.shelter > 0 && s.shelter < 0.6)
         lines.push(`Partial shelter only (${s.roofed ? 'roof' : 'no roof'}, ${s.walls}/4 walls`
