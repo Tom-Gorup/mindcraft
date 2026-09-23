@@ -1,8 +1,10 @@
+For dashboard access and connection troubleshooting, see the [deployment guide](deploy/README.md#3-reach-the-dashboard-from-your-laptop). The default is localhost; trusted-LAN access requires a bind address and an exact allowed browser origin.
+
 # Common Issues
 - `Error: connect ECONNREFUSED`: Minecraft refused to connect with mindcraft program. Most likely due to:
   - you have not opened your game to LAN in game settings
-  - your LAN port is incorrect, make sure the one you enter in game is the same as specified in `settings.js`
-  - you have the wrong version of minecraft, make sure your MC version is the same as specified in `settings.js`
+  - your LAN port is incorrect, make sure the one you enter in game is the same as specified in `settings.local.json` (overrides `settings.js`)
+  - you have the wrong version of minecraft, make sure your MC version is the same as specified in `settings.local.json` (overrides `settings.js`)
 
 - `ERR_MODULE_NOT_FOUND`: You are missing an npm package. run `npm install`
 

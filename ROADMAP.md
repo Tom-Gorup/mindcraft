@@ -690,3 +690,8 @@ defending. Give the facts; earn the strategy.
 - Belief count stops growing linearly with time; confidence grows instead.
 - The agent states a constraint learned in hour one and still honours it in
   hour ten.
+
+## Deployment maintenance (2026-09-23)
+
+- [x] Optional trusted-LAN dashboard binding with explicit browser origins; retain localhost defaults.
+- [x] Document local settings, current feature defaults, LAN/tunnel access, and limited service restart permission.

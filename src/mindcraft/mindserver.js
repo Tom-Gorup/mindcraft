@@ -169,14 +169,17 @@ export function logoutAgent(agentName) {
 export function createMindServer(host_public = false, port = 8080) {
     const app = express();
     server = http.createServer(app);
-    // The control surface is unauthenticated by design (localhost-only), so
-    // reject cross-origin sockets: without this any web page the user visits
-    // can drive agent creation, settings, and chat injection via DNS rebinding
-    // or a plain cross-origin socket.io handshake.
+    // Permit the local dashboard and explicitly configured network origins.
+    // Keep rejecting unrelated websites even when LAN access is enabled.
+    const allowedOrigins = new Set([
+        `http://localhost:${port}`,
+        `http://127.0.0.1:${port}`,
+        ...(global_settings.mindserver_allowed_origins || []),
+    ]);
     io = new Server(server, { cors: { origin: false } });
     io.use((socket, next) => {
         const origin = socket.handshake.headers.origin;
-        if (!origin || origin === `http://localhost:${port}` || origin === `http://127.0.0.1:${port}`)
+        if (!origin || allowedOrigins.has(origin))
             return next();
         console.warn(`Rejected socket connection from disallowed origin: ${origin}`);
         next(new Error('origin not allowed'));
@@ -616,7 +619,7 @@ export function createMindServer(host_public = false, port = 8080) {
     if (host_public) {
         console.log('Public hosting not supported yet. Using localhost.');
     }
-    const host = 'localhost';
+    const host = global_settings.mindserver_host || 'localhost';
     server.on('error', (err) => {
         if (err.code === 'EADDRINUSE')
             console.error(`MindServer cannot start: port ${port} is already in use. `

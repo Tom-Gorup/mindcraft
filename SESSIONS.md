@@ -1289,3 +1289,20 @@ with whom. Give the facts; earn the strategy.
   knowledge store consolidates, the belief stream still grows linearly.
 - `runs/` grows unbounded.
 
+
+## Session 19 — LAN dashboard and deployment documentation (2026-09-23)
+
+- Added `mindserver_host` and `mindserver_allowed_origins` startup configuration.
+  Defaults remain localhost; this server opts into LAN access without login at
+  the owner's request. Local machine settings remain gitignored.
+- Verified the running service on its LAN address: HTTP 200, Socket.IO connection
+  accepted for the configured origin, unrelated origin rejected.
+- Updated README, deployment instructions/service comments, local settings example,
+  FAQ, and contributor guidance for current defaults and access options.
+- Documented optional narrowly scoped passwordless service restart permission.
+- Limitations: no dashboard authentication; optional 3D viewer iframe URLs remain
+  localhost-based. LAN access covers the main dashboard. Trend history resets on
+  restart; persistent run archives remain on disk.
+- Next: use the configured LAN URL; add exact origins to local settings if a DNS
+  name or port changes, then restart the service.
+- Validation: server syntax and ESLint passed; all 52 existing dashboard tests passed; example configuration parses as JSON; `git diff --check` passed.

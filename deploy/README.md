@@ -57,41 +57,68 @@ accumulated state.
 
 ## 3. Reach the dashboard from your laptop
 
-**Use an SSH tunnel. Do not expose port 8080.**
+The dashboard defaults to localhost on port 8080. Choose either direct access
+on a trusted LAN or an SSH tunnel.
+
+### Direct LAN access
+
+Merge these values into your existing `settings.local.json`:
+
+```json
+{
+    "mindserver_host": "0.0.0.0",
+    "mindserver_port": 8080,
+    "mindserver_allowed_origins": ["http://192.168.x.x:8080"]
+}
+```
+
+Replace `192.168.x.x` with this server's LAN address. `0.0.0.0` listens on all
+IPv4 interfaces and preserves localhost access for the agent processes.
+Origins must match the browser's scheme, hostname/IP, and port exactly, with no
+trailing slash. Add another origin if you use a DNS name. Localhost browser
+origins remain allowed; unrelated browser origins are rejected.
 
 ```bash
-# on your laptop
+sudo systemctl restart mindcraft.service
+systemctl is-active mindcraft.service
+curl -I http://192.168.x.x:8080/
+```
+
+Open `http://192.168.x.x:8080` from another device on the LAN. If a host firewall
+is enabled, allow TCP port 8080 from the intended LAN subnet. A page that loads
+but cannot connect may indicate a missing browser origin. Changes to the bind
+address, port, or origin list require a restart; they are server startup settings.
+The optional bot 3D viewers use separate ports and localhost iframe URLs; this
+configuration enables the main dashboard, not remote 3D viewers.
+
+**There is no login.** Anyone who can reach the dashboard can control agents,
+change profiles, inject chat, and shut down the app. The origin list is a browser
+connection check, not authentication. This mode is for a trusted LAN; do not
+port-forward it to the public internet.
+
+### SSH tunnel (default localhost configuration)
+
+Leave `mindserver_host` unset or set it to `localhost`, then run on your laptop:
+
+```bash
 ssh -N -L 8080:localhost:8080 tgorup@mindcraft-server
-# then browse to http://localhost:8080
+# browse to http://localhost:8080
 ```
 
-`-N` means "no remote command, just forward". Leave it running in a terminal, or
-background it with `-f`.
+`-N` means no remote command, just forwarding. Leave it running while using the
+app. The tunnel provides SSH encryption and authentication.
 
-If your network blocks SSH on port 22 (this one does), add to `~/.ssh/config`:
+### Optional limited restart permission
 
+To allow the service account to restart only this service without a sudo password,
+run `sudo visudo -f /etc/sudoers.d/mindcraft-restart` and add:
+
+```sudoers
+tgorup ALL=(root) NOPASSWD: /usr/bin/systemctl restart mindcraft.service
 ```
-Host mindcraft-server
-  HostName 192.168.10.x
-  User tgorup
-  LocalForward 8080 localhost:8080
-```
 
-then plain `ssh mindcraft-server` forwards the port automatically.
-
-### Why not just bind it to the LAN?
-
-The mindserver has **no authentication**, and the socket API it exposes can
-create and destroy agents, rewrite profiles, inject chat as any player, and shut
-the whole thing down. It binds `127.0.0.1` deliberately, and the socket layer
-additionally rejects any browser origin that is not localhost.
-
-An SSH tunnel satisfies both — the browser genuinely is on localhost as far as
-the server is concerned — and gives you encryption and key-based auth for free.
-
-Binding it to `0.0.0.0` would need three changes (the bind address, the origin
-allowlist, and authentication that does not currently exist). Anything short of
-all three is a kill switch for anyone on the network.
+Adjust the username and confirm the binary path with `command -v systemctl`.
+The allowed command is `sudo -n /usr/bin/systemctl restart mindcraft.service`.
 
 ## 4. Keeping an eye on it
 

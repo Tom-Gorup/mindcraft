@@ -6,23 +6,23 @@
 <p align="center">Crafting minds for Minecraft with LLMs and <a href="https://prismarinejs.github.io/mineflayer/#/">Mineflayer!</a></p>
 
 <p align="center">
-  <a href="https://github.com/mindcraft-bots/mindcraft/blob/main/FAQ.md">FAQ</a> | 
+  <a href="FAQ.md">FAQ</a> |
   <a href="https://discord.gg/mp73p35dzC">Discord Support</a> | 
   <a href="https://www.youtube.com/watch?v=gRotoL8P8D8">Video Tutorial</a> | 
   <a href="https://kolbynottingham.com/mindcraft/">Blog Post</a> | 
   <a href="https://mindcraft-minecollab.github.io/index.html">Paper Website</a> | 
-  <a href="https://github.com/mindcraft-bots/mindcraft/blob/main/minecollab.md">MineCollab</a>
+  <a href="minecollab.md">MineCollab</a>
 </p>
 
 > [!Caution]
-Do not connect this bot to public servers with coding enabled. This project allows an LLM to write/execute code on your computer. The code is sandboxed, but still vulnerable to injection attacks. Code writing is disabled by default, you can enable it by setting `allow_insecure_coding` to `true` in `settings.js`. Ye be warned.
+Do not connect this bot to public servers with coding enabled. This project allows an LLM to write/execute code on your computer. The code is sandboxed, but still vulnerable to injection attacks. This fork enables code writing by default (`allow_insecure_coding: true`). Set `allow_insecure_coding` to `false` in `settings.local.json` to disable it. Ye be warned.
 
 # Getting Started
 ## Requirements
 
 - [Minecraft Java Edition](https://www.minecraft.net/en-us/store/minecraft-java-bedrock-edition-pc) (up to v1.21.11, recommend v1.21.6)
 - [Node.js Installed](https://nodejs.org/) (Node v18 or v20 LTS recommended. Node v24+ may cause issues with native dependencies)
-- At least one API key from a supported API provider. See [supported APIs](#model-customization). OpenAI is the default.
+- At least one API key from a supported API provider. See [supported APIs](#model-customization). The default profile is `profiles/first_run.json`, which uses Anthropic for most tasks and Ollama for local inference and embeddings.
 
 > [!Important]
 > If installing node on windows, ensure you check `Automatically install the necessary tools`
@@ -33,23 +33,25 @@ Do not connect this bot to public servers with coding enabled. This project allo
 
 1. Make sure you have the requirements above.
 
-2. Download the [latest release](https://github.com/mindcraft-bots/mindcraft/releases/latest) and unzip it, or clone the repository.
+2. Clone this fork: `git clone --branch develop https://github.com/Tom-Gorup/mindcraft.git`, then `cd mindcraft`.
 
-3. Rename `keys.example.json` to `keys.json` and fill in your API keys (you only need one). The desired model is set in `andy.json` or other profiles. For other models refer to the table below.
+3. Rename `keys.example.json` to `keys.json` and fill in your API keys (you only need one). The default profile is `profiles/first_run.json`; select other profiles through `settings.local.json` or `--profiles`. For other models refer to the table below.
 
 4. In terminal/command prompt, run `npm install` from the installed directory
 
-5. Start a minecraft world and open it to LAN on localhost port `55916`
+5. Copy `settings.local.example.json` to `settings.local.json`. Set `host` and `port` to your Minecraft server (or open a local world to LAN and use its displayed port). Configure your profiles and feature flags there. For the default profile, run Ollama and pull `qwen2.5:7b` and `embeddinggemma`.
 
 6. Run `node main.js` from the installed directory
 
-If you encounter issues, check the [FAQ](https://github.com/mindcraft-bots/mindcraft/blob/main/FAQ.md) or find support on [discord](https://discord.gg/mp73p35dzC). We are currently not very responsive to github issues. To run tasks please refer to [Minecollab Instructions](minecollab.md#installation)
+If you encounter issues, check the [FAQ](FAQ.md) or find support on [discord](https://discord.gg/mp73p35dzC). We are currently not very responsive to github issues. To run tasks please refer to [Minecollab Instructions](minecollab.md#installation)
 
 
 # Configuration
 ## Model Customization
 
-You can configure project details in `settings.js`. [See file.](settings.js)
+Put machine-specific settings in `settings.local.json` (gitignored). Copy [settings.local.example.json](settings.local.example.json) to get started. Precedence: [settings.js](settings.js) defaults < `settings.local.json` < `SETTINGS_JSON` environment variable. Cognition, the skill library, and code execution default on; memory and social features default off.
+
+The dashboard defaults to http://localhost:8080. For direct LAN access, configure `mindserver_host` and `mindserver_allowed_origins` as described in [the deployment guide](deploy/README.md#3-reach-the-dashboard-from-your-laptop). These startup settings require a service restart.
 
 You can configure the agent's name, model, and prompts in their profile like `andy.json`. The model can be specified with the `model` field, with values like `model: "gemini-2.5-pro"`. You will need the correct API key for the API provider you choose. See all supported APIs below.
 
@@ -88,7 +90,7 @@ ollama pull sweaterdog/andy-4:micro-q8_0 && ollama pull embeddinggemma
 ```
 
 ## Online Servers
-To connect to online servers your bot will need an official Microsoft/Minecraft account. You can use your own personal one, but will need another account if you want to connect too and play with it. To connect, change these lines in `settings.js`:
+To connect to online servers your bot will need an official Microsoft/Minecraft account. You can use your own personal one, but will need another account if you want to connect too and play with it. To connect, set these values in `settings.local.json`:
 ```javascript
 "host": "111.222.333.444",
 "port": 55920,
@@ -144,14 +146,16 @@ If you want more optimization and automatic launching of the minecraft world, yo
 If you intend to `allow_insecure_coding`, it is a good idea to run the app in a docker container to reduce risks of running unknown code. This is strongly recommended before connecting to remote servers, although still does not guarantee complete safety.
 
 ```bash
-docker build -t mindcraft . && docker run --rm --add-host=host.docker.internal:host-gateway -p 8080:8080 -p 3000-3003:3000-3003 -e SETTINGS_JSON='{"auto_open_ui":false,"profiles":["./profiles/gemini.json"],"host":"host.docker.internal"}' --volume ./keys.json:/app/keys.json --name mindcraft mindcraft
+docker build -t mindcraft . && docker run --rm --add-host=host.docker.internal:host-gateway -p 127.0.0.1:8080:8080 -p 3000-3003:3000-3003 -e SETTINGS_JSON='{"mindserver_host":"0.0.0.0","auto_open_ui":false,"profiles":["./profiles/gemini.json"],"host":"host.docker.internal"}' --volume ./keys.json:/app/keys.json --name mindcraft mindcraft
 ```
-or simply
+The example binds the dashboard inside the container and publishes it only on the host loopback address. For direct LAN access, publish on the host network interface and configure the exact browser origin as described in the deployment guide.
+
+For Compose, first set `mindserver_host` to `0.0.0.0` in its `SETTINGS_JSON` environment value and map the dashboard port as `127.0.0.1:8080:8080`. Then run:
 ```bash
 docker-compose up --build
 ```
 
-When running in docker, if you want the bot to join your local minecraft server, you have to use a special host address `host.docker.internal` to call your localhost from inside your docker container. Put this into your [settings.js](settings.js):
+When running in docker, if you want the bot to join your local minecraft server, you have to use a special host address `host.docker.internal` to call your localhost from inside your docker container. Set this in the container's `SETTINGS_JSON`, or in a `settings.local.json` mounted at `/app/settings.local.json`:
 
 ```javascript
 "host": "host.docker.internal", // instead of "localhost", to join your local minecraft from inside the docker container

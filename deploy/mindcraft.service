@@ -9,13 +9,12 @@
 # Check the node path with `which node` — it differs under nvm, and systemd
 # does not read your shell profile, so a bare "node" will not resolve.
 #
-# The dashboard binds 127.0.0.1 and has NO authentication. Do not add a reverse
-# proxy or open the port to the LAN without putting auth in front of it: the
-# socket API can create and destroy agents, rewrite profiles, inject chat as any
-# player, and shut the whole thing down. Reach it over an SSH tunnel instead:
-#
+# The dashboard defaults to localhost and has NO authentication.
+# For direct trusted-LAN access, configure mindserver_host and
+# mindserver_allowed_origins in settings.local.json; see deploy/README.md.
+# Anyone who can reach it can control agents and change configuration.
+# Alternatively keep localhost binding and use an SSH tunnel:
 #   ssh -N -L 8080:localhost:8080 tgorup@mindcraft-server
-#   # then browse to http://localhost:8080 on your laptop
 
 [Unit]
 Description=Mindcraft agent simulation
